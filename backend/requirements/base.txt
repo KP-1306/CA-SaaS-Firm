@@ -1,0 +1,23 @@
+# Runtime dependencies — CA Firm Operations SaaS
+# Pinned exactly for reproducible installation (EWP-000.1A §9.12).
+# Every entry must have a frozen-document justification (EWP-000.1A §14).
+
+# Web framework — TAD §3.3, §20.1 (frozen: Django 5.2 LTS)
+Django==5.2.1
+
+# REST layer — TAD §20.1 (frozen: Django REST Framework)
+djangorestframework==3.15.2
+
+# PostgreSQL driver — TAD §20.1 (frozen: psycopg3).
+# Declared now because config.settings.base targets PostgreSQL as the
+# architectural database (TAD §5). No connection is opened by EWP-000.1A.
+psycopg[binary]==3.2.3
+
+# Environment variable parsing for the settings split — EIB §4.13.
+# Reads names only; secret VALUES come from AWS Secrets Manager in production.
+django-environ==0.11.2
+
+# Time-ordered UUIDv7 generation for tenant-owned primary keys — TD §2.1,
+# EIB §15.2 (frozen library decision: uuid6). Used as the callable default of
+# TenantModel.id via core.db.uuid7.uuid7.
+uuid6==2024.7.10

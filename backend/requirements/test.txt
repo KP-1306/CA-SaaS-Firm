@@ -1,0 +1,6 @@
+# Test dependencies
+-r base.txt
+
+# Test runner — EIB §8.2, TAD §20.1 (frozen: pytest + pytest-django)
+pytest==8.3.3
+pytest-django==4.9.0

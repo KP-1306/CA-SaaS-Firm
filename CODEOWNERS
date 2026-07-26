@@ -1,0 +1,28 @@
+# CODEOWNERS — CA Firm Operations SaaS
+#
+# HUMAN-MAINTAINED PLACEHOLDER.
+# The real GitHub organisation, team handles and repository were not available
+# to EWP-000.1A. Every entry below MUST be replaced with real GitHub team
+# handles before branch protection is enabled.
+# Owner of this replacement: Engineering Lead. Tracked by: EWP-000.1B.
+#
+# Until replaced, these paths have NO effective automated reviewer assignment.
+
+# ---- Default ----
+*                               @PLACEHOLDER-ORG/engineering
+
+# ---- Security boundaries: second reviewer mandatory (EIB §9.3) ----
+/backend/core/auth/             @PLACEHOLDER-ORG/security-reviewers
+/backend/core/db/               @PLACEHOLDER-ORG/security-reviewers
+/backend/core/audit/            @PLACEHOLDER-ORG/security-reviewers
+/backend/contexts/identity/     @PLACEHOLDER-ORG/security-reviewers
+/backend/contexts/portal/       @PLACEHOLDER-ORG/security-reviewers
+/backend/config/settings/       @PLACEHOLDER-ORG/security-reviewers
+
+# ---- Frozen governance documents: architecture sign-off required ----
+/docs/architecture/             @PLACEHOLDER-ORG/architects
+/docs/adr/                      @PLACEHOLDER-ORG/architects
+
+# ---- Infrastructure ----
+/infrastructure/                @PLACEHOLDER-ORG/devops
+/.github/                       @PLACEHOLDER-ORG/devops

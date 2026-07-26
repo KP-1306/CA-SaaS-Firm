@@ -1,0 +1,234 @@
+"""Tests for the tenant-owned model foundation (EWP-000.1B-02).
+
+Two groups:
+
+* **Metadata tests** inspect ``TenantModel`` through Django's ``_meta`` API and
+  the UUID generator directly. They need no database.
+* **Persistence tests** exercise ``row_version`` increment and ``update_fields``
+  handling against a concrete test-only subclass whose table is created with the
+  schema editor and torn down afterwards. No production concrete model is
+  introduced, and the table never outlives the test module.
+"""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import Iterator
+from typing import Any, ClassVar
+
+import pytest
+from django.db import connection, models
+
+from core.db.models import TenantModel
+from core.db.uuid7 import uuid7
+
+UNIVERSAL_FIELDS = {
+    "id",
+    "tenant_id",
+    "created_at",
+    "created_by",
+    "updated_at",
+    "updated_by",
+    "row_version",
+}
+
+
+def _field(name: str) -> models.Field[Any, Any]:
+    field = TenantModel._meta.get_field(name)
+    assert isinstance(field, models.Field)
+    return field
+
+
+class TestAbstractContract:
+    """TenantModel is an abstract base with no table of its own."""
+
+    def test_is_abstract(self) -> None:
+        assert TenantModel._meta.abstract is True
+
+    def test_has_no_database_table(self) -> None:
+        # Abstract models are never registered as concrete models and get no
+        # table. Confirm the base itself is absent from the app registry.
+        from django.apps import apps
+
+        concrete = {m.__name__ for m in apps.get_models()}
+        assert "TenantModel" not in concrete
+
+
+class TestFieldInventory:
+    """The model declares exactly the seven frozen universal fields."""
+
+    def test_declares_exactly_the_universal_fields(self) -> None:
+        declared = {f.name for f in TenantModel._meta.get_fields()}
+        assert declared == UNIVERSAL_FIELDS, f"unexpected fields: {declared ^ UNIVERSAL_FIELDS}"
+
+
+class TestPrimaryKey:
+    """id is a UUIDv7 primary key with a callable default."""
+
+    def test_id_is_uuid_primary_key(self) -> None:
+        field = _field("id")
+        assert isinstance(field, models.UUIDField)
+        assert field.primary_key is True
+
+    def test_default_is_callable(self) -> None:
+        assert callable(_field("id").default)
+
+    def test_generates_uuid_version_7(self) -> None:
+        value = uuid7()
+        assert isinstance(value, uuid.UUID)
+        assert value.version == 7
+
+    def test_successive_values_differ(self) -> None:
+        assert uuid7() != uuid7()
+
+    def test_values_are_time_ordered(self) -> None:
+        # UUIDv7 leads with a millisecond timestamp, so lexical order tracks
+        # creation order. Generate a batch and assert monotonic non-decreasing
+        # string order without asserting on wall-clock timing.
+        batch = [str(uuid7()) for _ in range(100)]
+        assert batch == sorted(batch)
+
+
+class TestTenantField:
+    """tenant_id is an indexed UUID column, never a relation."""
+
+    def test_is_uuid_field(self) -> None:
+        assert isinstance(_field("tenant_id"), models.UUIDField)
+
+    def test_is_indexed(self) -> None:
+        field = _field("tenant_id")
+        assert isinstance(field, models.UUIDField)
+        _, _, _, options = field.deconstruct()
+        assert options["db_index"] is True
+
+    def test_is_not_a_foreign_key(self) -> None:
+        field = _field("tenant_id")
+        assert not isinstance(field, models.ForeignKey)
+        assert field.is_relation is False
+        assert field.related_model is None
+
+
+class TestAuditIdentityFields:
+    """created_by and updated_by are required UUID columns, not relations."""
+
+    @pytest.mark.parametrize("name", ["created_by", "updated_by"])
+    def test_is_required_uuid_non_relation(self, name: str) -> None:
+        field = _field(name)
+        assert isinstance(field, models.UUIDField)
+        assert not isinstance(field, models.ForeignKey)
+        assert field.null is False
+        assert field.blank is False
+
+
+class TestTimestampFields:
+    """created_at is set on insert; updated_at on every save."""
+
+    def test_created_at_is_auto_now_add(self) -> None:
+        field = _field("created_at")
+        assert isinstance(field, models.DateTimeField)
+        assert field.auto_now_add is True
+
+    def test_updated_at_is_auto_now(self) -> None:
+        field = _field("updated_at")
+        assert isinstance(field, models.DateTimeField)
+        assert field.auto_now is True
+
+
+class TestRowVersionMetadata:
+    """row_version is a non-negative integer defaulting to zero."""
+
+    def test_is_positive_integer_field(self) -> None:
+        assert isinstance(_field("row_version"), models.PositiveIntegerField)
+
+    def test_default_is_zero(self) -> None:
+        assert _field("row_version").default == 0
+
+
+class TestMigrationSerialisation:
+    """The UUID default serialises to a stable import path for migrations."""
+
+    def test_default_serialises_to_stable_path(self) -> None:
+        from django.db.migrations.serializer import serializer_factory
+
+        expression, imports = serializer_factory(_field("id").default).serialize()
+        assert expression == "core.db.uuid7.uuid7"
+        assert any("core.db.uuid7" in imp for imp in imports)
+
+
+# --------------------------------------------------------------------------- #
+# Persistence tests: concrete test-only subclass with a real, torn-down table. #
+# --------------------------------------------------------------------------- #
+
+
+class _TenantThing(TenantModel):
+    """Concrete subclass existing only for row_version persistence tests.
+
+    Bound to the installed ``core_health`` app label so Django can resolve it;
+    it is declared here in the test module (never as a package ``models.py``),
+    and its table exists only inside the ``_thing_table`` fixture.
+    """
+
+    objects: ClassVar[models.Manager[_TenantThing]] = models.Manager()
+
+    class Meta:
+        app_label = "core_health"
+
+
+@pytest.fixture()
+def _thing_table() -> Iterator[None]:
+    with connection.schema_editor() as editor:
+        editor.create_model(_TenantThing)
+    try:
+        yield
+    finally:
+        with connection.schema_editor() as editor:
+            editor.delete_model(_TenantThing)
+
+
+@pytest.mark.django_db()
+class TestRowVersionPersistence:
+    """row_version starts at 0 and advances by one per successful save."""
+
+    def _new(self) -> _TenantThing:
+        principal = uuid.uuid4()
+        return _TenantThing(tenant_id=uuid.uuid4(), created_by=principal, updated_by=principal)
+
+    def test_increments_and_persists(self, _thing_table: None) -> None:
+        thing = self._new()
+        assert thing.row_version == 0
+
+        thing.save()
+        assert thing.row_version == 1
+
+        thing.save()
+        assert thing.row_version == 2
+
+        reloaded = _TenantThing.objects.get(pk=thing.pk)
+        assert reloaded.row_version == 2
+
+    def test_update_fields_persists_the_increment(self, _thing_table: None) -> None:
+        thing = self._new()
+        thing.save()
+        assert thing.row_version == 1
+
+        # Saving a narrow update_fields set must still persist row_version.
+        thing.updated_by = uuid.uuid4()
+        thing.save(update_fields={"updated_by"})
+        assert thing.row_version == 2
+
+        reloaded = _TenantThing.objects.get(pk=thing.pk)
+        assert reloaded.row_version == 2
+
+    def test_save_using_argument_is_accepted(self, _thing_table: None) -> None:
+        thing = self._new()
+        thing.save(using="default")
+        assert thing.row_version == 1
+
+    def test_force_insert_then_force_update(self, _thing_table: None) -> None:
+        thing = self._new()
+        thing.save(force_insert=True)
+        assert thing.row_version == 1
+
+        thing.save(force_update=True)
+        assert thing.row_version == 2
+        assert _TenantThing.objects.get(pk=thing.pk).row_version == 2

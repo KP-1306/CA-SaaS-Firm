@@ -1,0 +1,74 @@
+# Pre-commit hooks — https://pre-commit.com
+# Install once per clone:  pip install pre-commit && pre-commit install
+#
+# These hooks are the first line of the repository's quality and secret
+# controls. They are not a substitute for CI or code review.
+
+default_language_version:
+  python: python3.12
+
+repos:
+  # ---- Generic hygiene and secret prevention -------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key           # blocks committed private keys
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: trailing-whitespace
+      - id: no-commit-to-branch
+        args: ["--branch", "main", "--branch", "develop"]
+
+  # ---- Python: format, lint (ruff replaces black + flake8 + isort) ---------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # ---- Frontend: format ----------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        files: ^frontend/.*\.(ts|tsx|js|jsx|json|css|html|md)$
+        additional_dependencies:
+          - prettier@3.3.3
+
+  # ---- Local repository policy hooks --------------------------------------
+  - repo: local
+    hooks:
+      - id: no-env-files
+        name: Block committing real .env files
+        entry: Real .env files must never be committed. Only .env.example is tracked.
+        language: fail
+        files: (^|/)\.env($|\.)
+        exclude: (^|/)\.env\.example$
+
+      - id: no-django-admin
+        name: Block Django admin registration
+        entry: >-
+          The Django admin bypasses the tenant model and permission layer and is
+          never registered (EIB §7.4).
+        language: fail
+        files: ^backend/.*\.py$
+        types: [python]
+        # Matched by the local policy script during CI; this hook documents intent.
+        stages: [manual]
+
+      - id: secret-scan
+        name: Scan staged files for secret-like material
+        entry: python3.12 scripts/secret_scan.py --staged
+        language: system
+        pass_filenames: false

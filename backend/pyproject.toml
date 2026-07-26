@@ -1,0 +1,88 @@
+[project]
+name = "cafirm-backend"
+version = "0.0.1"
+description = "CA Firm Operations SaaS — backend (modular monolith)"
+requires-python = "==3.12.*"
+
+# Runtime dependencies are declared in requirements/*.txt so that pip-based
+# reproducible installation and layered environments (base/test/dev/prod)
+# remain explicit. This file carries tool configuration.
+
+# ---------------------------------------------------------------- ruff -------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["."]
+exclude = [
+    ".venv", "__pycache__", "*/migrations/*",
+    ".ruff_cache", ".mypy_cache", ".pytest_cache",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "UP",       # pyupgrade
+    "B",        # flake8-bugbear
+    "A",        # flake8-builtins
+    "C4",       # flake8-comprehensions
+    "DTZ",      # flake8-datetimez — timezone-aware datetimes only (TD §1.3)
+    "T20",      # flake8-print — no stray print() in application code
+    "SIM",      # flake8-simplify
+    "RUF",      # ruff-specific
+    "S",        # flake8-bandit — security
+]
+ignore = [
+    "S101",  # assert is expected in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106"]
+"config/settings/*.py" = ["F403", "F405"]  # settings modules re-export via star import
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "core", "contexts"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------- mypy -------
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_any_unimported = true
+no_implicit_optional = true
+check_untyped_defs = true
+show_error_codes = true
+exclude = ['\.venv', 'migrations']
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"
+
+# -------------------------------------------------------------- pytest -------
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+markers = [
+    "conformance: conformance suite case (CF-* families, TD §17)",
+]

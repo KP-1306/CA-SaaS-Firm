@@ -1,0 +1,7 @@
+# Production dependencies
+-r base.txt
+
+# WSGI application server — required to serve Django in production.
+# Deployment wiring itself is owned by a later EWP; this pins the server the
+# frozen stack expects (EIB §2.2 gunicorn).
+gunicorn==23.0.0

@@ -1,0 +1,14 @@
+# Development dependencies (superset of test)
+-r test.txt
+
+# Linter + formatter — EIB §2.1 "modern Python linter and formatter".
+# ruff replaces flake8 + black + isort with one tool.
+ruff==0.6.9
+
+# Static type checking — EIB §10 "type-checkable where applicable"
+mypy==1.11.2
+django-stubs[compatible-mypy]==5.1.0
+djangorestframework-stubs==3.15.1
+
+# Git hook manager — EWP-000.1A §4 "pre-commit configuration"
+pre-commit==3.8.0
