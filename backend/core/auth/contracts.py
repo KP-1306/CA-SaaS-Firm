@@ -791,6 +791,13 @@ class AuthorizationContext:
             )
         if not isinstance(self.tenant_context, TenantContext):
             raise TypeError("tenant_context must be a TenantContext")
+        if (
+            self.authentication_context.session.tenant_identity.tenant_id
+            != self.tenant_context.tenant_identity.tenant_id
+        ):
+            raise ValueError(
+                "authentication session tenant must match resolved tenant"
+            )
 
     @property
     def principal_identity(self) -> PrincipalIdentity:
