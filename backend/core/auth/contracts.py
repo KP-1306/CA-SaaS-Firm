@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Protocol, Self, runtime_checkable
 from uuid import UUID
 
 __all__ = (
@@ -38,7 +38,13 @@ __all__ = (
     "ServiceDomain",
     "SessionIdentity",
     "StrictStringEnum",
+    "TenantContext",
     "TenantIdentity",
+    "TenantResolutionFailureReason",
+    "TenantResolutionInput",
+    "TenantResolutionResult",
+    "TenantResolutionSource",
+    "TenantResolver",
 )
 
 
@@ -511,3 +517,270 @@ class AuthenticationContext:
             session=SessionIdentity.from_dict(data["session"]),
             access_plane=AccessPlane.parse(data["access_plane"]),
         )
+
+
+class TenantResolutionSource(StrictStringEnum):
+    """Authoritative source a tenant reference was obtained from.
+
+    Classifies the source only. It performs no parsing, lookup, validation or
+    resolution.
+    """
+
+    HOSTNAME = "hostname"
+    SUBDOMAIN = "subdomain"
+    HEADER = "header"
+    JWT = "jwt"
+    API_KEY = "api_key"
+    SYSTEM = "system"
+
+
+class TenantResolutionFailureReason(StrictStringEnum):
+    """Canonical reason tenant resolution failed. Classification only."""
+
+    TENANT_NOT_FOUND = "tenant_not_found"
+    TENANT_DISABLED = "tenant_disabled"
+    INVALID_HOST = "invalid_host"
+    INVALID_SUBDOMAIN = "invalid_subdomain"
+    INVALID_HEADER = "invalid_header"
+    INVALID_JWT_REFERENCE = "invalid_jwt_reference"
+    INVALID_API_KEY_REFERENCE = "invalid_api_key_reference"
+    MULTIPLE_MATCHES = "multiple_matches"
+    RESOLUTION_REQUIRED = "resolution_required"
+    SOURCE_CONFLICT = "source_conflict"
+    INTERNAL_ERROR = "internal_error"
+
+
+@dataclass(frozen=True, slots=True)
+class TenantResolutionInput:
+    """Already-extracted candidate tenant references supplied to a resolver.
+
+    Carries values only. It parses no HTTP request, header, JWT, API key,
+    hostname or subdomain; extraction is the caller's responsibility and lookup
+    is the future resolver's. Values are stored verbatim (never trimmed or
+    normalised); at least one candidate must be populated.
+    """
+
+    hostname: str | None = None
+    subdomain: str | None = None
+    header_reference: str | None = None
+    jwt_reference: str | None = None
+    api_key_reference: str | None = None
+    system_tenant_identity: TenantIdentity | None = None
+
+    def __post_init__(self) -> None:
+        """Validate field types, reject blank strings and empty input."""
+        string_fields = {
+            "hostname": self.hostname,
+            "subdomain": self.subdomain,
+            "header_reference": self.header_reference,
+            "jwt_reference": self.jwt_reference,
+            "api_key_reference": self.api_key_reference,
+        }
+        for name, value in string_fields.items():
+            if value is not None:
+                if type(value) is not str:
+                    raise TypeError(f"{name} must be a str or None")
+                if value == "" or value.strip() == "":
+                    raise ValueError(f"{name} must not be blank")
+        if self.system_tenant_identity is not None and not isinstance(
+            self.system_tenant_identity, TenantIdentity
+        ):
+            raise TypeError("system_tenant_identity must be a TenantIdentity or None")
+        populated = any(v is not None for v in string_fields.values()) or (
+            self.system_tenant_identity is not None
+        )
+        if not populated:
+            raise ValueError("at least one candidate source must be populated")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a plain JSON-safe dictionary."""
+        return {
+            "hostname": self.hostname,
+            "subdomain": self.subdomain,
+            "header_reference": self.header_reference,
+            "jwt_reference": self.jwt_reference,
+            "api_key_reference": self.api_key_reference,
+            "system_tenant_identity": (
+                None
+                if self.system_tenant_identity is None
+                else self.system_tenant_identity.to_dict()
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Reconstruct from a dictionary produced by :meth:`to_dict`."""
+        system = data.get("system_tenant_identity")
+        return cls(
+            hostname=data.get("hostname"),
+            subdomain=data.get("subdomain"),
+            header_reference=data.get("header_reference"),
+            jwt_reference=data.get("jwt_reference"),
+            api_key_reference=data.get("api_key_reference"),
+            system_tenant_identity=(
+                None if system is None else TenantIdentity.from_dict(system)
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TenantResolutionResult:
+    """Immutable outcome of a tenant resolution attempt.
+
+    A result is either a success carrying the resolved tenant and its source, or
+    a failure carrying a reason. The two shapes are mutually exclusive and are
+    enforced in ``__post_init__``. This object records an outcome only.
+    """
+
+    success: bool
+    tenant_identity: TenantIdentity | None = None
+    resolution_source: TenantResolutionSource | None = None
+    failure_reason: TenantResolutionFailureReason | None = None
+
+    def __post_init__(self) -> None:
+        """Enforce field types and the success/failure exclusivity rule."""
+        if type(self.success) is not bool:
+            raise TypeError("success must be a bool")
+        if self.tenant_identity is not None and not isinstance(
+            self.tenant_identity, TenantIdentity
+        ):
+            raise TypeError("tenant_identity must be a TenantIdentity or None")
+        if self.resolution_source is not None and type(
+            self.resolution_source
+        ) is not TenantResolutionSource:
+            raise TypeError("resolution_source must be a TenantResolutionSource or None")
+        if self.failure_reason is not None and type(
+            self.failure_reason
+        ) is not TenantResolutionFailureReason:
+            raise TypeError(
+                "failure_reason must be a TenantResolutionFailureReason or None"
+            )
+        if self.success:
+            self._validate_success_shape()
+        else:
+            self._validate_failure_shape()
+
+    def _validate_success_shape(self) -> None:
+        """A success carries a tenant and source, and no failure reason."""
+        if self.tenant_identity is None:
+            raise ValueError("a successful result requires a tenant_identity")
+        if self.resolution_source is None:
+            raise ValueError("a successful result requires a resolution_source")
+        if self.failure_reason is not None:
+            raise ValueError("a successful result must not carry a failure_reason")
+
+    def _validate_failure_shape(self) -> None:
+        """A failure carries a reason and no tenant or source."""
+        if self.failure_reason is None:
+            raise ValueError("a failed result requires a failure_reason")
+        if self.tenant_identity is not None:
+            raise ValueError("a failed result must not carry a tenant_identity")
+        if self.resolution_source is not None:
+            raise ValueError("a failed result must not carry a resolution_source")
+
+    @classmethod
+    def success_result(
+        cls,
+        tenant_identity: TenantIdentity,
+        resolution_source: TenantResolutionSource,
+    ) -> Self:
+        """Build a successful result from a resolved tenant and its source."""
+        return cls(
+            success=True,
+            tenant_identity=tenant_identity,
+            resolution_source=resolution_source,
+        )
+
+    @classmethod
+    def failure_result(
+        cls,
+        failure_reason: TenantResolutionFailureReason,
+    ) -> Self:
+        """Build a failed result from a canonical failure reason."""
+        return cls(success=False, failure_reason=failure_reason)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a plain JSON-safe dictionary."""
+        return {
+            "success": self.success,
+            "tenant_identity": (
+                None if self.tenant_identity is None else self.tenant_identity.to_dict()
+            ),
+            "resolution_source": (
+                None if self.resolution_source is None else self.resolution_source.value
+            ),
+            "failure_reason": (
+                None if self.failure_reason is None else self.failure_reason.value
+            ),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Reconstruct from a dictionary produced by :meth:`to_dict`."""
+        tenant = data.get("tenant_identity")
+        source = data.get("resolution_source")
+        reason = data.get("failure_reason")
+        return cls(
+            success=data["success"],
+            tenant_identity=(
+                None if tenant is None else TenantIdentity.from_dict(tenant)
+            ),
+            resolution_source=(
+                None if source is None else TenantResolutionSource.parse(source)
+            ),
+            failure_reason=(
+                None if reason is None else TenantResolutionFailureReason.parse(reason)
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TenantContext:
+    """Immutable, already-successfully-resolved tenant context.
+
+    Carries the resolved tenant and the source it was resolved from, and nothing
+    else: no resolution result, authentication, principal, request, permission,
+    status, failure or mutable state.
+    """
+
+    tenant_identity: TenantIdentity
+    resolution_source: TenantResolutionSource
+
+    def __post_init__(self) -> None:
+        """Validate that both mandatory fields have their canonical types."""
+        if not isinstance(self.tenant_identity, TenantIdentity):
+            raise TypeError("tenant_identity must be a TenantIdentity")
+        if type(self.resolution_source) is not TenantResolutionSource:
+            raise TypeError("resolution_source must be a TenantResolutionSource")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a plain JSON-safe dictionary."""
+        return {
+            "tenant_identity": self.tenant_identity.to_dict(),
+            "resolution_source": self.resolution_source.value,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Reconstruct from a dictionary produced by :meth:`to_dict`."""
+        return cls(
+            tenant_identity=TenantIdentity.from_dict(data["tenant_identity"]),
+            resolution_source=TenantResolutionSource.parse(data["resolution_source"]),
+        )
+
+
+@runtime_checkable
+class TenantResolver(Protocol):
+    """Boundary a future tenant resolver implementation must satisfy.
+
+    An implementation maps already-extracted candidate references to a
+    :class:`TenantResolutionResult`. Failure is reported through the result's
+    failure contract, never by raising. This is a protocol only.
+    """
+
+    def resolve(
+        self,
+        resolution_input: TenantResolutionInput,
+    ) -> TenantResolutionResult:
+        """Resolve candidate references to a tenant resolution result."""
+        ...

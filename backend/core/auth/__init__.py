@@ -30,7 +30,13 @@ from core.auth.contracts import (
     ServiceDomain,
     SessionIdentity,
     StrictStringEnum,
+    TenantContext,
     TenantIdentity,
+    TenantResolutionFailureReason,
+    TenantResolutionInput,
+    TenantResolutionResult,
+    TenantResolutionSource,
+    TenantResolver,
 )
 
 __all__ = (
@@ -51,5 +57,11 @@ __all__ = (
     "ServiceDomain",
     "SessionIdentity",
     "StrictStringEnum",
+    "TenantContext",
     "TenantIdentity",
+    "TenantResolutionFailureReason",
+    "TenantResolutionInput",
+    "TenantResolutionResult",
+    "TenantResolutionSource",
+    "TenantResolver",
 )
