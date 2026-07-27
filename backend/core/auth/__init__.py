@@ -1,8 +1,55 @@
 """Authentication and authorisation infrastructure.
 
-Owns the two principal types, plane detection, session handling, the
-authorisation context and the five-layer authorisation decision.
-
-Not implemented by EWP-000.1A. AR ADR-003 and TD §7 are owned by a later work
-package. This package exists because the frozen structure requires it.
+``core.auth`` owns the project's authentication and authorisation
+infrastructure. It currently provides the pure-Python authorisation and
+authentication foundation: the canonical string-enum vocabulary and the
+immutable identity, scope, result, session and context value objects.
+Authentication implementation, sessions persistence, permission decisions,
+middleware, tenant resolution, workflow enforcement, row-level security,
+support grants and audit persistence remain later work packages. Nothing
+exported here grants authority, evaluates permissions or accesses a database.
 """
+
+from __future__ import annotations
+
+from core.auth.contracts import (
+    AccessPlane,
+    AssignmentScope,
+    AssignmentStatus,
+    AssignmentTarget,
+    AuthenticationContext,
+    AuthenticationFailureReason,
+    AuthenticationMethod,
+    AuthenticationResult,
+    DataClassification,
+    EmploymentDesignation,
+    OperationalRole,
+    PrincipalIdentity,
+    PrincipalStatus,
+    PrincipalType,
+    ServiceDomain,
+    SessionIdentity,
+    StrictStringEnum,
+    TenantIdentity,
+)
+
+__all__ = (
+    "AccessPlane",
+    "AssignmentScope",
+    "AssignmentStatus",
+    "AssignmentTarget",
+    "AuthenticationContext",
+    "AuthenticationFailureReason",
+    "AuthenticationMethod",
+    "AuthenticationResult",
+    "DataClassification",
+    "EmploymentDesignation",
+    "OperationalRole",
+    "PrincipalIdentity",
+    "PrincipalStatus",
+    "PrincipalType",
+    "ServiceDomain",
+    "SessionIdentity",
+    "StrictStringEnum",
+    "TenantIdentity",
+)
