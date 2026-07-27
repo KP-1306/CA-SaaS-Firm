@@ -45,6 +45,12 @@ from core.auth.contracts import (
     TenantResolver,
 )
 
+from core.auth.evaluation import (
+    AuthorizationEngine,
+    RolePermissionEvaluator,
+    RolePermissionSource,
+)
+
 __all__ = (
     "AccessPlane",
     "AssignmentScope",
@@ -56,6 +62,7 @@ __all__ = (
     "AuthenticationResult",
     "AuthorizationContext",
     "AuthorizationDecision",
+    "AuthorizationEngine",
     "AuthorizationEvaluator",
     "AuthorizationOutcome",
     "AuthorizationRequest",
@@ -66,6 +73,8 @@ __all__ = (
     "PrincipalIdentity",
     "PrincipalStatus",
     "PrincipalType",
+    "RolePermissionEvaluator",
+    "RolePermissionSource",
     "ServiceDomain",
     "SessionIdentity",
     "StrictStringEnum",
