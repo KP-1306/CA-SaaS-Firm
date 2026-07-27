@@ -14,6 +14,7 @@ as a stable persisted contract; ``parse`` matches them exactly.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -30,9 +31,14 @@ __all__ = (
     "AuthenticationMethod",
     "AuthenticationResult",
     "AuthorizationContext",
+    "AuthorizationDecision",
+    "AuthorizationEvaluator",
+    "AuthorizationOutcome",
+    "AuthorizationRequest",
     "DataClassification",
     "EmploymentDesignation",
     "OperationalRole",
+    "PermissionCode",
     "PrincipalIdentity",
     "PrincipalStatus",
     "PrincipalType",
@@ -840,6 +846,151 @@ class AuthorizationContext:
             ),
             tenant_context=TenantContext.from_dict(data["tenant_context"]),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class PermissionCode:
+    """Immutable canonical permission code.
+
+    Holds a single dotted lowercase identifier such as ``gst.return.view``. It
+    is a value only: it performs no catalogue membership, hierarchy, wildcard or
+    normalisation, and it stores the supplied string verbatim after validation.
+    """
+
+    value: str
+
+    def __post_init__(self) -> None:
+        """Validate that ``value`` is a plain str in canonical code syntax."""
+        if type(self.value) is not str:
+            raise TypeError("value must be a str")
+        if re.fullmatch(r"[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*", self.value) is None:
+            raise ValueError(f"invalid permission code: {self.value!r}")
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialise to a plain JSON-safe dictionary."""
+        return {"value": self.value}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Reconstruct from a dictionary produced by :meth:`to_dict`."""
+        return cls(value=data["value"])
+
+
+class AuthorizationOutcome(StrictStringEnum):
+    """Outcome an evaluator returned for one authorization question.
+
+    ``INDETERMINATE`` means the evaluator could not reliably return ``ALLOW`` or
+    ``DENY``; it is never equivalent to ``ALLOW``. Classification only.
+    """
+
+    ALLOW = "allow"
+    DENY = "deny"
+    INDETERMINATE = "indeterminate"
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorizationRequest:
+    """Immutable permission-evaluation question.
+
+    Binds an :class:`AuthorizationContext`, a :class:`PermissionCode` and an
+    :class:`AssignmentTarget`. Beyond type validation it enforces that the
+    target's tenant matches the resolved tenant, completing the structural
+    chain session tenant == resolved tenant == target tenant. It stores no
+    derived state and makes no authorization decision.
+    """
+
+    authorization_context: AuthorizationContext
+    permission_code: PermissionCode
+    target: AssignmentTarget
+
+    def __post_init__(self) -> None:
+        """Validate composed types, then the target-tenant alignment rule."""
+        if not isinstance(self.authorization_context, AuthorizationContext):
+            raise TypeError(
+                "authorization_context must be an AuthorizationContext"
+            )
+        if not isinstance(self.permission_code, PermissionCode):
+            raise TypeError("permission_code must be a PermissionCode")
+        if not isinstance(self.target, AssignmentTarget):
+            raise TypeError("target must be an AssignmentTarget")
+        if (
+            self.authorization_context.tenant_identity.tenant_id
+            != self.target.tenant_id
+        ):
+            raise ValueError(
+                "authorization target tenant must match resolved tenant"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a plain JSON-safe dictionary (nested, not flattened)."""
+        return {
+            "authorization_context": self.authorization_context.to_dict(),
+            "permission_code": self.permission_code.to_dict(),
+            "target": self.target.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Reconstruct from a dictionary produced by :meth:`to_dict`."""
+        return cls(
+            authorization_context=AuthorizationContext.from_dict(
+                data["authorization_context"]
+            ),
+            permission_code=PermissionCode.from_dict(data["permission_code"]),
+            target=AssignmentTarget.from_dict(data["target"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorizationDecision:
+    """Immutable pairing of an evaluated request with its outcome.
+
+    Retains the complete :class:`AuthorizationRequest` it was decided for, bound
+    to a single :class:`AuthorizationOutcome`. It copies no request field and
+    carries no reason, policy, evidence or timestamp.
+    """
+
+    request: AuthorizationRequest
+    outcome: AuthorizationOutcome
+
+    def __post_init__(self) -> None:
+        """Validate that the request and outcome have their canonical types."""
+        if not isinstance(self.request, AuthorizationRequest):
+            raise TypeError("request must be an AuthorizationRequest")
+        if type(self.outcome) is not AuthorizationOutcome:
+            raise TypeError("outcome must be an AuthorizationOutcome")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a plain JSON-safe dictionary."""
+        return {
+            "request": self.request.to_dict(),
+            "outcome": self.outcome.value,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Reconstruct from a dictionary produced by :meth:`to_dict`."""
+        return cls(
+            request=AuthorizationRequest.from_dict(data["request"]),
+            outcome=AuthorizationOutcome.parse(data["outcome"]),
+        )
+
+
+@runtime_checkable
+class AuthorizationEvaluator(Protocol):
+    """Boundary a future authorization evaluator implementation must satisfy.
+
+    An implementation maps one structurally valid :class:`AuthorizationRequest`
+    to one :class:`AuthorizationDecision` bound to that request. This is a
+    protocol only; it performs no evaluation and holds no state.
+    """
+
+    def evaluate(
+        self,
+        request: AuthorizationRequest,
+    ) -> AuthorizationDecision:
+        """Evaluate one request and return its decision."""
+        ...
 
 
 @runtime_checkable
