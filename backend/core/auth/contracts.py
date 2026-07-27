@@ -29,6 +29,7 @@ __all__ = (
     "AuthenticationFailureReason",
     "AuthenticationMethod",
     "AuthenticationResult",
+    "AuthorizationContext",
     "DataClassification",
     "EmploymentDesignation",
     "OperationalRole",
@@ -766,6 +767,71 @@ class TenantContext:
         return cls(
             tenant_identity=TenantIdentity.from_dict(data["tenant_identity"]),
             resolution_source=TenantResolutionSource.parse(data["resolution_source"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorizationContext:
+    """Immutable composite: an authenticated principal inside a resolved tenant.
+
+    Composes an :class:`AuthenticationContext` and a :class:`TenantContext`.
+    It stores only those two contexts and derives every other value on demand
+    through read-only properties, so no nested value is duplicated as state.
+    It makes no authorisation decision and performs no orchestration.
+    """
+
+    authentication_context: AuthenticationContext
+    tenant_context: TenantContext
+
+    def __post_init__(self) -> None:
+        """Validate that both composed contexts have their canonical types."""
+        if not isinstance(self.authentication_context, AuthenticationContext):
+            raise TypeError(
+                "authentication_context must be an AuthenticationContext"
+            )
+        if not isinstance(self.tenant_context, TenantContext):
+            raise TypeError("tenant_context must be a TenantContext")
+
+    @property
+    def principal_identity(self) -> PrincipalIdentity:
+        """The authenticated principal, reached through the session."""
+        return self.authentication_context.session.principal_identity
+
+    @property
+    def session(self) -> SessionIdentity:
+        """The authenticated session."""
+        return self.authentication_context.session
+
+    @property
+    def access_plane(self) -> AccessPlane:
+        """The access plane through which the request arrived."""
+        return self.authentication_context.access_plane
+
+    @property
+    def tenant_identity(self) -> TenantIdentity:
+        """The resolved tenant."""
+        return self.tenant_context.tenant_identity
+
+    @property
+    def tenant_resolution_source(self) -> TenantResolutionSource:
+        """The source from which the tenant was resolved."""
+        return self.tenant_context.resolution_source
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to a plain JSON-safe dictionary without flattening."""
+        return {
+            "authentication_context": self.authentication_context.to_dict(),
+            "tenant_context": self.tenant_context.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Self:
+        """Reconstruct from a dictionary produced by :meth:`to_dict`."""
+        return cls(
+            authentication_context=AuthenticationContext.from_dict(
+                data["authentication_context"]
+            ),
+            tenant_context=TenantContext.from_dict(data["tenant_context"]),
         )
 
 
