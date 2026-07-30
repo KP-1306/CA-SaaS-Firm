@@ -1,0 +1,3 @@
+export type Entity = Record<string, unknown> & { id: string; name?: string; legal_name?: string; status?: string; is_active?: boolean };
+export type Resource = 'firm'|'branches'|'teams'|'employees'|'clients'|'client-contacts'|'client-gst-registrations'|'client-branches'|'verticals'|'domains'|'services';
+export const resourceLabels: Record<Resource,string>={firm:'Firm Profile',branches:'Firm Branches',teams:'Teams',employees:'Employees',clients:'Clients', 'client-contacts':'Client Contacts','client-gst-registrations':'GST Registrations','client-branches':'Client Branches',verticals:'Verticals',domains:'Domains',services:'Services'};

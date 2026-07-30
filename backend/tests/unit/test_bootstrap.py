@@ -75,12 +75,13 @@ class TestThreePlanes:
         assert urls_portal.app_name == "portal"
         assert urls_platform.app_name == "platform"
 
-    def test_planes_expose_only_their_bootstrap_route(self) -> None:
-        """EWP-000.1B-01 adds one bootstrap route per plane; no domain routes."""
+    def test_portal_and_platform_remain_bootstrap_only(self) -> None:
+        """Layer 2 adds domain routes only to the internal plane."""
         from config import urls_internal, urls_platform, urls_portal
 
-        for module in (urls_internal, urls_portal, urls_platform):
-            assert len(module.urlpatterns) == 1, f"{module.app_name} has extra routes"
+        assert len(urls_internal.urlpatterns) >= 2
+        assert len(urls_portal.urlpatterns) == 1
+        assert len(urls_platform.urlpatterns) == 1
 
     def test_unrouted_plane_paths_return_404(self) -> None:
         for prefix in ("/api/v1/", "/portal/api/v1/", "/platform/api/v1/"):

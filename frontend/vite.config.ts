@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+﻿import { resolve } from 'node:path';
 
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
@@ -6,13 +6,14 @@ import { defineConfig } from 'vite';
 /**
  * Two independent application entry points.
  *
- * The internal and portal planes are structurally separate (AR §2.4, ADR-004):
+ * The internal and portal planes are structurally separate:
  * they build to separate bundles, mount separate roots and share no
  * authentication state. Only neutral infrastructure under `src/shared` is
  * common to both.
  */
 export default defineConfig({
   plugins: [react()],
+
   resolve: {
     alias: {
       '@shared': resolve(__dirname, 'src/shared'),
@@ -20,6 +21,7 @@ export default defineConfig({
       '@api': resolve(__dirname, 'src/api'),
     },
   },
+
   build: {
     outDir: 'dist',
     emptyOutDir: true,
@@ -30,8 +32,15 @@ export default defineConfig({
       },
     },
   },
+
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
   },
 });

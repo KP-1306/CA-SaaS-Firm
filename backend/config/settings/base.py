@@ -149,3 +149,5 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+from .media import *  # noqa: F401,F403  workflow media settings

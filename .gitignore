@@ -95,3 +95,13 @@ desktop.ini
 patch_backups/
 validation_logs/
 
+.layer2_backup_*/
+C4_1_IMPLEMENTATION_PACKAGE/
+Claude_C4_1_Package/
+CLAUDE_C4_COMPLETE_IMPLEMENTATION_PACKAGE/
+*_IMPLEMENTATION_PACKAGE.zip
+Claude_C4_1_Package.zip
+*_source_snapshot.txt
+research_outputs/
+*.bak
+*.before_*

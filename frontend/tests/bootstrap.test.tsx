@@ -1,17 +1,23 @@
 /**
- * Frontend bootstrap tests.
- *
- * Verify that both plane entry points render and that the plane separation is
- * visible in the structure. They assert on scaffolding, not behaviour, because
- * no behaviour exists yet.
+ * Frontend plane and operational-console smoke tests.
  */
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { App as InternalApp } from '../src/apps/internal/App';
 import { App as PortalApp } from '../src/apps/portal/App';
 import { PLANES, planeLabel } from '../src/shared/plane';
+
+vi.stubGlobal(
+  'fetch',
+  vi.fn(async () =>
+    new Response('[]', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  ),
+);
 
 describe('plane identity', () => {
   it('defines exactly the internal and portal planes', () => {
@@ -26,11 +32,18 @@ describe('plane identity', () => {
 });
 
 describe('internal plane', () => {
-  it('renders its bootstrap screen', () => {
+  it('renders the operational console', async () => {
     render(<InternalApp />);
-    expect(screen.getByRole('heading', { name: 'CA Firm Operations' })).toBeInTheDocument();
-    expect(screen.getByText('Internal')).toBeInTheDocument();
-    expect(screen.getByText('Bootstrap OK')).toBeInTheDocument();
+
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clients' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Work' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Services' })).toBeInTheDocument();
+    expect(screen.getByText('Signed in - internal plane')).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    });
   });
 });
 
