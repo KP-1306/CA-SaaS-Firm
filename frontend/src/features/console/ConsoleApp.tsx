@@ -3,21 +3,28 @@ import { useEffect, useState } from 'react';
 import { list, save } from './api';
 import { CatalogueArea } from './catalogue';
 import { WorkArea } from './work';
+import { useBrand } from './branding';
+import { EmployeeDashboard, ExecutiveDashboard } from './dashboards';
+import { ExpertisePanel } from './expertise';
+import { AuditViewer } from './audit';
 import { CLIENT_TYPES, ENGAGEMENT_STATUS, WORK_STATUS, isOverdue, label } from './types';
 import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Column, Field } from './ui';
 import './console.css';
 
-type Area = 'dashboard' | 'clients' | 'work' | 'team' | 'services' | 'reports' | 'settings';
+type Area = 'dashboard' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'team' | 'services' | 'reports' | 'audit' | 'settings';
 
 const NAV: { key: Area; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'my-dashboard', label: 'My Dashboard' },
+  { key: 'firm-overview', label: 'Firm Overview' },
   { key: 'clients', label: 'Clients' },
   { key: 'work', label: 'Work' },
   { key: 'team', label: 'Team' },
   { key: 'services', label: 'Services' },
   { key: 'reports', label: 'Reports' },
+  { key: 'audit', label: 'Audit' },
   { key: 'settings', label: 'Settings' },
 ];
 
@@ -419,10 +426,17 @@ function Reports(): React.JSX.Element {
 // ---------------- Root ----------------
 export function ConsoleApp(): React.JSX.Element {
   const [area, setArea] = useState<Area>('dashboard');
+  const brand = useBrand();
   const view = ((): React.JSX.Element => {
     switch (area) {
       case 'dashboard':
         return <Dashboard />;
+      case 'my-dashboard':
+        return <EmployeeDashboard onDrill={(f) => { setArea('work'); void f; }} />;
+      case 'firm-overview':
+        return <ExecutiveDashboard onDrill={(f) => { setArea('work'); void f; }} />;
+      case 'audit':
+        return <AuditViewer />;
       case 'clients':
         return (
           <ResourceManager
@@ -476,6 +490,11 @@ export function ConsoleApp(): React.JSX.Element {
               { name: 'role', kind: 'select', options: ['ADMIN', 'PARTNER', 'MANAGER', 'STAFF', 'READ_ONLY'] },
               { name: 'is_active', kind: 'checkbox' },
             ]}
+            drawerExtra={(employee) => (
+              employee.id
+                ? <ExpertisePanel key={String(employee.id)} employeeId={String(employee.id)} />
+                : <div className="cx-warning">Save the employee before adding expertise.</div>
+            )}
           />
         );
       case 'services':
@@ -512,9 +531,9 @@ export function ConsoleApp(): React.JSX.Element {
   return (
     <div className="cx-app">
       <aside className="cx-side">
-        <div className="cx-brand">CA Firm Operations<small>Internal console</small></div>
+        <div className="cx-brand">{brand.firm_name}<small>Internal console</small></div>
         <nav className="cx-nav">
-          {NAV.map((n) => (
+          {NAV.filter((n) => (n.key === 'firm-overview' || n.key === 'audit') ? brand.capabilities?.is_executive === true : true).map((n) => (
             <button key={n.key} className={n.key === area ? 'active' : ''} onClick={() => setArea(n.key)}>
               {n.label}
             </button>

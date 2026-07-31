@@ -50,7 +50,7 @@ describe('internal plane', () => {
 describe('portal plane', () => {
   it('renders its bootstrap screen', () => {
     render(<PortalApp />);
-    expect(screen.getByRole('heading', { name: 'CA Firm Operations' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Vridhi Consultants' })).toBeInTheDocument();
     expect(screen.getByText('Client Portal')).toBeInTheDocument();
   });
 

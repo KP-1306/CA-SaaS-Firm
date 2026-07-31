@@ -12,6 +12,7 @@ import type * as React from 'react';
 
 import type { Plane } from '../plane';
 import { planeLabel } from '../plane';
+import { DEFAULT_BRAND_NAME } from '../brand';
 
 export interface BootstrapScreenProps {
   readonly plane: Plane;
@@ -20,7 +21,7 @@ export interface BootstrapScreenProps {
 export function BootstrapScreen({ plane }: BootstrapScreenProps): React.JSX.Element {
   return (
     <main>
-      <h1>CA Firm Operations</h1>
+      <h1>{DEFAULT_BRAND_NAME}</h1>
       <p>{planeLabel(plane)}</p>
       <p>Bootstrap OK</p>
     </main>

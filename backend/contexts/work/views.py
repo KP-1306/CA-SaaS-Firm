@@ -8,7 +8,7 @@ from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import status as http_status
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -17,6 +17,8 @@ from contexts.clients.models import ClientContact
 from contexts.identity.models import Employee
 
 from . import ownership
+from contexts.audit.recording import record_event
+from contexts.audit.models import AuditAction
 
 from .models import (
     AttachmentReviewStatus,
@@ -75,6 +77,17 @@ _BLOCKED_EXTENSIONS = {
     ".jar", ".ps1", ".vbs", ".php", ".py", ".pl", ".app", ".bin",
 }
 _MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+
+
+class MandatoryAuditPersistenceError(APIException):
+    """Fail closed when a mandatory audit event cannot be persisted."""
+
+    status_code = 503
+    default_detail = (
+        "The requested change was not saved because the mandatory audit record "
+        "could not be persisted. Please retry later."
+    )
+    default_code = "mandatory_audit_unavailable"
 
 
 def _sanitise_filename(name: str) -> str:
@@ -199,6 +212,23 @@ class WorkItemViewSet(TenantModelViewSet):
         item.updated_by = self.principal().principal_id
         item.save(update_fields=list(fields))
         self._record(item, entry or f"Status changed to {target}.", previous, target)
+        try:
+            record_event(
+                tenant_id=item.tenant_id,
+                principal_id=self.principal().principal_id,
+                action=AuditAction.STATUS_CHANGE,
+                entity_type="WorkItem",
+                entity_id=item.id,
+                summary=f"{previous} -> {target}",
+                previous={"status": previous},
+                new={"status": target},
+                request=self.request,
+            )
+        except Exception as exc:
+            # Raise a DRF APIException from inside the atomic boundary. Django
+            # rolls back the business mutation before DRF renders the controlled
+            # 503 response, so mandatory audit persistence remains fail-closed.
+            raise MandatoryAuditPersistenceError() from exc
         return previous
 
     # -- generic guarded transition (cannot complete review-required) --
@@ -385,13 +415,26 @@ class DocumentRequestViewSet(TenantModelViewSet):
                     "Document requests can only be managed by the assigned owner "
                     "while the work item is in an editable stage."
                 )
-        serializer.save(
-            tenant_id=principal.tenant_id,
-            created_by=principal.principal_id,
-            updated_by=principal.principal_id,
-            sent_at=timezone.now(),
-            requested_date=timezone.now().date(),
-        )
+        with transaction.atomic():
+            instance = serializer.save(
+                tenant_id=principal.tenant_id,
+                created_by=principal.principal_id,
+                updated_by=principal.principal_id,
+                sent_at=timezone.now(),
+                requested_date=timezone.now().date(),
+            )
+            # Mandatory audit inside the same transaction: a persistence failure
+            # rolls the document-request creation back (no unaudited mutation).
+            record_event(
+                tenant_id=principal.tenant_id,
+                principal_id=principal.principal_id,
+                action=AuditAction.DOCUMENT_REQUEST_CREATED,
+                entity_type="DocumentRequest",
+                entity_id=instance.id,
+                summary=getattr(instance, "name", ""),
+                new={"name": getattr(instance, "name", ""), "status": getattr(instance, "status", "")},
+                request=self.request,
+            )
 
     def perform_update(self, serializer):
         self._validate_contact(serializer)
@@ -644,6 +687,21 @@ class DocumentAttachmentViewSet(TenantModelViewSet):
             recalculate_document_request_status(
                 doc,
                 updated_by=principal.principal_id,
+            )
+            # Mandatory audit inside the same transaction as the review.
+            record_event(
+                tenant_id=attachment.tenant_id,
+                principal_id=principal.principal_id,
+                action=(
+                    AuditAction.ATTACHMENT_ACCEPTED
+                    if target == AttachmentReviewStatus.ACCEPTED
+                    else AuditAction.ATTACHMENT_REJECTED
+                ),
+                entity_type="DocumentAttachment",
+                entity_id=attachment.id,
+                summary=f"Attachment {target}",
+                new={"review_status": target},
+                request=self.request,
             )
 
         attachment.refresh_from_db()

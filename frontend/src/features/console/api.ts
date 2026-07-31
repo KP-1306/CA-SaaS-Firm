@@ -68,6 +68,12 @@ export async function list(resource: string, params: Record<string, string | und
   return (await res.json()) as Row[];
 }
 
+export async function getObject(path: string, params: Record<string, string | undefined> = {}): Promise<Row> {
+  const res = await fetch(`${API_BASE}/${path}/${qs(params)}`, { headers: headers() });
+  if (!res.ok) return fail(res);
+  return (await res.json()) as Row;
+}
+
 export async function save(resource: string, value: Row): Promise<Row> {
   const id = value.id as string | undefined;
   const res = await fetch(`${API_BASE}/${resource}/${id ? `${id}/` : ''}`, {
