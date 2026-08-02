@@ -288,3 +288,38 @@ def executive_dashboard(tenant_id, period="month"):
         "heatmap_priority_status": status_by_priority,
         "action_centre": action_centre,
     }
+
+
+def servicing_summary(tenant_id):
+    """Read-only, deterministic counts for the servicing layer (V1 additive).
+
+    Every value is a current-state count over tenant-scoped rows and is safe on
+    empty datasets. This adds NO workflow logic and reads only the generation
+    context models. Imported lazily so insight retains no import-time dependency
+    on the generation context.
+    """
+    from contexts.generation.models import (
+        ClientServiceSubscription,
+        GeneratedWorkLedger,
+        RecurringWorkProfile,
+        TaskTemplate,
+    )
+
+    subs = ClientServiceSubscription.objects.filter(tenant_id=tenant_id)
+    templates = TaskTemplate.objects.filter(tenant_id=tenant_id)
+    profiles = RecurringWorkProfile.objects.filter(tenant_id=tenant_id)
+    ledger = GeneratedWorkLedger.objects.filter(tenant_id=tenant_id)
+
+    subs_by_status = {}
+    for s in subs:
+        subs_by_status[s.status] = subs_by_status.get(s.status, 0) + 1
+
+    return {
+        "subscriptions_total": subs.count(),
+        "subscriptions_by_status": subs_by_status,
+        "task_templates_total": templates.count(),
+        "task_templates_active": templates.filter(is_active=True).count(),
+        "recurring_profiles_total": profiles.count(),
+        "recurring_profiles_active": profiles.filter(is_active=True).count(),
+        "generated_work_items_total": ledger.count(),
+    }

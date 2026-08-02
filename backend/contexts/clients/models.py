@@ -31,6 +31,22 @@ class ContactChannel(models.TextChoices):
     MANUAL = "MANUAL", "Manual"
 
 
+class ClientLifecycleStatus(models.TextChoices):
+    """Explicit client lifecycle (additive; distinct from engagement_status).
+
+    engagement_status remains the existing relationship-health field. This new
+    field formalises the operational lifecycle required by the milestone and is
+    never a silent reuse of engagement_status.
+    """
+
+    PROSPECT = "PROSPECT", "Prospect"
+    ONBOARDING = "ONBOARDING", "Onboarding"
+    ACTIVE = "ACTIVE", "Active"
+    SUSPENDED = "SUSPENDED", "Suspended"
+    CLOSED = "CLOSED", "Closed"
+    ARCHIVED = "ARCHIVED", "Archived"
+
+
 class Client(TenantModel):
     legal_name = models.CharField(max_length=250)
     trade_name = models.CharField(max_length=250, blank=True)
@@ -42,6 +58,24 @@ class Client(TenantModel):
     relationship_manager_id = models.UUIDField(null=True, blank=True)
     engagement_status = models.CharField(max_length=15, choices=EngagementStatus.choices, default=EngagementStatus.ACTIVE)
     notes = models.TextField(blank=True)
+
+    # --- Client lifecycle (additive; V1 Core Workflow + Client Management) ---
+    tan = models.CharField(max_length=10, blank=True)
+    lifecycle_status = models.CharField(
+        max_length=15,
+        choices=ClientLifecycleStatus.choices,
+        default=ClientLifecycleStatus.PROSPECT,
+        db_index=True,
+    )
+    primary_branch_id = models.UUIDField(null=True, blank=True, db_index=True)
+    primary_contact_id = models.UUIDField(null=True, blank=True, db_index=True)
+    onboarding_date = models.DateField(null=True, blank=True)
+    activation_date = models.DateField(null=True, blank=True)
+    suspension_date = models.DateField(null=True, blank=True)
+    suspension_reason = models.TextField(blank=True)
+    closure_date = models.DateField(null=True, blank=True)
+    closure_reason = models.TextField(blank=True)
+    archive_date = models.DateField(null=True, blank=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["tenant_id", "pan"], condition=~models.Q(pan=""), name="uq_client_pan_tenant")]

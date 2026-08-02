@@ -319,6 +319,110 @@ class WorkItemViewSet(TenantModelViewSet):
             )
         return Response(self.get_serializer(item).data)
 
+    @action(detail=True, methods=["post"])
+    def assign(self, request, pk=None):
+        """Assign or reassign owner and/or reviewer via a dedicated action.
+
+        Generic writes to owner_user_id/reviewer_user_id are denied by
+        ``_deny_control_field_writes``; this is the audited path to change them.
+        Only the assigned owner (or an item with no owner yet) may (re)assign,
+        matching the owner-control model for non-terminal states. Assignment is
+        not permitted on terminal items.
+        """
+        item = self.get_object()
+        if item.status in (WorkStatus.COMPLETED, WorkStatus.CANCELLED):
+            return Response(
+                {"detail": "Assignment is not permitted on completed or cancelled work."},
+                status=400,
+            )
+        # Owner control: if an owner exists, only that owner may reassign.
+        if item.owner_user_id and not ownership.is_owner(item, self.principal()):
+            raise PermissionDenied("Only the assigned owner may reassign this work item.")
+
+        data = request.data or {}
+        new_owner = data.get("owner_user_id", None)
+        new_reviewer = data.get("reviewer_user_id", None)
+        if new_owner is None and new_reviewer is None:
+            return Response(
+                {"detail": "Provide owner_user_id and/or reviewer_user_id."}, status=400
+            )
+
+        previous = {"owner_user_id": str(item.owner_user_id or ""), "reviewer_user_id": str(item.reviewer_user_id or "")}
+        update_fields = {"updated_by"}
+        principal = self.principal()
+        with transaction.atomic():
+            if new_owner is not None:
+                item.owner_user_id = new_owner or None
+                update_fields.add("owner_user_id")
+            if new_reviewer is not None:
+                item.reviewer_user_id = new_reviewer or None
+                update_fields.add("reviewer_user_id")
+            item.updated_by = principal.principal_id
+            item.save(update_fields=list({*update_fields, "row_version"}))
+            self._record(
+                item,
+                "Assignment updated.",
+            )
+            try:
+                if "owner_user_id" in update_fields:
+                    record_event(
+                        tenant_id=item.tenant_id,
+                        principal_id=principal.principal_id,
+                        action=AuditAction.OWNER_ASSIGNED,
+                        entity_type="WorkItem",
+                        entity_id=item.id,
+                        summary="Owner assigned",
+                        previous={"owner_user_id": previous["owner_user_id"]},
+                        new={"owner_user_id": str(item.owner_user_id or "")},
+                        request=self.request,
+                    )
+                if "reviewer_user_id" in update_fields:
+                    record_event(
+                        tenant_id=item.tenant_id,
+                        principal_id=principal.principal_id,
+                        action=AuditAction.REVIEWER_ASSIGNED,
+                        entity_type="WorkItem",
+                        entity_id=item.id,
+                        summary="Reviewer assigned",
+                        previous={"reviewer_user_id": previous["reviewer_user_id"]},
+                        new={"reviewer_user_id": str(item.reviewer_user_id or "")},
+                        request=self.request,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                raise MandatoryAuditPersistenceError() from exc
+        return Response(self.get_serializer(item).data)
+
+    @action(detail=True, methods=["post"])
+    def reopen(self, request, pk=None):
+        """Controlled reopening of completed work (COMPLETED -> REWORK_REQUIRED).
+
+        Reuses the existing status vocabulary rather than introducing a new
+        terminal-exit enum: a reopened item re-enters the owner-controlled rework
+        path exactly as a review rejection would. Reviewer-gated and requires a
+        reason; audited fail-closed via ``_transition``.
+        """
+        item = self.get_object()
+        if item.status != WorkStatus.COMPLETED:
+            return Response(
+                {"detail": "Only completed work can be reopened."}, status=400
+            )
+        self._require_reviewer(item)
+        comment = request.data.get("comment", "")
+        if not comment:
+            return Response(
+                {"detail": "A reason is required to reopen completed work."}, status=400
+            )
+        with transaction.atomic():
+            item.completed_at = None
+            item.review_comment = comment
+            self._transition(
+                item,
+                WorkStatus.REWORK_REQUIRED,
+                f"Reopened: {comment}",
+                update_fields={"completed_at", "review_comment"},
+            )
+        return Response(self.get_serializer(item).data)
+
     @action(detail=True, methods=["get"])
     def attachments(self, request, pk=None):
         item = self.get_object()

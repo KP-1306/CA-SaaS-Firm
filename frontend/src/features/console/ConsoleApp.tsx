@@ -3,17 +3,18 @@ import { useEffect, useState } from 'react';
 import { list, save } from './api';
 import { CatalogueArea } from './catalogue';
 import { WorkArea } from './work';
+import { ServicingArea } from './servicing';
 import { useBrand } from './branding';
 import { EmployeeDashboard, ExecutiveDashboard } from './dashboards';
 import { ExpertisePanel } from './expertise';
 import { AuditViewer } from './audit';
-import { CLIENT_TYPES, ENGAGEMENT_STATUS, WORK_STATUS, isOverdue, label } from './types';
+import { CLIENT_TYPES, CLIENT_LIFECYCLE_STATUS, ENGAGEMENT_STATUS, WORK_STATUS, isOverdue, label } from './types';
 import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Column, Field } from './ui';
 import './console.css';
 
-type Area = 'dashboard' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'team' | 'services' | 'reports' | 'audit' | 'settings';
+type Area = 'dashboard' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'servicing' | 'team' | 'services' | 'reports' | 'audit' | 'settings';
 
 const NAV: { key: Area; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -21,6 +22,7 @@ const NAV: { key: Area; label: string }[] = [
   { key: 'firm-overview', label: 'Firm Overview' },
   { key: 'clients', label: 'Clients' },
   { key: 'work', label: 'Work' },
+  { key: 'servicing', label: 'Servicing' },
   { key: 'team', label: 'Team' },
   { key: 'services', label: 'Services' },
   { key: 'reports', label: 'Reports' },
@@ -442,23 +444,33 @@ export function ConsoleApp(): React.JSX.Element {
           <ResourceManager
             resource="clients"
             title="Client"
-            filters={[{ name: 'client_type', options: CLIENT_TYPES }, { name: 'engagement_status', options: ENGAGEMENT_STATUS }]}
+            filters={[{ name: 'client_type', options: CLIENT_TYPES }, { name: 'engagement_status', options: ENGAGEMENT_STATUS }, { name: 'lifecycle_status', options: CLIENT_LIFECYCLE_STATUS }]}
             columns={[
               { key: 'legal_name', header: 'Client', render: (r) => String(r.trade_name || r.legal_name) },
               { key: 'client_type', header: 'Type', render: (r) => label(String(r.client_type)) },
               { key: 'pan', header: 'PAN' },
+              { key: 'lifecycle_status', header: 'Lifecycle', render: (r) => <Chip value={String(r.lifecycle_status ?? 'PROSPECT')} /> },
               { key: 'engagement_status', header: 'Status', render: (r) => <Chip value={String(r.engagement_status)} tone={statusTone(String(r.engagement_status))} /> },
             ]}
-            blank={{ legal_name: '', trade_name: '', client_type: 'PRIVATE_LIMITED', engagement_status: 'ACTIVE' }}
+            blank={{ legal_name: '', trade_name: '', client_type: 'PRIVATE_LIMITED', engagement_status: 'ACTIVE', lifecycle_status: 'PROSPECT' }}
             fields={[
               { name: 'legal_name' },
               { name: 'trade_name' },
               { name: 'client_type', kind: 'select', options: CLIENT_TYPES },
               { name: 'industry' },
               { name: 'pan' },
+              { name: 'tan' },
               { name: 'cin_or_llpin' },
               { name: 'registered_address', kind: 'textarea' },
               { name: 'engagement_status', kind: 'select', options: ENGAGEMENT_STATUS },
+              { name: 'lifecycle_status', kind: 'select', options: CLIENT_LIFECYCLE_STATUS },
+              { name: 'onboarding_date', kind: 'date' },
+              { name: 'activation_date', kind: 'date' },
+              { name: 'suspension_date', kind: 'date' },
+              { name: 'suspension_reason', kind: 'textarea' },
+              { name: 'closure_date', kind: 'date' },
+              { name: 'closure_reason', kind: 'textarea' },
+              { name: 'archive_date', kind: 'date' },
               { name: 'notes', kind: 'textarea' },
             ]}
             drawerExtra={(client) => (
@@ -470,6 +482,8 @@ export function ConsoleApp(): React.JSX.Element {
         );
       case 'work':
         return <WorkArea />;
+      case 'servicing':
+        return <ServicingArea />;
       case 'team':
         return (
           <ResourceManager

@@ -14,6 +14,12 @@ from contexts.work.views import (
 )
 from contexts.organisation.views import BranchViewSet, FirmProfileViewSet, TeamViewSet
 from contexts.audit.views import AuditEventViewSet
+from contexts.generation.views import (
+    ClientServiceSubscriptionViewSet,
+    GeneratedWorkLedgerViewSet,
+    RecurringWorkProfileViewSet,
+    TaskTemplateViewSet,
+)
 from contexts.insight.views import BrandingView, EmployeeDashboardView, ExecutiveDashboardView
 from .bootstrap_internal import bootstrap
 
@@ -36,6 +42,10 @@ router.register("work-notes", WorkNoteViewSet, basename="work-note")
 router.register("document-requests", DocumentRequestViewSet, basename="document-request")
 router.register("document-attachments", DocumentAttachmentViewSet, basename="document-attachment")
 router.register("audit-events", AuditEventViewSet, basename="audit-event")
+router.register("client-service-subscriptions", ClientServiceSubscriptionViewSet, basename="client-service-subscription")
+router.register("task-templates", TaskTemplateViewSet, basename="task-template")
+router.register("recurring-work-profiles", RecurringWorkProfileViewSet, basename="recurring-work-profile")
+router.register("generated-work-ledger", GeneratedWorkLedgerViewSet, basename="generated-work-ledger")
 
 urlpatterns: list[URLPattern | URLResolver] = [
     path("", bootstrap, name="bootstrap"),
