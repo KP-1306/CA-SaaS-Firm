@@ -1531,3 +1531,194 @@ button.cx-btn.pending { box-shadow: 0 0 0 2px #f59e0b; }
     flex-direction: column;
   }
 }
+/* ================================================================
+   DOCUMENT ACTION QUEUE 2B.2.5
+   ================================================================ */
+
+.cx-document-action-queue {
+  margin: 16px 0;
+  padding: 15px;
+  border: 1px solid #dce3eb;
+  border-radius: 11px;
+  background: #ffffff;
+}
+
+.cx-document-action-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cx-document-action-head h4 {
+  margin: 2px 0 0;
+  color: #202b3c;
+  font-size: 14px;
+}
+
+.cx-document-action-head p {
+  margin: 3px 0 0;
+  color: #778397;
+  font-size: 11px;
+}
+
+.cx-document-action-head > strong {
+  display: grid;
+  min-width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: #263044;
+  font-size: 13px;
+}
+
+.cx-document-action-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(90px, 1fr));
+  gap: 7px;
+  margin-top: 13px;
+}
+
+.cx-document-action-summary > div {
+  padding: 8px 9px;
+  border: 1px solid #e5eaf0;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.cx-document-action-summary > div.warn {
+  border-color: #efd8a7;
+  background: #fffaf0;
+}
+
+.cx-document-action-summary > div.danger {
+  border-color: #efc1bd;
+  background: #fff7f6;
+}
+
+.cx-document-action-summary strong {
+  display: block;
+  color: #243044;
+  font-size: 14px;
+}
+
+.cx-document-action-summary span {
+  color: #79869a;
+  font-size: 9px;
+}
+
+.cx-document-action-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.cx-document-action-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #e4e9ef;
+  border-radius: 8px;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.cx-document-action-row:hover {
+  border-color: #bdc8d6;
+  background: #fafbfd;
+}
+
+.cx-document-action-row.expired,
+.cx-document-action-row.rejected {
+  border-left: 3px solid #d64d43;
+}
+
+.cx-document-action-row.expiring,
+.cx-document-action-row.partial,
+.cx-document-action-row.missing {
+  border-left: 3px solid #d89a27;
+}
+
+.cx-document-action-row.pending_review {
+  border-left: 3px solid #6d7f9b;
+}
+
+.cx-document-action-marker {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef2f6;
+  color: #526178;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.cx-document-action-main {
+  min-width: 0;
+}
+
+.cx-document-action-main strong {
+  display: block;
+  overflow: hidden;
+  color: #283348;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-document-action-main span {
+  display: block;
+  margin-top: 2px;
+  color: #788499;
+  font-size: 10px;
+}
+
+.cx-document-action-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cx-document-action-meta > span {
+  color: #8994a6;
+  font-size: 9px;
+}
+
+.cx-document-action-empty {
+  margin-top: 12px;
+  padding: 18px;
+  border: 1px dashed #d7dee7;
+  border-radius: 8px;
+  color: #7a8799;
+  font-size: 11px;
+  text-align: center;
+}
+
+.cx-doc-card {
+  scroll-margin-top: 24px;
+}
+
+@media (max-width: 850px) {
+  .cx-document-action-summary {
+    grid-template-columns: repeat(2, minmax(100px, 1fr));
+  }
+
+  .cx-document-action-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .cx-document-action-meta {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}

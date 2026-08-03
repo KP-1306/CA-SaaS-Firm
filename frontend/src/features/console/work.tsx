@@ -360,6 +360,205 @@ function readinessStateText(state: string): string {
   }
 }
 
+type DocumentQueueKind =
+  | 'EXPIRED'
+  | 'EXPIRING'
+  | 'REJECTED'
+  | 'PENDING_REVIEW'
+  | 'PARTIAL'
+  | 'MISSING';
+
+interface DocumentQueueItem {
+  id: string;
+  name: string;
+  category: string;
+  kind: DocumentQueueKind;
+  message: string;
+  priority: number;
+  document: Row;
+}
+
+function dateOnly(value: unknown): Date | null {
+  if (!value) return null;
+
+  const parsed = new Date(`${String(value)}T00:00:00`);
+
+  return Number.isNaN(parsed.getTime())
+    ? null
+    : parsed;
+}
+
+function daysUntil(value: unknown): number | null {
+  const target = dateOnly(value);
+
+  if (!target) return null;
+
+  const today = new Date();
+  const start = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+
+  return Math.ceil(
+    (target.getTime() - start.getTime()) /
+      (24 * 60 * 60 * 1000),
+  );
+}
+
+function buildDocumentActionQueue(
+  rows: Row[],
+): DocumentQueueItem[] {
+  const queue: DocumentQueueItem[] = [];
+
+  for (const row of rows) {
+    const status = String(row.status || '');
+    const expiryDays = daysUntil(row.expires_on);
+    const mandatory = row.mandatory === true;
+
+    if (
+      row.is_expired === true ||
+      (expiryDays !== null && expiryDays < 0)
+    ) {
+      queue.push({
+        id: `${String(row.id)}-expired`,
+        name: String(row.name),
+        category: String(row.category || 'OTHER'),
+        kind: 'EXPIRED',
+        message: 'Expired — obtain a valid replacement',
+        priority: 10,
+        document: row,
+      });
+
+      continue;
+    }
+
+    if (
+      expiryDays !== null &&
+      expiryDays >= 0 &&
+      expiryDays <= 30
+    ) {
+      queue.push({
+        id: `${String(row.id)}-expiring`,
+        name: String(row.name),
+        category: String(row.category || 'OTHER'),
+        kind: 'EXPIRING',
+        message:
+          expiryDays === 0
+            ? 'Expires today'
+            : `Expires in ${expiryDays} day${
+                expiryDays === 1 ? '' : 's'
+              }`,
+        priority: 20,
+        document: row,
+      });
+    }
+
+    if (status === 'REJECTED') {
+      queue.push({
+        id: `${String(row.id)}-rejected`,
+        name: String(row.name),
+        category: String(row.category || 'OTHER'),
+        kind: 'REJECTED',
+        message: 'Rejected — corrected document required',
+        priority: 15,
+        document: row,
+      });
+
+      continue;
+    }
+
+    if (status === 'RECEIVED') {
+      queue.push({
+        id: `${String(row.id)}-review`,
+        name: String(row.name),
+        category: String(row.category || 'OTHER'),
+        kind: 'PENDING_REVIEW',
+        message: 'Uploaded — review and accept or reject',
+        priority: 30,
+        document: row,
+      });
+
+      continue;
+    }
+
+    if (status === 'PARTIALLY_RECEIVED') {
+      queue.push({
+        id: `${String(row.id)}-partial`,
+        name: String(row.name),
+        category: String(row.category || 'OTHER'),
+        kind: 'PARTIAL',
+        message: 'Only part of the required evidence received',
+        priority: 40,
+        document: row,
+      });
+
+      continue;
+    }
+
+    if (
+      mandatory &&
+      status === 'REQUESTED'
+    ) {
+      queue.push({
+        id: `${String(row.id)}-missing`,
+        name: String(row.name),
+        category: String(row.category || 'OTHER'),
+        kind: 'MISSING',
+        message: 'Mandatory document not yet received',
+        priority: 50,
+        document: row,
+      });
+    }
+  }
+
+  return queue.sort(
+    (left, right) =>
+      left.priority - right.priority ||
+      left.name.localeCompare(right.name),
+  );
+}
+
+function documentQueueLabel(
+  kind: DocumentQueueKind,
+): string {
+  switch (kind) {
+    case 'EXPIRED':
+      return 'Expired';
+    case 'EXPIRING':
+      return 'Expiring';
+    case 'REJECTED':
+      return 'Rejected';
+    case 'PENDING_REVIEW':
+      return 'Review';
+    case 'PARTIAL':
+      return 'Partial';
+    case 'MISSING':
+      return 'Missing';
+  }
+}
+
+function documentQueueTone(
+  kind: DocumentQueueKind,
+): 'danger' | 'warn' | 'muted' {
+  if (
+    kind === 'EXPIRED' ||
+    kind === 'REJECTED'
+  ) {
+    return 'danger';
+  }
+
+  if (
+    kind === 'EXPIRING' ||
+    kind === 'PARTIAL' ||
+    kind === 'MISSING'
+  ) {
+    return 'warn';
+  }
+
+  return 'muted';
+}
+
 export function DocumentsPanel({
   workItemId,
   clientId,
@@ -416,6 +615,34 @@ export function DocumentsPanel({
     : readiness.healthScore >= 70
       ? 'attention'
       : 'blocked';
+
+  const documentActionQueue = useMemo(
+    () => buildDocumentActionQueue(docs.rows),
+    [docs.rows],
+  );
+
+  const actionQueueCounts = useMemo(
+    () => ({
+      expired: documentActionQueue.filter(
+        (item) => item.kind === 'EXPIRED',
+      ).length,
+      expiring: documentActionQueue.filter(
+        (item) => item.kind === 'EXPIRING',
+      ).length,
+      rejected: documentActionQueue.filter(
+        (item) => item.kind === 'REJECTED',
+      ).length,
+      review: documentActionQueue.filter(
+        (item) => item.kind === 'PENDING_REVIEW',
+      ).length,
+      client: documentActionQueue.filter(
+        (item) =>
+          item.kind === 'MISSING' ||
+          item.kind === 'PARTIAL',
+      ).length,
+    }),
+    [documentActionQueue],
+  );
 
   const loadAttachments = (requestId: string): void => {
     list('document-attachments', { document_request_id: requestId })
@@ -624,6 +851,129 @@ export function DocumentsPanel({
         ) : null}
       </section>
 
+      <section className="cx-document-action-queue">
+        <div className="cx-document-action-head">
+          <div>
+            <span className="cx-readiness-eyebrow">
+              Operational queue
+            </span>
+            <h4>Document actions requiring attention</h4>
+            <p>
+              Prioritised from critical expiry and rejection
+              issues through client follow-up.
+            </p>
+          </div>
+
+          <strong>
+            {documentActionQueue.length}
+          </strong>
+        </div>
+
+        <div className="cx-document-action-summary">
+          <div
+            className={
+              actionQueueCounts.expired > 0
+                ? 'danger'
+                : ''
+            }
+          >
+            <strong>{actionQueueCounts.expired}</strong>
+            <span>Expired</span>
+          </div>
+
+          <div
+            className={
+              actionQueueCounts.expiring > 0
+                ? 'warn'
+                : ''
+            }
+          >
+            <strong>{actionQueueCounts.expiring}</strong>
+            <span>Expiring soon</span>
+          </div>
+
+          <div
+            className={
+              actionQueueCounts.rejected > 0
+                ? 'danger'
+                : ''
+            }
+          >
+            <strong>{actionQueueCounts.rejected}</strong>
+            <span>Rejected</span>
+          </div>
+
+          <div
+            className={
+              actionQueueCounts.review > 0
+                ? 'warn'
+                : ''
+            }
+          >
+            <strong>{actionQueueCounts.review}</strong>
+            <span>Review pending</span>
+          </div>
+
+          <div
+            className={
+              actionQueueCounts.client > 0
+                ? 'warn'
+                : ''
+            }
+          >
+            <strong>{actionQueueCounts.client}</strong>
+            <span>Client follow-up</span>
+          </div>
+        </div>
+
+        {documentActionQueue.length > 0 ? (
+          <div className="cx-document-action-list">
+            {documentActionQueue.map((item) => (
+              <button
+                type="button"
+                className={`cx-document-action-row ${
+                  item.kind.toLowerCase()
+                }`}
+                key={item.id}
+                onClick={() => {
+                  const element = document.getElementById(
+                    `document-request-${String(
+                      item.document.id,
+                    )}`,
+                  );
+
+                  element?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center',
+                  });
+                }}
+              >
+                <div className="cx-document-action-marker">
+                  {documentQueueLabel(item.kind).slice(0, 1)}
+                </div>
+
+                <div className="cx-document-action-main">
+                  <strong>{item.name}</strong>
+                  <span>{item.message}</span>
+                </div>
+
+                <div className="cx-document-action-meta">
+                  <span>{label(item.category)}</span>
+                  <Chip
+                    value={documentQueueLabel(item.kind)}
+                    tone={documentQueueTone(item.kind)}
+                  />
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="cx-document-action-empty">
+            No document action is currently required.
+          </div>
+        )}
+      </section>
+
       <div className="cx-subhead" style={{ marginTop: 18 }}>
         <div>
           <h4>Client document requests</h4>
@@ -686,6 +1036,7 @@ export function DocumentsPanel({
       ) : null}
       {docs.loading ? <Loading /> : docs.rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>No documents requested yet.</p> : docs.rows.map((d) => (
         <div
+          id={`document-request-${String(d.id)}`}
           className={`cx-doc-card${d.is_expired === true ? ' expired' : ''}`}
           key={String(d.id)}
         >
