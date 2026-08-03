@@ -90,6 +90,18 @@ def generate_for_profile(
         )
 
     resolved_title = title or f"Recurring work {period_key}"
+    # Employee Operations V1: generated work inherits the template's default
+    # estimated hours (authoritative WorkItem.estimated_hours), when present.
+    estimated_hours = None
+    template_id = getattr(profile, "task_template_id", None)
+    if template_id:
+        from .models import TaskTemplate
+
+        template = TaskTemplate.objects.filter(
+            tenant_id=profile.tenant_id, id=template_id
+        ).only("default_estimated_hours").first()
+        if template is not None:
+            estimated_hours = template.default_estimated_hours
     try:
         with transaction.atomic():
             work_item = WorkItem.objects.create(
@@ -104,6 +116,7 @@ def generate_for_profile(
                 period=period_key,
                 due_date=_due_date_for(profile, on_date),
                 status=WorkStatus.NOT_STARTED,
+                estimated_hours=estimated_hours,
             )
             ledger = GeneratedWorkLedger.objects.create(
                 tenant_id=profile.tenant_id,

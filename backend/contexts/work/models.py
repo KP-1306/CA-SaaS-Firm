@@ -51,6 +51,7 @@ class WorkItem(TenantModel):
     notes = models.TextField(blank=True)
     submitted_for_review_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    estimated_hours = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
 
     class Meta:
         ordering = ["due_date", "-created_at"]

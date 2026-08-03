@@ -88,6 +88,7 @@ class TaskTemplate(TenantModel):
     default_owner_user_id = models.UUIDField(null=True, blank=True, db_index=True)
     default_reviewer_user_id = models.UUIDField(null=True, blank=True, db_index=True)
     default_due_days = models.PositiveIntegerField(null=True, blank=True)
+    default_estimated_hours = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:

@@ -18,7 +18,7 @@ from django.urls import Resolver404, resolve, reverse
 class TestProjectConfiguration:
     """The Django project is configured as the frozen architecture requires."""
 
-    def test_all_fifteen_bounded_contexts_are_installed(self) -> None:
+    def test_all_approved_bounded_contexts_are_installed(self) -> None:
         expected = {
             "contexts.platform",
             "contexts.identity",
@@ -35,13 +35,19 @@ class TestProjectConfiguration:
             "contexts.notifications",
             "contexts.insight",
             "contexts.portal",
+            "contexts.capacity",
+            "contexts.assignment",
         }
-        installed = set(settings.INSTALLED_APPS)
-        assert expected <= installed, f"missing contexts: {sorted(expected - installed)}"
-
-    def test_no_unexpected_bounded_contexts(self) -> None:
-        contexts = {a for a in settings.INSTALLED_APPS if a.startswith("contexts.")}
-        assert len(contexts) == 15, f"expected exactly 15 contexts, found {len(contexts)}"
+        installed = {
+            app
+            for app in settings.INSTALLED_APPS
+            if app.startswith("contexts.")
+        }
+        assert installed == expected, (
+            f"bounded-context mismatch: "
+            f"missing={sorted(expected - installed)}, "
+            f"unexpected={sorted(installed - expected)}"
+        )
 
     def test_database_engine_is_postgresql(self) -> None:
         """PostgreSQL is architecturally mandated: RLS is load-bearing (TAD §5)."""

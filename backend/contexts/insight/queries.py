@@ -323,3 +323,147 @@ def servicing_summary(tenant_id):
         "recurring_profiles_active": profiles.filter(is_active=True).count(),
         "generated_work_items_total": ledger.count(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Employee Operations V1 — manager & firm operational aggregations (additive).
+#
+# All functions are read-only, tenant-scoped, deterministic and empty-safe.
+# Capacity numbers are DERIVED via contexts.capacity.service (hours base unit);
+# nothing is stored here.
+# ---------------------------------------------------------------------------
+
+
+def _emp_index(tenant_id):
+    from contexts.identity.models import Employee
+
+    return list(Employee.objects.filter(tenant_id=tenant_id, is_active=True))
+
+
+def _open_workload_map(items):
+    counts = {}
+    for w in items:
+        if w.status in ("COMPLETED", "CANCELLED"):
+            continue
+        oid = w.owner_user_id
+        if oid is not None:
+            counts[oid] = counts.get(oid, 0) + 1
+    return counts
+
+
+def manager_dashboard(tenant_id, manager_employee_id=None, period="month"):
+    """Team-oriented operational view for a manager.
+
+    When ``manager_employee_id`` is given, team members are those whose
+    ``manager_id`` equals it; otherwise all active employees are considered
+    (leadership view). Returns team workload, unassigned work, reviewer load and
+    a per-member open-work breakdown. Capacity availability is derived per member
+    for the current week.
+    """
+    import datetime as _dt
+
+    from contexts.capacity import service as capacity_service
+
+    items = list(_work_qs(tenant_id))
+    employees = _emp_index(tenant_id)
+    if manager_employee_id:
+        members = [e for e in employees if str(getattr(e, "manager_id", None)) == str(manager_employee_id)]
+    else:
+        members = employees
+    member_ids = {e.id for e in members}
+    names = {e.id: e.name for e in members}
+
+    workload = _open_workload_map(items)
+    reviewer_load = {}
+    for w in items:
+        if w.status in ("COMPLETED", "CANCELLED"):
+            continue
+        rid = w.reviewer_user_id
+        if rid is not None:
+            reviewer_load[rid] = reviewer_load.get(rid, 0) + 1
+
+    today = _dt.date.today()
+    week_end = today + _dt.timedelta(days=6)
+    member_rows = []
+    over_allocated = []
+    for e in members:
+        available = capacity_service.available_hours_range(
+            tenant_id, e.id, today, week_end, branch_id=e.branch_id, team_id=e.team_id
+        )
+        open_count = workload.get(e.id, 0)
+        row = {
+            "employee_id": str(e.id),
+            "name": e.name,
+            "open_work": open_count,
+            "available_hours_week": float(available),
+            "reviewer_open": reviewer_load.get(e.id, 0),
+        }
+        member_rows.append(row)
+        if float(available) <= 0 and open_count > 0:
+            over_allocated.append(row)
+
+    unassigned = [w for w in items if w.owner_user_id is None and w.status not in ("COMPLETED", "CANCELLED")]
+
+    return {
+        "period": period,
+        "team_size": len(members),
+        "team_open_work": sum(1 for w in items if w.owner_user_id in member_ids and w.status not in ("COMPLETED", "CANCELLED")),
+        "unassigned_work": len(unassigned),
+        "over_allocated_count": len(over_allocated),
+        "members": sorted(member_rows, key=lambda r: (-r["open_work"], r["name"])),
+        "reviewer_bottlenecks": sorted(
+            [{"reviewer_user_id": str(k), "name": names.get(k, ""), "open_reviews": v} for k, v in reviewer_load.items()],
+            key=lambda r: -r["open_reviews"],
+        )[:10],
+    }
+
+
+def firm_capacity_dashboard(tenant_id, period="month"):
+    """Firm-wide capacity, utilization and backlog view (leadership).
+
+    Aggregates derived weekly availability across all active employees and
+    groups open work by branch/team/service for allocation visibility.
+    """
+    import datetime as _dt
+
+    from contexts.capacity import service as capacity_service
+
+    items = list(_work_qs(tenant_id))
+    employees = _emp_index(tenant_id)
+    workload = _open_workload_map(items)
+
+    today = _dt.date.today()
+    week_end = today + _dt.timedelta(days=6)
+
+    total_available = 0.0
+    per_branch = {}
+    per_team = {}
+    for e in employees:
+        available = float(
+            capacity_service.available_hours_range(
+                tenant_id, e.id, today, week_end, branch_id=e.branch_id, team_id=e.team_id
+            )
+        )
+        total_available += available
+        if e.branch_id is not None:
+            per_branch[str(e.branch_id)] = per_branch.get(str(e.branch_id), 0.0) + available
+        if e.team_id is not None:
+            per_team[str(e.team_id)] = per_team.get(str(e.team_id), 0.0) + available
+
+    open_items = [w for w in items if w.status not in ("COMPLETED", "CANCELLED")]
+    backlog_unassigned = sum(1 for w in open_items if w.owner_user_id is None)
+    per_service = {}
+    for w in open_items:
+        if w.service_id is not None:
+            per_service[str(w.service_id)] = per_service.get(str(w.service_id), 0) + 1
+
+    return {
+        "period": period,
+        "active_employees": len(employees),
+        "total_available_hours_week": round(total_available, 2),
+        "open_work_total": len(open_items),
+        "assignment_backlog_unassigned": backlog_unassigned,
+        "available_hours_by_branch": {k: round(v, 2) for k, v in per_branch.items()},
+        "available_hours_by_team": {k: round(v, 2) for k, v in per_team.items()},
+        "open_work_by_service": per_service,
+    }

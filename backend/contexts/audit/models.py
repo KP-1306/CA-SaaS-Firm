@@ -24,6 +24,24 @@ class AuditAction(models.TextChoices):
     DOCUMENT_UPLOAD = "DOCUMENT_UPLOAD", "Document uploaded"
     ATTACHMENT_ACCEPTED = "ATTACHMENT_ACCEPTED", "Attachment accepted"
     ATTACHMENT_REJECTED = "ATTACHMENT_REJECTED", "Attachment rejected"
+    # --- Employee Operations V1 (additive) ---
+    EMPLOYEE_CREATED = "EMPLOYEE_CREATED", "Employee created"
+    EMPLOYEE_UPDATED = "EMPLOYEE_UPDATED", "Employee updated"
+    EMPLOYEE_ACTIVATED = "EMPLOYEE_ACTIVATED", "Employee activated"
+    EMPLOYEE_DEACTIVATED = "EMPLOYEE_DEACTIVATED", "Employee deactivated"
+    MANAGER_CHANGED = "MANAGER_CHANGED", "Manager changed"
+    ORG_STRUCTURE_CHANGED = "ORG_STRUCTURE_CHANGED", "Organisation structure changed"
+    EXPERTISE_CHANGED = "EXPERTISE_CHANGED", "Expertise changed"
+    CAPACITY_CHANGED = "CAPACITY_CHANGED", "Capacity changed"
+    AVAILABILITY_OVERRIDE_CHANGED = "AVAILABILITY_OVERRIDE_CHANGED", "Availability override changed"
+    LEAVE_CREATED = "LEAVE_CREATED", "Leave created"
+    LEAVE_APPROVED = "LEAVE_APPROVED", "Leave approved"
+    LEAVE_REJECTED = "LEAVE_REJECTED", "Leave rejected"
+    LEAVE_CANCELLED = "LEAVE_CANCELLED", "Leave cancelled"
+    ASSIGNMENT_EXECUTED = "ASSIGNMENT_EXECUTED", "Assignment executed"
+    RECOMMENDATION_OVERRIDDEN = "RECOMMENDATION_OVERRIDDEN", "Recommendation overridden"
+    REVIEWER_HIERARCHY_CHANGED = "REVIEWER_HIERARCHY_CHANGED", "Reviewer hierarchy changed"
+    MANAGER_OVERRIDE_USED = "MANAGER_OVERRIDE_USED", "Manager override used"
 
 
 class AuditEvent(TenantModel):

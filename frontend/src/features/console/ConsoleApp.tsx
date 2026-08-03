@@ -4,6 +4,7 @@ import { list, save } from './api';
 import { CatalogueArea } from './catalogue';
 import { WorkArea } from './work';
 import { ServicingArea } from './servicing';
+import { EmployeeOpsArea } from './employee_ops';
 import { useBrand } from './branding';
 import { EmployeeDashboard, ExecutiveDashboard } from './dashboards';
 import { ExpertisePanel } from './expertise';
@@ -14,7 +15,7 @@ import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Column, Field } from './ui';
 import './console.css';
 
-type Area = 'dashboard' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'servicing' | 'team' | 'services' | 'reports' | 'audit' | 'settings';
+type Area = 'dashboard' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'servicing' | 'employee-ops' | 'team' | 'services' | 'reports' | 'audit' | 'settings';
 
 const NAV: { key: Area; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -23,6 +24,7 @@ const NAV: { key: Area; label: string }[] = [
   { key: 'clients', label: 'Clients' },
   { key: 'work', label: 'Work' },
   { key: 'servicing', label: 'Servicing' },
+  { key: 'employee-ops', label: 'Employee Ops' },
   { key: 'team', label: 'Team' },
   { key: 'services', label: 'Services' },
   { key: 'reports', label: 'Reports' },
@@ -484,6 +486,8 @@ export function ConsoleApp(): React.JSX.Element {
         return <WorkArea />;
       case 'servicing':
         return <ServicingArea />;
+      case 'employee-ops':
+        return <EmployeeOpsArea />;
       case 'team':
         return (
           <ResourceManager

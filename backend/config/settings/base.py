@@ -50,6 +50,8 @@ CONTEXT_APPS = [
     "contexts.workflow",
     "contexts.work",
     "contexts.generation",
+    "contexts.capacity",
+    "contexts.assignment",
     "contexts.quality",
     "contexts.documents",
     "contexts.collaboration",

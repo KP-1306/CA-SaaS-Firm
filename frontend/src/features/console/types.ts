@@ -60,3 +60,31 @@ export function lockMessage(status: unknown, controllerName: unknown): string {
       return 'This work item is read-only for you at its current stage.';
   }
 }
+
+// --- Employee Operations V1 (additive) ---
+export const EMPLOYMENT_TYPES = [
+  'FULL_TIME', 'PART_TIME', 'ARTICLE', 'INTERN', 'CONTRACT', 'CONSULTANT',
+] as const;
+
+export const EMPLOYMENT_STATUS = [
+  'PROBATION', 'CONFIRMED', 'NOTICE_PERIOD', 'EXITED', 'SUSPENDED',
+] as const;
+
+export const PROFICIENCY_LEVELS = [
+  'BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'SME', 'REVIEWER',
+] as const;
+
+export const EXPERTISE_CATEGORIES = [
+  'GST', 'INCOME_TAX', 'TDS', 'ROC', 'STATUTORY_AUDIT', 'INTERNAL_AUDIT',
+  'TAX_AUDIT', 'BANK_AUDIT', 'CONCURRENT_AUDIT', 'ACCOUNTING', 'BOOKKEEPING',
+  'PAYROLL', 'COMPLIANCE', 'COMPANY_FORMATION', 'PROJECT_FINANCE', 'MSME',
+  'FEMA', 'INTERNATIONAL_TAX', 'NRI_TAXATION', 'TRANSFER_PRICING',
+] as const;
+
+export const LEAVE_STATUS = ['REQUESTED', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
+
+export const REVIEWER_SCOPES = [
+  'ASSIGNMENT', 'SERVICE', 'TASK_TEMPLATE', 'TEAM', 'EMPLOYEE_DEFAULT', 'PARTNER_FALLBACK',
+] as const;
+
+export const REVIEWER_LEVELS = ['PRIMARY', 'SECONDARY', 'ESCALATION', 'FINAL_APPROVER'] as const;

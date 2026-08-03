@@ -12,7 +12,15 @@ from contexts.work.views import (
     WorkItemViewSet,
     WorkNoteViewSet,
 )
-from contexts.organisation.views import BranchViewSet, FirmProfileViewSet, TeamViewSet
+from contexts.organisation.views import (
+    BranchViewSet,
+    DepartmentViewSet,
+    DesignationViewSet,
+    FirmProfileViewSet,
+    ReportingRelationshipViewSet,
+    TeamMembershipViewSet,
+    TeamViewSet,
+)
 from contexts.audit.views import AuditEventViewSet
 from contexts.generation.views import (
     ClientServiceSubscriptionViewSet,
@@ -20,7 +28,28 @@ from contexts.generation.views import (
     RecurringWorkProfileViewSet,
     TaskTemplateViewSet,
 )
-from contexts.insight.views import BrandingView, EmployeeDashboardView, ExecutiveDashboardView
+from contexts.capacity.views import (
+    CapacityOverrideViewSet,
+    CapacityProfileViewSet,
+    CapacityReservationViewSet,
+    HolidayViewSet,
+    LeaveRecordViewSet,
+    LeaveTypeViewSet,
+)
+from contexts.assignment.views import (
+    AssignmentDecisionViewSet,
+    AssignmentEventViewSet,
+    AssignmentRecommendationViewSet,
+    ReviewerRuleViewSet,
+)
+from contexts.identity.views import SkillCatalogueViewSet
+from contexts.insight.views import (
+    BrandingView,
+    EmployeeDashboardView,
+    ExecutiveDashboardView,
+    FirmCapacityDashboardView,
+    ManagerDashboardView,
+)
 from .bootstrap_internal import bootstrap
 
 app_name = "internal"
@@ -46,11 +75,29 @@ router.register("client-service-subscriptions", ClientServiceSubscriptionViewSet
 router.register("task-templates", TaskTemplateViewSet, basename="task-template")
 router.register("recurring-work-profiles", RecurringWorkProfileViewSet, basename="recurring-work-profile")
 router.register("generated-work-ledger", GeneratedWorkLedgerViewSet, basename="generated-work-ledger")
+# --- Employee Operations V1 (additive) ---
+router.register("departments", DepartmentViewSet, basename="department")
+router.register("designations", DesignationViewSet, basename="designation")
+router.register("team-memberships", TeamMembershipViewSet, basename="team-membership")
+router.register("reporting-relationships", ReportingRelationshipViewSet, basename="reporting-relationship")
+router.register("skill-catalogue", SkillCatalogueViewSet, basename="skill-catalogue")
+router.register("capacity-profiles", CapacityProfileViewSet, basename="capacity-profile")
+router.register("capacity-overrides", CapacityOverrideViewSet, basename="capacity-override")
+router.register("capacity-reservations", CapacityReservationViewSet, basename="capacity-reservation")
+router.register("leave-types", LeaveTypeViewSet, basename="leave-type")
+router.register("leave-records", LeaveRecordViewSet, basename="leave-record")
+router.register("holidays", HolidayViewSet, basename="holiday")
+router.register("reviewer-rules", ReviewerRuleViewSet, basename="reviewer-rule")
+router.register("assignment-decisions", AssignmentDecisionViewSet, basename="assignment-decision")
+router.register("assignment-events", AssignmentEventViewSet, basename="assignment-event")
+router.register("assignment-recommendations", AssignmentRecommendationViewSet, basename="assignment-recommendation")
 
 urlpatterns: list[URLPattern | URLResolver] = [
     path("", bootstrap, name="bootstrap"),
     path("branding/", BrandingView.as_view(), name="branding"),
     path("dashboard/employee/", EmployeeDashboardView.as_view(), name="dashboard-employee"),
     path("dashboard/executive/", ExecutiveDashboardView.as_view(), name="dashboard-executive"),
+    path("dashboard/manager/", ManagerDashboardView.as_view(), name="dashboard-manager"),
+    path("dashboard/firm-capacity/", FirmCapacityDashboardView.as_view(), name="dashboard-firm-capacity"),
     path("", include(router.urls)),
 ]

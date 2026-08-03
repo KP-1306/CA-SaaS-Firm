@@ -93,3 +93,36 @@ class ExecutiveDashboardView(_InsightView):
         period = request.query_params.get("period", "month")
         data = queries.executive_dashboard(tenant_id, period)
         return Response(data)
+
+
+class ManagerDashboardView(_InsightView):
+    """Team operational view. Manager-capability gated (manager/leadership)."""
+
+    def get(self, request):
+        principal = self.principal()
+        tenant_id = principal.tenant_id
+        from contexts.identity.access import caller_role
+
+        role = caller_role(tenant_id, principal)
+        if not (is_executive(tenant_id, principal) or role == "MANAGER"):
+            raise PermissionDenied("Manager dashboard access is restricted to managers and leadership.")
+        emp = employee_for_principal(tenant_id, principal)
+        # Leadership may inspect any manager's team via ?manager_id=, else own.
+        requested_manager = request.query_params.get("manager_id")
+        if requested_manager and not is_executive(tenant_id, principal):
+            raise PermissionDenied("Only leadership may view another manager's team.")
+        manager_employee_id = requested_manager or (emp.id if emp else None)
+        period = request.query_params.get("period", "month")
+        return Response(queries.manager_dashboard(tenant_id, manager_employee_id, period))
+
+
+class FirmCapacityDashboardView(_InsightView):
+    """Firm-wide capacity view. Leadership only."""
+
+    def get(self, request):
+        principal = self.principal()
+        tenant_id = principal.tenant_id
+        if not is_executive(tenant_id, principal):
+            raise PermissionDenied("Firm capacity dashboard access is restricted to firm leadership.")
+        period = request.query_params.get("period", "month")
+        return Response(queries.firm_capacity_dashboard(tenant_id, period))
