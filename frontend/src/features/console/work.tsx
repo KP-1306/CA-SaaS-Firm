@@ -213,7 +213,163 @@ function AttachmentList({
   );
 }
 
-export function DocumentsPanel({ workItemId, clientId, canUploadInternal }: { workItemId: string; clientId: string; canUploadInternal: boolean }): React.JSX.Element {
+interface DocumentReadinessView {
+  ready: boolean;
+  state: string;
+  healthScore: number;
+  mandatoryTotal: number;
+  mandatorySatisfied: number;
+  mandatoryMissing: number;
+  totalDocuments: number;
+  satisfiedDocuments: number;
+  blockers: Row[];
+}
+
+function documentDependencyReason(row: Row): string {
+  if (row.is_expired === true) return 'Expired';
+
+  switch (String(row.status)) {
+    case 'REJECTED':
+      return 'Rejected — upload a corrected document';
+    case 'RECEIVED':
+      return 'Received — waiting for acceptance';
+    case 'PARTIALLY_RECEIVED':
+      return 'Partially received';
+    case 'REQUESTED':
+      return 'Not received';
+    default:
+      return label(String(row.status || 'Pending'));
+  }
+}
+
+function calculateReadinessView(
+  rows: Row[],
+  workItem: Row,
+): DocumentReadinessView {
+  const evaluated = rows.map((row) => {
+    const resolved =
+      ['ACCEPTED', 'WAIVED'].includes(String(row.status)) &&
+      row.is_expired !== true;
+
+    return {
+      ...row,
+      satisfied: resolved,
+    };
+  });
+
+  const mandatory = evaluated.filter(
+    (row) => row.mandatory === true,
+  );
+
+  const mandatorySatisfied = mandatory.filter(
+    (row) => row.satisfied === true,
+  );
+
+  const blockers = mandatory.filter(
+    (row) => row.satisfied !== true,
+  );
+
+  const satisfied = evaluated.filter(
+    (row) => row.satisfied === true,
+  );
+
+  const backendScore = Number(workItem.document_health_score);
+  const calculatedScore = evaluated.length
+    ? Math.round((satisfied.length / evaluated.length) * 100)
+    : 100;
+
+  let state = String(
+    workItem.document_readiness_state || '',
+  );
+
+  if (!state || rows.length > 0) {
+    if (blockers.length === 0) {
+      state = 'READY';
+    } else if (
+      blockers.some((row) => row.is_expired === true)
+    ) {
+      state = 'BLOCKED_BY_EXPIRED_DOCUMENT';
+    } else if (
+      blockers.some((row) => String(row.status) === 'REJECTED')
+    ) {
+      state = 'BLOCKED_BY_REJECTED_DOCUMENT';
+    } else if (
+      blockers.some((row) => String(row.status) === 'RECEIVED')
+    ) {
+      state = 'BLOCKED_PENDING_ACCEPTANCE';
+    } else if (
+      blockers.some(
+        (row) => String(row.status) === 'PARTIALLY_RECEIVED',
+      )
+    ) {
+      state = 'BLOCKED_PARTIALLY_RECEIVED';
+    } else {
+      state = 'WAITING_FOR_CLIENT';
+    }
+  }
+
+  return {
+    ready: blockers.length === 0,
+    state,
+    healthScore:
+      rows.length > 0 || !Number.isFinite(backendScore)
+        ? calculatedScore
+        : backendScore,
+    mandatoryTotal:
+      rows.length > 0
+        ? mandatory.length
+        : Number(workItem.mandatory_document_total ?? 0),
+    mandatorySatisfied:
+      rows.length > 0
+        ? mandatorySatisfied.length
+        : Number(
+            workItem.mandatory_document_satisfied ?? 0,
+          ),
+    mandatoryMissing:
+      rows.length > 0
+        ? blockers.length
+        : Number(workItem.mandatory_document_missing ?? 0),
+    totalDocuments: evaluated.length,
+    satisfiedDocuments: satisfied.length,
+    blockers:
+      rows.length > 0
+        ? blockers
+        : Array.isArray(workItem.document_blockers)
+          ? (workItem.document_blockers as Row[])
+          : [],
+  };
+}
+
+function readinessStateText(state: string): string {
+  switch (state) {
+    case 'READY':
+      return 'Ready for review';
+    case 'BLOCKED_BY_EXPIRED_DOCUMENT':
+      return 'Blocked by expired document';
+    case 'BLOCKED_BY_REJECTED_DOCUMENT':
+      return 'Blocked by rejected document';
+    case 'BLOCKED_PENDING_ACCEPTANCE':
+      return 'Documents waiting for acceptance';
+    case 'BLOCKED_PARTIALLY_RECEIVED':
+      return 'Mandatory documents partially received';
+    case 'WAITING_FOR_CLIENT':
+      return 'Waiting for client documents';
+    default:
+      return label(state || 'Document status unavailable');
+  }
+}
+
+export function DocumentsPanel({
+  workItemId,
+  clientId,
+  canUploadInternal,
+  workItem,
+}: {
+  workItemId: string;
+  clientId: string;
+  canUploadInternal: boolean;
+  workItem: Row;
+}): React.JSX.Element {
   const docs = useList('document-requests', { work_item_id: workItemId });
   const contacts = useList('client-contacts', { client_id: clientId });
   const internalFiles = useList('document-attachments', { work_item_id: workItemId });
@@ -248,6 +404,18 @@ export function DocumentsPanel({ workItemId, clientId, canUploadInternal }: { wo
       mandatoryPending,
     };
   }, [docs.rows]);
+
+  const readiness = useMemo(
+    () => calculateReadinessView(docs.rows, workItem),
+    [docs.rows, workItem],
+  );
+
+  const readinessTone = readiness.ready
+    ? 'ready'
+    : readiness.healthScore >= 70
+      ? 'attention'
+      : 'blocked';
+
   const loadAttachments = (requestId: string): void => {
     list('document-attachments', { document_request_id: requestId })
       .then((rows) => setAttachments((current) => ({ ...current, [requestId]: rows })))
@@ -358,6 +526,103 @@ export function DocumentsPanel({ workItemId, clientId, canUploadInternal }: { wo
       <ErrorBar error={docs.error || contacts.error || internalFiles.error || err} />
       <div className="cx-subhead"><h4>Internal work documents</h4>{canUploadInternal ? (<label className="cx-btn subtle" style={{ cursor: 'pointer' }}>Upload files<input type="file" multiple style={{ display: 'none' }} onChange={(e) => uploadInternal(e.target.files)} /></label>) : (<span className="cx-readonly-note">Upload locked at this stage</span>)}</div>
       <AttachmentList rows={internalFiles.rows.filter((a) => !a.document_request_id)} />
+      <section
+        className={`cx-readiness-card ${readinessTone}`}
+        aria-label="Document readiness"
+      >
+        <div className="cx-readiness-score">
+          <div
+            className="cx-readiness-ring"
+            style={{
+              background: `conic-gradient(
+                currentColor ${readiness.healthScore}%,
+                #e5eaf0 ${readiness.healthScore}% 100%
+              )`,
+            }}
+          >
+            <span>{readiness.healthScore}%</span>
+          </div>
+
+          <div>
+            <span className="cx-readiness-eyebrow">
+              Document readiness
+            </span>
+            <strong>
+              {readinessStateText(readiness.state)}
+            </strong>
+            <p>
+              {readiness.ready
+                ? 'All mandatory document dependencies are satisfied.'
+                : `${readiness.mandatoryMissing} mandatory document${
+                    readiness.mandatoryMissing === 1 ? '' : 's'
+                  } still block review.`}
+            </p>
+          </div>
+        </div>
+
+        <div className="cx-readiness-metrics">
+          <div>
+            <strong>
+              {readiness.mandatorySatisfied}/
+              {readiness.mandatoryTotal}
+            </strong>
+            <span>Mandatory complete</span>
+          </div>
+
+          <div>
+            <strong>
+              {readiness.satisfiedDocuments}/
+              {readiness.totalDocuments}
+            </strong>
+            <span>Overall complete</span>
+          </div>
+
+          <div>
+            <strong>{readiness.mandatoryMissing}</strong>
+            <span>Blocking review</span>
+          </div>
+        </div>
+
+        {!readiness.ready && readiness.blockers.length > 0 ? (
+          <div className="cx-readiness-blockers">
+            <div className="cx-readiness-blockers-title">
+              <strong>Required before review</strong>
+              <span>
+                Resolve these items to unlock submission.
+              </span>
+            </div>
+
+            <div className="cx-readiness-blocker-list">
+              {readiness.blockers.map((blocker) => (
+                <div
+                  className="cx-readiness-blocker"
+                  key={String(blocker.id)}
+                >
+                  <div>
+                    <strong>{String(blocker.name)}</strong>
+                    <span>
+                      {label(
+                        String(blocker.category || 'OTHER'),
+                      )}
+                    </span>
+                  </div>
+
+                  <Chip
+                    value={documentDependencyReason(blocker)}
+                    tone={
+                      blocker.is_expired === true ||
+                      String(blocker.status) === 'REJECTED'
+                        ? 'danger'
+                        : 'warn'
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       <div className="cx-subhead" style={{ marginTop: 18 }}>
         <div>
           <h4>Client document requests</h4>
@@ -768,6 +1033,32 @@ export function WorkArea(): React.JSX.Element {
             { key: 'service_name', header: 'Service', render: (r) => String(r.service_name || '""') },
             { key: 'owner_name', header: 'Owner', render: (r) => String(r.owner_name || '""') },
             { key: 'due_date', header: 'Due', render: (r) => (r.due_date ? <span className={isOverdue(r.due_date, r.status) ? 'cx-overdue' : ''}>{String(r.due_date)}</span> : '""') },
+            {
+              key: 'document_health_score',
+              header: 'Docs',
+              render: (r) => {
+                const score = Number(
+                  r.document_health_score ?? 100,
+                );
+
+                return (
+                  <span
+                    className={`cx-readiness-table-score ${
+                      r.document_ready === true
+                        ? 'ready'
+                        : score >= 70
+                          ? 'attention'
+                          : 'blocked'
+                    }`}
+                    title={readinessStateText(
+                      String(r.document_readiness_state || ''),
+                    )}
+                  >
+                    {score}%
+                  </span>
+                );
+              },
+            },
             { key: 'status', header: 'Status', render: (r) => <Chip value={String(r.status)} tone={statusTone(String(r.status))} /> },
           ]}
           rows={work.rows}
@@ -835,7 +1126,16 @@ export function WorkArea(): React.JSX.Element {
                 </div>
               </>
             )}
-            {tab === 'documents' && editing.id ? <DocumentsPanel workItemId={String(editing.id)} clientId={String(editing.client_id)} canUploadInternal={editing.can_upload_internal === true} /> : null}
+            {tab === 'documents' && editing.id ? (
+              <DocumentsPanel
+                workItemId={String(editing.id)}
+                clientId={String(editing.client_id)}
+                canUploadInternal={
+                  editing.can_upload_internal === true
+                }
+                workItem={editing}
+              />
+            ) : null}
             {tab === 'history' && editing.id ? <HistoryPanel workItemId={String(editing.id)} /> : null}
           </div>
         </div>
