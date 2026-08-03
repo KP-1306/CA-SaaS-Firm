@@ -79,6 +79,21 @@ class DocumentRequestStatus(models.TextChoices):
     WAIVED = "WAIVED", "Waived"
 
 
+class DocumentCategory(models.TextChoices):
+    GST = "GST", "GST"
+    TDS = "TDS", "TDS"
+    INCOME_TAX = "INCOME_TAX", "Income Tax"
+    ROC_MCA = "ROC_MCA", "ROC / MCA"
+    AUDIT = "AUDIT", "Audit"
+    ACCOUNTING = "ACCOUNTING", "Accounting"
+    PAYROLL = "PAYROLL", "Payroll"
+    BANKING = "BANKING", "Banking"
+    REGISTRATION = "REGISTRATION", "Registration"
+    IDENTITY_KYC = "IDENTITY_KYC", "Identity / KYC"
+    LEGAL = "LEGAL", "Legal"
+    OTHER = "OTHER", "Other"
+
+
 class DocumentChannel(models.TextChoices):
     WHATSAPP = "WHATSAPP", "WhatsApp"
     EMAIL = "EMAIL", "Email"
@@ -115,6 +130,34 @@ class DocumentRequest(TenantModel):
     description = models.TextField(blank=True)
     client_id = models.UUIDField(db_index=True)
     work_item_id = models.UUIDField(null=True, blank=True, db_index=True)
+
+    # Document Intelligence 2B.1: structured CA-practice metadata.
+    category = models.CharField(
+        max_length=20,
+        choices=DocumentCategory.choices,
+        default=DocumentCategory.OTHER,
+        db_index=True,
+    )
+    financial_year = models.CharField(
+        max_length=9,
+        blank=True,
+        db_index=True,
+        help_text="Financial year, for example 2025-26.",
+    )
+    assessment_year = models.CharField(
+        max_length=9,
+        blank=True,
+        db_index=True,
+        help_text="Assessment year, for example 2026-27.",
+    )
+    filing_period = models.CharField(
+        max_length=30,
+        blank=True,
+        db_index=True,
+        help_text="Month, quarter or statutory filing period.",
+    )
+    valid_from = models.DateField(null=True, blank=True)
+    expires_on = models.DateField(null=True, blank=True, db_index=True)
     requested_date = models.DateField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     received_date = models.DateField(null=True, blank=True)
@@ -161,6 +204,23 @@ class DocumentAttachment(TenantModel):
     content_type = models.CharField(max_length=120, blank=True)
     size_bytes = models.PositiveIntegerField(default=0)
     file = models.FileField(upload_to=_attachment_upload_to)
+
+    # Document Intelligence 2B.1: immutable content identity and version chain.
+    sha256 = models.CharField(max_length=64, blank=True, db_index=True)
+    version_number = models.PositiveIntegerField(default=1)
+    version_label = models.CharField(max_length=30, blank=True)
+    supersedes_attachment_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    duplicate_of_attachment_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    is_duplicate = models.BooleanField(default=False, db_index=True)
+
     review_status = models.CharField(
         max_length=20,
         choices=AttachmentReviewStatus.choices,
@@ -173,6 +233,21 @@ class DocumentAttachment(TenantModel):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "document_request_id",
+                    "version_number",
+                ],
+                name="idx_docatt_req_version",
+            ),
+            models.Index(
+                fields=["tenant_id", "sha256"],
+                name="idx_docatt_tenant_hash",
+            ),
+        ]
+
 
 def recalculate_document_request_status(
     document_request: "DocumentRequest",

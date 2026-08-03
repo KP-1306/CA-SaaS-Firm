@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import uuid
+from datetime import timedelta
 
 from django.db import transaction
 from django.http import FileResponse, Http404
@@ -111,13 +113,91 @@ def _validated_upload(upload):
     return original, declared
 
 
-def _create_attachment(*, principal, upload, document_request_id=None, work_item_id=None, source="INTERNAL_TEAM"):
+def _sha256_upload(upload) -> str:
+    """Return an immutable content fingerprint without consuming the upload."""
+    digest = hashlib.sha256()
+
+    if hasattr(upload, "chunks"):
+        for chunk in upload.chunks():
+            digest.update(chunk)
+    else:
+        while True:
+            chunk = upload.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+
+    upload.seek(0)
+    return digest.hexdigest()
+
+
+def _attachment_scope(*, principal, document_request_id, work_item_id):
+    queryset = DocumentAttachment.objects.filter(
+        tenant_id=principal.tenant_id,
+    )
+
+    if document_request_id:
+        return queryset.filter(
+            document_request_id=document_request_id,
+        )
+
+    if work_item_id:
+        return queryset.filter(
+            work_item_id=work_item_id,
+            document_request_id__isnull=True,
+        )
+
+    return queryset.none()
+
+
+def _create_attachment(
+    *,
+    principal,
+    upload,
+    document_request_id=None,
+    work_item_id=None,
+    source="INTERNAL_TEAM",
+):
     original, declared = _validated_upload(upload)
+    content_hash = _sha256_upload(upload)
+
+    scoped = _attachment_scope(
+        principal=principal,
+        document_request_id=document_request_id,
+        work_item_id=work_item_id,
+    )
+
+    duplicate = (
+        scoped.filter(sha256=content_hash)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+
+    latest = (
+        scoped.order_by("-version_number", "-created_at", "-id")
+        .first()
+    )
+
+    next_version = (latest.version_number + 1) if latest else 1
+
     attachment = DocumentAttachment(
-        tenant_id=principal.tenant_id, created_by=principal.principal_id, updated_by=principal.principal_id,
-        document_request_id=document_request_id, work_item_id=work_item_id, source=source,
-        uploaded_by=principal.principal_id, original_name=original, content_type=declared,
-        size_bytes=upload.size, file=upload,
+        tenant_id=principal.tenant_id,
+        created_by=principal.principal_id,
+        updated_by=principal.principal_id,
+        document_request_id=document_request_id,
+        work_item_id=work_item_id,
+        source=source,
+        uploaded_by=principal.principal_id,
+        original_name=original,
+        content_type=declared,
+        size_bytes=upload.size,
+        file=upload,
+        sha256=content_hash,
+        version_number=next_version,
+        version_label=f"V{next_version}",
+        supersedes_attachment_id=latest.id if latest else None,
+        duplicate_of_attachment_id=duplicate.id if duplicate else None,
+        is_duplicate=duplicate is not None,
     )
     attachment.save()
     return attachment
@@ -487,10 +567,30 @@ class DocumentRequestViewSet(TenantModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
-        for field in ("status", "client_id", "work_item_id"):
+        for field in (
+            "status",
+            "client_id",
+            "work_item_id",
+            "category",
+            "financial_year",
+            "assessment_year",
+            "filing_period",
+        ):
             value = params.get(field)
             if value:
                 qs = qs.filter(**{field: value})
+        expiry_state = params.get("expiry_state")
+        if expiry_state == "EXPIRED":
+            qs = qs.filter(expires_on__lt=timezone.now().date())
+        elif expiry_state == "EXPIRING_30_DAYS":
+            today = timezone.now().date()
+            qs = qs.filter(
+                expires_on__gte=today,
+                expires_on__lte=today + timedelta(days=30),
+            )
+        elif expiry_state == "NO_EXPIRY":
+            qs = qs.filter(expires_on__isnull=True)
+
         return qs
 
     def _validate_contact(self, serializer):

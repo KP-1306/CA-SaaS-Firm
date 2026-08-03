@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from rest_framework import serializers
 
 from contexts.clients.models import Client, ClientContact
@@ -136,6 +138,11 @@ class DocumentRequestSerializer(serializers.ModelSerializer):
     client_name = serializers.SerializerMethodField()
     requested_from_name = serializers.SerializerMethodField()
     attachment_count = serializers.SerializerMethodField()
+    accepted_attachment_count = serializers.SerializerMethodField()
+    pending_review_count = serializers.SerializerMethodField()
+    latest_version = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
+    days_to_expiry = serializers.SerializerMethodField()
 
     class Meta:
         model = DocumentRequest
@@ -165,8 +172,47 @@ class DocumentRequestSerializer(serializers.ModelSerializer):
     @staticmethod
     def get_attachment_count(obj):
         return DocumentAttachment.objects.filter(
-            tenant_id=obj.tenant_id, document_request_id=obj.id
+            tenant_id=obj.tenant_id,
+            document_request_id=obj.id,
         ).count()
+
+    @staticmethod
+    def get_accepted_attachment_count(obj):
+        return DocumentAttachment.objects.filter(
+            tenant_id=obj.tenant_id,
+            document_request_id=obj.id,
+            review_status="ACCEPTED",
+        ).count()
+
+    @staticmethod
+    def get_pending_review_count(obj):
+        return DocumentAttachment.objects.filter(
+            tenant_id=obj.tenant_id,
+            document_request_id=obj.id,
+            review_status="PENDING_REVIEW",
+        ).count()
+
+    @staticmethod
+    def get_latest_version(obj):
+        latest = (
+            DocumentAttachment.objects.filter(
+                tenant_id=obj.tenant_id,
+                document_request_id=obj.id,
+            )
+            .order_by("-version_number", "-created_at", "-id")
+            .first()
+        )
+        return latest.version_number if latest else 0
+
+    @staticmethod
+    def get_is_expired(obj):
+        return bool(obj.expires_on and obj.expires_on < date.today())
+
+    @staticmethod
+    def get_days_to_expiry(obj):
+        if not obj.expires_on:
+            return None
+        return (obj.expires_on - date.today()).days
 
 
 class DocumentAttachmentSerializer(serializers.ModelSerializer):
@@ -184,6 +230,12 @@ class DocumentAttachmentSerializer(serializers.ModelSerializer):
             "original_name",
             "content_type",
             "size_bytes",
+            "sha256",
+            "version_number",
+            "version_label",
+            "supersedes_attachment_id",
+            "duplicate_of_attachment_id",
+            "is_duplicate",
             "review_status",
             "reviewed_at",
             "reviewed_by",
