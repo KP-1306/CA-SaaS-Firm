@@ -246,16 +246,17 @@ function calculateReadinessView(
   rows: Row[],
   workItem: Row,
 ): DocumentReadinessView {
-  const evaluated = rows.map((row) => {
-    const resolved =
-      ['ACCEPTED', 'WAIVED'].includes(String(row.status)) &&
-      row.is_expired !== true;
+  const evaluated: Array<Row & { satisfied: boolean }> =
+    rows.map((row): Row & { satisfied: boolean } => {
+      const resolved =
+        ['ACCEPTED', 'WAIVED'].includes(String(row.status)) &&
+        row.is_expired !== true;
 
-    return {
-      ...row,
-      satisfied: resolved,
-    };
-  });
+      return {
+        ...row,
+        satisfied: resolved,
+      };
+    });
 
   const mandatory = evaluated.filter(
     (row) => row.mandatory === true,
@@ -363,12 +364,12 @@ export function DocumentsPanel({
   workItemId,
   clientId,
   canUploadInternal,
-  workItem,
+  workItem = {},
 }: {
   workItemId: string;
   clientId: string;
   canUploadInternal: boolean;
-  workItem: Row;
+  workItem?: Row;
 }): React.JSX.Element {
   const docs = useList('document-requests', { work_item_id: workItemId });
   const contacts = useList('client-contacts', { client_id: clientId });
