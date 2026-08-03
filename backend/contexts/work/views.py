@@ -5,17 +5,25 @@ import os
 import uuid
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import models, transaction
 from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import status as http_status
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException, PermissionDenied
+from rest_framework.exceptions import (
+    APIException,
+    PermissionDenied,
+    ValidationError,
+)
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from core.api.viewsets import TenantModelViewSet
 from contexts.clients.models import ClientContact
+from contexts.configuration.models import (
+    ServiceDocumentRequirement,
+    ServiceDocumentRequirementSet,
+)
 from contexts.identity.models import Employee
 
 from . import ownership
@@ -208,6 +216,302 @@ class WorkItemViewSet(TenantModelViewSet):
     serializer_class = WorkItemSerializer
     search_fields = ["title", "period", "notes", "description"]
     ordering_fields = ["due_date", "created_at", "status", "priority"]
+
+    def _eligible_document_contact(self, item):
+        contacts = ClientContact.objects.filter(
+            tenant_id=item.tenant_id,
+            client_id=item.client_id,
+            is_active=True,
+            can_receive_document_requests=True,
+        )
+
+        return (
+            contacts.filter(is_primary=True)
+            .order_by("created_at", "id")
+            .first()
+            or contacts.order_by("created_at", "id").first()
+        )
+
+    def _active_requirement_set(self, item):
+        if not item.service_id:
+            return None
+
+        today = timezone.now().date()
+
+        return (
+            ServiceDocumentRequirementSet.objects.filter(
+                tenant_id=item.tenant_id,
+                service_id=item.service_id,
+                status="ACTIVE",
+            )
+            .filter(
+                models.Q(effective_from__isnull=True)
+                | models.Q(effective_from__lte=today)
+            )
+            .filter(
+                models.Q(effective_until__isnull=True)
+                | models.Q(effective_until__gte=today)
+            )
+            .order_by(
+                "-version_number",
+                "-effective_from",
+                "-created_at",
+            )
+            .first()
+        )
+
+    def _generate_document_requests(
+        self,
+        item,
+        *,
+        request_data=None,
+        strict=False,
+    ):
+        principal = self.principal()
+        request_data = request_data or {}
+
+        requirement_set = self._active_requirement_set(item)
+
+        if requirement_set is None:
+            if strict:
+                raise ValidationError(
+                    {
+                        "detail": (
+                            "No active document requirement set exists "
+                            "for this service."
+                        )
+                    }
+                )
+
+            return {
+                "created": 0,
+                "existing": 0,
+                "skipped": "NO_ACTIVE_REQUIREMENT_SET",
+                "requests": [],
+            }
+
+        contact = self._eligible_document_contact(item)
+
+        if contact is None:
+            if strict:
+                raise ValidationError(
+                    {
+                        "detail": (
+                            "No active client contact is eligible to "
+                            "receive document requests."
+                        )
+                    }
+                )
+
+            return {
+                "created": 0,
+                "existing": 0,
+                "skipped": "NO_ELIGIBLE_CLIENT_CONTACT",
+                "requests": [],
+            }
+
+        requirements = list(
+            ServiceDocumentRequirement.objects.filter(
+                tenant_id=item.tenant_id,
+                service_id=item.service_id,
+                requirement_set_id=requirement_set.id,
+                is_active=True,
+            ).order_by(
+                "display_order",
+                "name",
+                "id",
+            )
+        )
+
+        financial_year = str(
+            request_data.get("financial_year", "")
+        ).strip()
+
+        assessment_year = str(
+            request_data.get("assessment_year", "")
+        ).strip()
+
+        filing_period = str(
+            request_data.get(
+                "filing_period",
+                item.period or "",
+            )
+        ).strip()
+
+        request_channel = str(
+            request_data.get(
+                "request_channel",
+                "WHATSAPP",
+            )
+        ).strip() or "WHATSAPP"
+
+        created_count = 0
+        existing_count = 0
+        generated = []
+
+        with transaction.atomic():
+            for requirement in requirements:
+                defaults = {
+                    "created_by": principal.principal_id,
+                    "updated_by": principal.principal_id,
+                    "name": requirement.name,
+                    "description": requirement.description,
+                    "client_id": item.client_id,
+                    "source_requirement_set_id": requirement_set.id,
+                    "auto_generated": True,
+                    "category": requirement.category,
+                    "financial_year": (
+                        financial_year
+                        if requirement.financial_year_required
+                        else ""
+                    ),
+                    "assessment_year": (
+                        assessment_year
+                        if requirement.assessment_year_required
+                        else ""
+                    ),
+                    "filing_period": (
+                        filing_period
+                        if requirement.filing_period_required
+                        else ""
+                    ),
+                    "requested_date": timezone.now().date(),
+                    "due_date": item.due_date,
+                    "requested_from_contact_id": contact.id,
+                    "request_channel": request_channel,
+                    "sent_at": timezone.now(),
+                    "mandatory": requirement.mandatory,
+                    "client_visible": True,
+                    "remarks": (
+                        "Automatically generated from "
+                        f"{requirement_set.name} "
+                        f"V{requirement_set.version_number}."
+                    ),
+                }
+
+                document_request, created = (
+                    DocumentRequest.objects.get_or_create(
+                        tenant_id=item.tenant_id,
+                        work_item_id=item.id,
+                        source_requirement_id=requirement.id,
+                        defaults=defaults,
+                    )
+                )
+
+                generated.append(document_request)
+
+                if created:
+                    created_count += 1
+
+                    try:
+                        record_event(
+                            tenant_id=item.tenant_id,
+                            principal_id=principal.principal_id,
+                            action=AuditAction.DOCUMENT_REQUEST_CREATED,
+                            entity_type="DocumentRequest",
+                            entity_id=document_request.id,
+                            summary=document_request.name,
+                            new={
+                                "name": document_request.name,
+                                "status": document_request.status,
+                                "auto_generated": True,
+                                "source_requirement_id": str(
+                                    requirement.id
+                                ),
+                                "work_item_id": str(item.id),
+                            },
+                            request=self.request,
+                        )
+                    except Exception as exc:
+                        raise MandatoryAuditPersistenceError() from exc
+                else:
+                    existing_count += 1
+
+            if created_count:
+                suffix = "" if created_count == 1 else "s"
+
+                self._record(
+                    item,
+                    (
+                        f"Automatically generated {created_count} "
+                        f"document request{suffix} from "
+                        f"{requirement_set.name} "
+                        f"V{requirement_set.version_number}."
+                    ),
+                )
+
+        return {
+            "created": created_count,
+            "existing": existing_count,
+            "skipped": "",
+            "requirement_set_id": str(requirement_set.id),
+            "requirement_set_name": requirement_set.name,
+            "requirement_set_version": (
+                requirement_set.version_number
+            ),
+            "requests": generated,
+        }
+
+    def perform_create(self, serializer):
+        principal = self.principal()
+
+        with transaction.atomic():
+            item = serializer.save(
+                tenant_id=principal.tenant_id,
+                created_by=principal.principal_id,
+                updated_by=principal.principal_id,
+            )
+
+            self._generate_document_requests(
+                item,
+                request_data=self.request.data,
+                strict=False,
+            )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="generate-document-requests",
+    )
+    def generate_document_requests(self, request, pk=None):
+        item = self.get_object()
+
+        if not ownership.can_mutate_document_request(
+            item,
+            self.principal(),
+        ):
+            raise PermissionDenied(
+                "Document requests can only be generated by the "
+                "assigned owner while the work item is editable."
+            )
+
+        result = self._generate_document_requests(
+            item,
+            request_data=request.data,
+            strict=True,
+        )
+
+        return Response(
+            {
+                "created": result["created"],
+                "existing": result["existing"],
+                "requirement_set_id": (
+                    result["requirement_set_id"]
+                ),
+                "requirement_set_name": (
+                    result["requirement_set_name"]
+                ),
+                "requirement_set_version": (
+                    result["requirement_set_version"]
+                ),
+                "requests": DocumentRequestSerializer(
+                    result["requests"],
+                    many=True,
+                    context={"request": request},
+                ).data,
+            },
+            status=http_status.HTTP_200_OK,
+        )
 
     def get_queryset(self):
         qs = super().get_queryset()

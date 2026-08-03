@@ -155,6 +155,9 @@ class DocumentRequestSerializer(serializers.ModelSerializer):
             "verified_by",
             "verification_comment",
             "status",
+            "source_requirement_set_id",
+            "source_requirement_id",
+            "auto_generated",
         )
 
     @staticmethod

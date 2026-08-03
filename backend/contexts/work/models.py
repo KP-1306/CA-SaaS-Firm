@@ -129,7 +129,27 @@ class DocumentRequest(TenantModel):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     client_id = models.UUIDField(db_index=True)
-    work_item_id = models.UUIDField(null=True, blank=True, db_index=True)
+    work_item_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    # Document Intelligence 2B.2: catalogue lineage.
+    source_requirement_set_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    source_requirement_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    auto_generated = models.BooleanField(
+        default=False,
+        db_index=True,
+    )
 
     # Document Intelligence 2B.1: structured CA-practice metadata.
     category = models.CharField(
@@ -180,6 +200,29 @@ class DocumentRequest(TenantModel):
 
     class Meta:
         ordering = ["due_date", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "tenant_id",
+                    "work_item_id",
+                    "source_requirement_id",
+                ],
+                condition=models.Q(
+                    source_requirement_id__isnull=False,
+                ),
+                name="uq_docreq_work_requirement",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "work_item_id",
+                    "auto_generated",
+                ],
+                name="idx_docreq_work_auto",
+            ),
+        ]
 
 
 def _attachment_upload_to(instance: "DocumentAttachment", filename: str) -> str:
