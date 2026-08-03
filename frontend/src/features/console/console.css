@@ -125,6 +125,168 @@ table.cx-table tr:hover td { background: #f8fafc; }
 }
 button.cx-btn.pending { box-shadow: 0 0 0 2px #f59e0b; }
 
+/* ================================================================
+   DOCUMENT INTELLIGENCE 2B.1
+   ================================================================ */
+
+.cx-document-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.cx-document-summary > div {
+  display: flex;
+  min-height: 72px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.cx-document-summary strong {
+  color: #172033;
+  font-size: 20px;
+}
+
+.cx-document-summary span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.cx-document-summary > div.warn {
+  border-color: #f4d39d;
+  background: #fffaf2;
+}
+
+.cx-document-summary > div.danger {
+  border-color: #f1b7b2;
+  background: #fff6f5;
+}
+
+.cx-doc-card.expired {
+  border-color: #efb5b0;
+  background: #fffafa;
+}
+
+.cx-document-request-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cx-document-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.cx-document-title-row > strong {
+  font-size: 14px;
+}
+
+.cx-document-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cx-document-metadata span {
+  position: relative;
+}
+
+.cx-document-metadata span + span::before {
+  margin-right: 10px;
+  color: #c4ccd7;
+  content: '•';
+}
+
+.cx-document-intelligence-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 11px;
+  padding: 8px 10px;
+  border: 1px solid #e7ebf0;
+  border-radius: 7px;
+  background: #fafbfc;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.cx-document-intelligence-strip strong {
+  color: var(--ink);
+}
+
+.cx-mandatory-badge,
+.cx-version-badge,
+.cx-duplicate-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.cx-mandatory-badge {
+  background: #fff0d8;
+  color: #9a4e00;
+}
+
+.cx-version-badge {
+  background: #e8eefc;
+  color: #34508f;
+}
+
+.cx-duplicate-badge {
+  background: #fde8e6;
+  color: #a72d24;
+}
+
+.cx-document-file-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.cx-version-note {
+  margin-top: 4px;
+  color: #52657c;
+  font-size: 11px;
+}
+
+.cx-duplicate-warning {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-left: 3px solid #d14343;
+  border-radius: 3px;
+  background: #fff4f2;
+  color: #9f2f27;
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .cx-document-summary {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .cx-document-request-head {
+    flex-direction: column;
+  }
+}
+
 /* C4 ownership/locking indicators */
 .cx-lock-banner {
   background: #fdf0dc;

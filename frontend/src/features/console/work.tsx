@@ -1,16 +1,64 @@
 import type * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { act, list, save, uploadMany } from './api';
-import { WORK_PRIORITY, WORK_STATUS, isOverdue, label, lockMessage } from './types';
+import {
+  DOCUMENT_CATEGORIES,
+  WORK_PRIORITY,
+  WORK_STATUS,
+  isOverdue,
+  label,
+  lockMessage,
+} from './types';
 import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Field } from './ui';
 
 function statusTone(s: string): string {
-  if (s === 'COMPLETED' || s === 'RECEIVED') return 'ok';
-  if (s === 'CANCELLED' || s === 'REWORK_REQUIRED') return 'danger';
-  if (s === 'WAITING_FOR_CLIENT' || s === 'READY_FOR_REVIEW' || s === 'REQUESTED') return 'warn';
+  if (s === 'COMPLETED' || s === 'RECEIVED' || s === 'ACCEPTED') return 'ok';
+  if (s === 'CANCELLED' || s === 'REWORK_REQUIRED' || s === 'REJECTED') return 'danger';
+  if (
+    s === 'WAITING_FOR_CLIENT' ||
+    s === 'READY_FOR_REVIEW' ||
+    s === 'REQUESTED' ||
+    s === 'PARTIALLY_RECEIVED'
+  ) return 'warn';
   return 'muted';
+}
+
+function formatBytes(value: unknown): string {
+  const bytes = Number(value ?? 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function documentExpiryTone(row: Row): string {
+  if (row.is_expired === true) return 'danger';
+
+  const days = Number(row.days_to_expiry);
+
+  if (Number.isFinite(days) && days >= 0 && days <= 30) {
+    return 'warn';
+  }
+
+  return 'muted';
+}
+
+function expiryText(row: Row): string {
+  if (!row.expires_on) return 'No expiry';
+
+  if (row.is_expired === true) {
+    return `Expired ${String(row.expires_on)}`;
+  }
+
+  const days = Number(row.days_to_expiry);
+
+  if (Number.isFinite(days)) {
+    if (days === 0) return 'Expires today';
+    if (days > 0 && days <= 30) return `Expires in ${days} day${days === 1 ? '' : 's'}`;
+  }
+
+  return `Valid until ${String(row.expires_on)}`;
 }
 
 function useList(resource: string, params: Record<string, string> = {}): {
@@ -95,10 +143,37 @@ function AttachmentList({
         return (
           <li className="cx-file-row" key={attachmentId}>
             <div className="cx-file-main">
-              <a href={String(attachment.download_url)}>{String(attachment.original_name)}</a>
-              <div className="cx-muted">
-                {label(String(attachment.source))} - {String(attachment.created_at ?? '').slice(0, 16).replace('T', ' ')}
+              <div className="cx-document-file-title">
+                <a href={String(attachment.download_url)}>
+                  {String(attachment.original_name)}
+                </a>
+                <span className="cx-version-badge">
+                  {String(attachment.version_label || `V${attachment.version_number || 1}`)}
+                </span>
+                {attachment.is_duplicate === true ? (
+                  <span className="cx-duplicate-badge">Duplicate</span>
+                ) : null}
               </div>
+
+              <div className="cx-muted">
+                {label(String(attachment.source))}
+                {' · '}
+                {formatBytes(attachment.size_bytes)}
+                {' · '}
+                {String(attachment.created_at ?? '').slice(0, 16).replace('T', ' ')}
+              </div>
+
+              {attachment.supersedes_attachment_id ? (
+                <div className="cx-version-note">
+                  New version of the previous uploaded document
+                </div>
+              ) : null}
+
+              {attachment.is_duplicate === true ? (
+                <div className="cx-duplicate-warning">
+                  This file has the same content as an earlier version.
+                </div>
+              ) : null}
               {attachment.reviewed_at ? (
                 <div className="cx-muted">
                   Reviewed by {String(attachment.reviewed_by_name || attachment.reviewed_by || 'Unknown reviewer')}
@@ -147,7 +222,32 @@ export function DocumentsPanel({ workItemId, clientId, canUploadInternal }: { wo
   const [err, setErr] = useState('');
   const [pendingDecision, setPendingDecision] = useState<PendingDocumentDecision | null>(null);
 
-  const eligibleContacts = contacts.rows.filter((c) => c.is_active && c.can_receive_document_requests !== false);
+  const eligibleContacts = contacts.rows.filter(
+    (c) => c.is_active && c.can_receive_document_requests !== false,
+  );
+
+  const documentSummary = useMemo(() => {
+    const total = docs.rows.length;
+    const accepted = docs.rows.filter((row) => String(row.status) === 'ACCEPTED').length;
+    const pendingReview = docs.rows.reduce(
+      (count, row) => count + Number(row.pending_review_count ?? 0),
+      0,
+    );
+    const expired = docs.rows.filter((row) => row.is_expired === true).length;
+    const mandatoryPending = docs.rows.filter(
+      (row) =>
+        row.mandatory === true &&
+        !['ACCEPTED', 'WAIVED'].includes(String(row.status)),
+    ).length;
+
+    return {
+      total,
+      accepted,
+      pendingReview,
+      expired,
+      mandatoryPending,
+    };
+  }, [docs.rows]);
   const loadAttachments = (requestId: string): void => {
     list('document-attachments', { document_request_id: requestId })
       .then((rows) => setAttachments((current) => ({ ...current, [requestId]: rows })))
@@ -258,15 +358,132 @@ export function DocumentsPanel({ workItemId, clientId, canUploadInternal }: { wo
       <ErrorBar error={docs.error || contacts.error || internalFiles.error || err} />
       <div className="cx-subhead"><h4>Internal work documents</h4>{canUploadInternal ? (<label className="cx-btn subtle" style={{ cursor: 'pointer' }}>Upload files<input type="file" multiple style={{ display: 'none' }} onChange={(e) => uploadInternal(e.target.files)} /></label>) : (<span className="cx-readonly-note">Upload locked at this stage</span>)}</div>
       <AttachmentList rows={internalFiles.rows.filter((a) => !a.document_request_id)} />
-      <div className="cx-subhead" style={{ marginTop: 18 }}><h4>Client document requests</h4><button className="cx-btn subtle" onClick={() => setEditing({ name: '', status: 'REQUESTED', mandatory: false, client_visible: true, request_channel: 'WHATSAPP', requested_from_contact_id: eligibleContacts.find((c) => c.is_primary)?.id ?? '' })}>Add request</button></div>
+      <div className="cx-subhead" style={{ marginTop: 18 }}>
+        <div>
+          <h4>Client document requests</h4>
+          <span className="cx-muted">
+            Structured evidence required to complete this work
+          </span>
+        </div>
+
+        <button
+          type="button"
+          className="cx-btn subtle"
+          onClick={() =>
+            setEditing({
+              name: '',
+              status: 'REQUESTED',
+              category: 'OTHER',
+              financial_year: '',
+              assessment_year: '',
+              filing_period: '',
+              valid_from: '',
+              expires_on: '',
+              mandatory: false,
+              client_visible: true,
+              request_channel: 'WHATSAPP',
+              requested_from_contact_id:
+                eligibleContacts.find((c) => c.is_primary)?.id ?? '',
+            })
+          }
+        >
+          Add request
+        </button>
+      </div>
+
+      <div className="cx-document-summary">
+        <div>
+          <strong>{documentSummary.total}</strong>
+          <span>Total requests</span>
+        </div>
+        <div>
+          <strong>{documentSummary.accepted}</strong>
+          <span>Accepted</span>
+        </div>
+        <div className={documentSummary.pendingReview ? 'warn' : ''}>
+          <strong>{documentSummary.pendingReview}</strong>
+          <span>Pending review</span>
+        </div>
+        <div className={documentSummary.mandatoryPending ? 'warn' : ''}>
+          <strong>{documentSummary.mandatoryPending}</strong>
+          <span>Mandatory pending</span>
+        </div>
+        <div className={documentSummary.expired ? 'danger' : ''}>
+          <strong>{documentSummary.expired}</strong>
+          <span>Expired</span>
+        </div>
+      </div>
       {eligibleContacts.length === 0 ? (
         <p className="cx-warning">
           No eligible document contact exists for this client. Add or enable one under Client → Contacts.
         </p>
       ) : null}
       {docs.loading ? <Loading /> : docs.rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>No documents requested yet.</p> : docs.rows.map((d) => (
-        <div className="cx-doc-card" key={String(d.id)}>
-          <div><strong>{String(d.name)}</strong> <Chip value={String(d.status)} tone={statusTone(String(d.status))} /><div className="cx-muted">Requested from {String(d.requested_from_name || 'Unassigned')} via {label(String(d.request_channel))}{d.due_date ? ` -- Due ${String(d.due_date)}` : ''}{d.mandatory ? ' -- Mandatory' : ''}</div></div>
+        <div
+          className={`cx-doc-card${d.is_expired === true ? ' expired' : ''}`}
+          key={String(d.id)}
+        >
+          <div className="cx-document-request-head">
+            <div>
+              <div className="cx-document-title-row">
+                <strong>{String(d.name)}</strong>
+                <Chip
+                  value={String(d.status)}
+                  tone={statusTone(String(d.status))}
+                />
+                <Chip
+                  value={String(d.category || 'OTHER')}
+                  tone="muted"
+                />
+                {d.mandatory ? (
+                  <span className="cx-mandatory-badge">Mandatory</span>
+                ) : null}
+              </div>
+
+              <div className="cx-document-metadata">
+                <span>
+                  Requested from {String(d.requested_from_name || 'Unassigned')}
+                </span>
+                <span>via {label(String(d.request_channel))}</span>
+                {d.financial_year ? (
+                  <span>FY {String(d.financial_year)}</span>
+                ) : null}
+                {d.assessment_year ? (
+                  <span>AY {String(d.assessment_year)}</span>
+                ) : null}
+                {d.filing_period ? (
+                  <span>{String(d.filing_period)}</span>
+                ) : null}
+                {d.due_date ? (
+                  <span>Due {String(d.due_date)}</span>
+                ) : null}
+              </div>
+            </div>
+
+            <Chip
+              value={expiryText(d)}
+              tone={documentExpiryTone(d)}
+            />
+          </div>
+
+          <div className="cx-document-intelligence-strip">
+            <span>
+              <strong>{Number(d.attachment_count ?? 0)}</strong>
+              {' '}file{Number(d.attachment_count ?? 0) === 1 ? '' : 's'}
+            </span>
+            <span>
+              <strong>{Number(d.accepted_attachment_count ?? 0)}</strong>
+              {' '}accepted
+            </span>
+            <span>
+              <strong>{Number(d.pending_review_count ?? 0)}</strong>
+              {' '}pending review
+            </span>
+            <span>
+              Latest version <strong>V{Number(d.latest_version ?? 0)}</strong>
+            </span>
+          </div>
+
           <div className="cx-doc-actions">
             <label className="cx-btn subtle" style={{ cursor: 'pointer' }}>Upload files<input type="file" multiple style={{ display: 'none' }} onChange={(e) => uploadRequestFiles(d, e.target.files)} /></label>
             <button className="cx-btn subtle" onClick={() => selectWaiver(d)}>Waive request</button>
@@ -287,12 +504,49 @@ export function DocumentsPanel({ workItemId, clientId, canUploadInternal }: { wo
           />
         </div>
       ))}
-      {editing && <Drawer title="New document request" value={editing} onChange={setEditing} onClose={() => setEditing(null)} onSave={submit} extra={<ErrorBar error={err} />} fields={[
-        { name: 'name' }, { name: 'description', kind: 'textarea' },
-        { name: 'requested_from_contact_id', kind: 'select', options: eligibleContacts.map((c) => String(c.id)), labels: (v) => String(eligibleContacts.find((c) => c.id === v)?.name ?? v) },
-        { name: 'request_channel', kind: 'select', options: ['WHATSAPP', 'EMAIL', 'PORTAL', 'PHONE', 'MANUAL'] },
-        { name: 'due_date', kind: 'date' }, { name: 'mandatory', kind: 'checkbox' }, { name: 'client_visible', kind: 'checkbox' }, { name: 'remarks', kind: 'textarea' },
-      ]} />}
+      {editing && (
+        <Drawer
+          title="New document request"
+          value={editing}
+          onChange={setEditing}
+          onClose={() => setEditing(null)}
+          onSave={submit}
+          extra={<ErrorBar error={err} />}
+          fields={[
+            { name: 'name' },
+            {
+              name: 'category',
+              kind: 'select',
+              options: DOCUMENT_CATEGORIES,
+            },
+            { name: 'description', kind: 'textarea' },
+            {
+              name: 'requested_from_contact_id',
+              kind: 'select',
+              options: eligibleContacts.map((c) => String(c.id)),
+              labels: (value) =>
+                String(
+                  eligibleContacts.find((contact) => contact.id === value)?.name ??
+                    value,
+                ),
+            },
+            {
+              name: 'request_channel',
+              kind: 'select',
+              options: ['WHATSAPP', 'EMAIL', 'PORTAL', 'PHONE', 'MANUAL'],
+            },
+            { name: 'financial_year' },
+            { name: 'assessment_year' },
+            { name: 'filing_period' },
+            { name: 'due_date', kind: 'date' },
+            { name: 'valid_from', kind: 'date' },
+            { name: 'expires_on', kind: 'date' },
+            { name: 'mandatory', kind: 'checkbox' },
+            { name: 'client_visible', kind: 'checkbox' },
+            { name: 'remarks', kind: 'textarea' },
+          ]}
+        />
+      )}
     </div>
   );
 }

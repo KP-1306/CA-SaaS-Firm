@@ -18,7 +18,29 @@ export const WORK_STATUS = [
 
 export const WORK_PRIORITY = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
 
-export const DOC_STATUS = ['REQUESTED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'ACCEPTED', 'REJECTED', 'WAIVED'] as const;
+export const DOC_STATUS = [
+  'REQUESTED',
+  'PARTIALLY_RECEIVED',
+  'RECEIVED',
+  'ACCEPTED',
+  'REJECTED',
+  'WAIVED',
+] as const;
+
+export const DOCUMENT_CATEGORIES = [
+  'GST',
+  'TDS',
+  'INCOME_TAX',
+  'ROC_MCA',
+  'AUDIT',
+  'ACCOUNTING',
+  'PAYROLL',
+  'BANKING',
+  'REGISTRATION',
+  'IDENTITY_KYC',
+  'LEGAL',
+  'OTHER',
+] as const;
 
 export function label(value: string): string {
   return value
