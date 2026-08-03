@@ -58,8 +58,51 @@ function qs(params: Record<string, string | undefined>): string {
   return parts.length ? `?${parts.join('&')}` : '';
 }
 
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly payload: Row | null;
+
+  constructor(
+    message: string,
+    status: number,
+    payload: Row | null,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 async function fail(res: Response): Promise<never> {
-  throw new Error(translateError(await res.text()));
+  const raw = await res.text();
+
+  let payload: Row | null = null;
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed)
+    ) {
+      payload = parsed as Row;
+    }
+  } catch {
+    payload = null;
+  }
+
+  const message =
+    payload && typeof payload.detail === 'string'
+      ? payload.detail
+      : translateError(raw);
+
+  throw new ApiRequestError(
+    message,
+    res.status,
+    payload,
+  );
 }
 
 export async function list(resource: string, params: Record<string, string | undefined> = {}): Promise<Row[]> {
