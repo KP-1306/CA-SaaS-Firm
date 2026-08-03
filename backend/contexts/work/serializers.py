@@ -299,6 +299,8 @@ class DocumentAttachmentSerializer(serializers.ModelSerializer):
             "supersedes_attachment_id",
             "duplicate_of_attachment_id",
             "is_duplicate",
+            "duplicate_resolution",
+            "is_canonical",
             "review_status",
             "reviewed_at",
             "reviewed_by",

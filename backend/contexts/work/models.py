@@ -119,6 +119,16 @@ class AttachmentReviewStatus(models.TextChoices):
     SUPERSEDED = "SUPERSEDED", "Superseded"
 
 
+class DuplicateResolutionStatus(models.TextChoices):
+    NOT_APPLICABLE = "NOT_APPLICABLE", "Not applicable"
+    UNRESOLVED = "UNRESOLVED", "Unresolved"
+    CONFIRMED_DUPLICATE = (
+        "CONFIRMED_DUPLICATE",
+        "Confirmed duplicate",
+    )
+    KEPT_AS_VERSION = "KEPT_AS_VERSION", "Kept as version"
+
+
 class DocumentRequest(TenantModel):
     """A document expected from a client, optionally tied to a work item.
 
@@ -264,6 +274,22 @@ class DocumentAttachment(TenantModel):
     )
     is_duplicate = models.BooleanField(default=False, db_index=True)
 
+    duplicate_resolution = models.CharField(
+        max_length=22,
+        choices=DuplicateResolutionStatus.choices,
+        default=DuplicateResolutionStatus.NOT_APPLICABLE,
+        db_index=True,
+    )
+
+    is_canonical = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=(
+            "The accepted attachment selected as the current "
+            "authoritative document."
+        ),
+    )
+
     review_status = models.CharField(
         max_length=20,
         choices=AttachmentReviewStatus.choices,
@@ -288,6 +314,22 @@ class DocumentAttachment(TenantModel):
             models.Index(
                 fields=["tenant_id", "sha256"],
                 name="idx_docatt_tenant_hash",
+            ),
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "document_request_id",
+                    "is_canonical",
+                ],
+                name="idx_docatt_req_canonical",
+            ),
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "is_duplicate",
+                    "duplicate_resolution",
+                ],
+                name="idx_docatt_dup_resolution",
             ),
         ]
 

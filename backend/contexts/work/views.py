@@ -34,6 +34,7 @@ from contexts.audit.models import AuditAction
 from .models import (
     AttachmentReviewStatus,
     DocumentAttachment,
+    DuplicateResolutionStatus,
     DocumentRequest,
     DocumentRequestStatus,
     WorkItem,
@@ -88,6 +89,17 @@ _BLOCKED_EXTENSIONS = {
     ".jar", ".ps1", ".vbs", ".php", ".py", ".pl", ".app", ".bin",
 }
 _MAX_UPLOAD_BYTES = 15 * 1024 * 1024
+
+
+class DuplicateAttachmentError(ValueError):
+    """Raised when uploaded content already exists in the same scope."""
+
+    def __init__(self, attachment):
+        self.attachment = attachment
+        super().__init__(
+            "This exact file already exists for the selected "
+            "document request."
+        )
 
 
 class MandatoryAuditPersistenceError(APIException):
@@ -166,6 +178,8 @@ def _create_attachment(
     document_request_id=None,
     work_item_id=None,
     source="INTERNAL_TEAM",
+    upload_intent="NEW_VERSION",
+    allow_duplicate=False,
 ):
     original, declared = _validated_upload(upload)
     content_hash = _sha256_upload(upload)
@@ -182,12 +196,39 @@ def _create_attachment(
         .first()
     )
 
+    if duplicate is not None and not allow_duplicate:
+        raise DuplicateAttachmentError(duplicate)
+
     latest = (
-        scoped.order_by("-version_number", "-created_at", "-id")
+        scoped.order_by(
+            "-version_number",
+            "-created_at",
+            "-id",
+        )
         .first()
     )
 
-    next_version = (latest.version_number + 1) if latest else 1
+    if upload_intent not in {
+        "NEW_VERSION",
+        "SEPARATE_DOCUMENT",
+    }:
+        raise ValueError(
+            "Upload intent must be NEW_VERSION or "
+            "SEPARATE_DOCUMENT."
+        )
+
+    if upload_intent == "NEW_VERSION":
+        next_version = (
+            latest.version_number + 1
+            if latest
+            else 1
+        )
+        supersedes_id = latest.id if latest else None
+    else:
+        next_version = 1
+        supersedes_id = None
+
+    is_duplicate = duplicate is not None
 
     attachment = DocumentAttachment(
         tenant_id=principal.tenant_id,
@@ -204,11 +245,23 @@ def _create_attachment(
         sha256=content_hash,
         version_number=next_version,
         version_label=f"V{next_version}",
-        supersedes_attachment_id=latest.id if latest else None,
-        duplicate_of_attachment_id=duplicate.id if duplicate else None,
-        is_duplicate=duplicate is not None,
+        supersedes_attachment_id=supersedes_id,
+        duplicate_of_attachment_id=(
+            duplicate.id
+            if duplicate
+            else None
+        ),
+        is_duplicate=is_duplicate,
+        duplicate_resolution=(
+            DuplicateResolutionStatus.UNRESOLVED
+            if is_duplicate
+            else DuplicateResolutionStatus.NOT_APPLICABLE
+        ),
+        is_canonical=latest is None and not is_duplicate,
     )
+
     attachment.save()
+
     return attachment
 
 
@@ -1135,11 +1188,36 @@ class DocumentRequestViewSet(TenantModelViewSet):
             return Response({"detail": "No files were provided."}, status=400)
         principal = self.principal()
         source = request.data.get("source", "CLIENT")
+        upload_intent = request.data.get(
+            "upload_intent",
+            "NEW_VERSION",
+        )
+        allow_duplicate = (
+            str(
+                request.data.get(
+                    "allow_duplicate",
+                    "",
+                )
+            ).lower()
+            in {"1", "true", "yes"}
+        )
+
         created = []
+
         try:
             with transaction.atomic():
                 for upload in uploads:
-                    created.append(_create_attachment(principal=principal, upload=upload, document_request_id=doc.id, work_item_id=doc.work_item_id, source=source))
+                    created.append(
+                        _create_attachment(
+                            principal=principal,
+                            upload=upload,
+                            document_request_id=doc.id,
+                            work_item_id=doc.work_item_id,
+                            source=source,
+                            upload_intent=upload_intent,
+                            allow_duplicate=allow_duplicate,
+                        )
+                    )
                 if not doc.received_date:
                     doc.received_date = timezone.now().date()
                     doc.updated_by = principal.principal_id
@@ -1148,10 +1226,38 @@ class DocumentRequestViewSet(TenantModelViewSet):
                     doc,
                     updated_by=principal.principal_id,
                 )
+        except DuplicateAttachmentError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "code": "DUPLICATE_ATTACHMENT",
+                    "existing_attachment": (
+                        DocumentAttachmentSerializer(
+                            exc.attachment,
+                            context={"request": request},
+                        ).data
+                    ),
+                    "allowed_actions": [
+                        "CANCEL",
+                        "KEEP_AS_VERSION",
+                    ],
+                },
+                status=http_status.HTTP_409_CONFLICT,
+            )
         except ValueError as exc:
-            return Response({"detail": str(exc)}, status=400)
-        return Response(DocumentAttachmentSerializer(created, many=True, context={"request": request}).data, status=http_status.HTTP_201_CREATED)
+            return Response(
+                {"detail": str(exc)},
+                status=400,
+            )
 
+        return Response(
+            DocumentAttachmentSerializer(
+                created,
+                many=True,
+                context={"request": request},
+            ).data,
+            status=http_status.HTTP_201_CREATED,
+        )
 
 
 class DocumentAttachmentViewSet(TenantModelViewSet):
@@ -1269,6 +1375,222 @@ class DocumentAttachmentViewSet(TenantModelViewSet):
 
         attachment.refresh_from_db()
         return Response(self.get_serializer(attachment).data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="resolve-duplicate",
+    )
+    def resolve_duplicate(self, request, pk=None):
+        attachment = self.get_object()
+        resolution = request.data.get("resolution")
+        principal = self.principal()
+        item = self._work_item_for(attachment)
+
+        if item is not None and not ownership.is_reviewer(
+            item,
+            principal,
+        ):
+            raise PermissionDenied(
+                "Only the assigned reviewer may resolve duplicate "
+                "attachments for this work item."
+            )
+
+        if not attachment.is_duplicate:
+            return Response(
+                {
+                    "detail": (
+                        "This attachment is not marked as a "
+                        "duplicate."
+                    )
+                },
+                status=400,
+            )
+
+        if resolution not in {
+            DuplicateResolutionStatus.CONFIRMED_DUPLICATE,
+            DuplicateResolutionStatus.KEPT_AS_VERSION,
+        }:
+            return Response(
+                {
+                    "detail": (
+                        "Resolution must be CONFIRMED_DUPLICATE "
+                        "or KEPT_AS_VERSION."
+                    )
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            attachment.duplicate_resolution = resolution
+            attachment.updated_by = principal.principal_id
+
+            update_fields = {
+                "duplicate_resolution",
+                "updated_by",
+                "row_version",
+            }
+
+            if (
+                resolution
+                == DuplicateResolutionStatus.CONFIRMED_DUPLICATE
+            ):
+                attachment.review_status = (
+                    AttachmentReviewStatus.SUPERSEDED
+                )
+                attachment.is_canonical = False
+                update_fields.update(
+                    {
+                        "review_status",
+                        "is_canonical",
+                    }
+                )
+
+            attachment.save(
+                update_fields=list(update_fields)
+            )
+
+            if attachment.document_request_id:
+                doc = (
+                    DocumentRequest.objects
+                    .select_for_update()
+                    .get(
+                        tenant_id=attachment.tenant_id,
+                        id=attachment.document_request_id,
+                    )
+                )
+
+                recalculate_document_request_status(
+                    doc,
+                    updated_by=principal.principal_id,
+                )
+
+            record_event(
+                tenant_id=attachment.tenant_id,
+                principal_id=principal.principal_id,
+                action=AuditAction.STATUS_CHANGE,
+                entity_type="DocumentAttachment",
+                entity_id=attachment.id,
+                summary=(
+                    "Duplicate attachment resolved as "
+                    f"{resolution}"
+                ),
+                new={
+                    "duplicate_resolution": resolution,
+                    "review_status": attachment.review_status,
+                },
+                request=self.request,
+            )
+
+        attachment.refresh_from_db()
+
+        return Response(
+            self.get_serializer(attachment).data
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="mark-canonical",
+    )
+    def mark_canonical(self, request, pk=None):
+        attachment = self.get_object()
+        principal = self.principal()
+        item = self._work_item_for(attachment)
+
+        if item is not None and not ownership.is_reviewer(
+            item,
+            principal,
+        ):
+            raise PermissionDenied(
+                "Only the assigned reviewer may select the "
+                "canonical attachment for this work item."
+            )
+
+        if not attachment.document_request_id:
+            return Response(
+                {
+                    "detail": (
+                        "Canonical selection is supported only for "
+                        "document-request attachments."
+                    )
+                },
+                status=400,
+            )
+
+        if (
+            attachment.review_status
+            != AttachmentReviewStatus.ACCEPTED
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "Only an accepted attachment can be marked "
+                        "as canonical."
+                    )
+                },
+                status=400,
+            )
+
+        if (
+            attachment.is_duplicate
+            and attachment.duplicate_resolution
+            != DuplicateResolutionStatus.KEPT_AS_VERSION
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "Resolve the duplicate before selecting it "
+                        "as canonical."
+                    )
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            (
+                DocumentAttachment.objects
+                .select_for_update()
+                .filter(
+                    tenant_id=attachment.tenant_id,
+                    document_request_id=(
+                        attachment.document_request_id
+                    ),
+                    is_canonical=True,
+                )
+                .exclude(id=attachment.id)
+                .update(
+                    is_canonical=False,
+                    updated_by=principal.principal_id,
+                )
+            )
+
+            attachment.is_canonical = True
+            attachment.updated_by = principal.principal_id
+            attachment.save(
+                update_fields=[
+                    "is_canonical",
+                    "updated_by",
+                    "row_version",
+                ]
+            )
+
+            record_event(
+                tenant_id=attachment.tenant_id,
+                principal_id=principal.principal_id,
+                action=AuditAction.STATUS_CHANGE,
+                entity_type="DocumentAttachment",
+                entity_id=attachment.id,
+                summary="Canonical attachment selected",
+                new={"is_canonical": True},
+                request=self.request,
+            )
+
+        attachment.refresh_from_db()
+
+        return Response(
+            self.get_serializer(attachment).data
+        )
 
     @action(detail=True, methods=["get"])
     def download(self, request, pk=None):
