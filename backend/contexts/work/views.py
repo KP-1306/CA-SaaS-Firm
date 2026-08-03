@@ -27,6 +27,7 @@ from contexts.configuration.models import (
 from contexts.identity.models import Employee
 
 from . import ownership
+from .document_intelligence import calculate_document_readiness
 from contexts.audit.recording import record_event
 from contexts.audit.models import AuditAction
 
@@ -652,18 +653,63 @@ class WorkItemViewSet(TenantModelViewSet):
         return Response(self.get_serializer(item).data)
 
     # -- explicit review verbs -----------------------------------------
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="document-readiness",
+    )
+    def document_readiness(self, request, pk=None):
+        item = self.get_object()
+
+        return Response(
+            calculate_document_readiness(item)
+        )
+
     @action(detail=True, methods=["post"])
     def submit_for_review(self, request, pk=None):
         item = self.get_object()
+
         if not ownership.is_owner(item, self.principal()):
-            raise PermissionDenied("Only the assigned owner may submit this work for review.")
+            raise PermissionDenied(
+                "Only the assigned owner may submit this work "
+                "for review."
+            )
+
         if item.status != WorkStatus.IN_PROGRESS:
-            return Response({"detail": "Only work in progress can be submitted for review."}, status=400)
+            return Response(
+                {
+                    "detail": (
+                        "Only work in progress can be submitted "
+                        "for review."
+                    )
+                },
+                status=400,
+            )
+
+        readiness = calculate_document_readiness(item)
+
+        if not readiness["ready_for_review"]:
+            return Response(
+                {
+                    "detail": (
+                        "Mandatory document dependencies are not "
+                        "satisfied."
+                    ),
+                    "code": "DOCUMENT_DEPENDENCIES_BLOCKED",
+                    "document_readiness": readiness,
+                },
+                status=400,
+            )
+
         item.submitted_for_review_at = timezone.now()
+
         self._transition(
-            item, WorkStatus.READY_FOR_REVIEW, "Submitted for review.",
+            item,
+            WorkStatus.READY_FOR_REVIEW,
+            "Submitted for review.",
             update_fields={"submitted_for_review_at"},
         )
+
         return Response(self.get_serializer(item).data)
 
     @action(detail=True, methods=["post"])
@@ -672,8 +718,17 @@ class WorkItemViewSet(TenantModelViewSet):
         self._require_reviewer(item)
         if item.status != WorkStatus.READY_FOR_REVIEW:
             return Response({"detail": "Only work that is ready for review can be approved."}, status=400)
-        if self._unresolved_mandatory_docs(item):
-            return Response({"detail": _MANDATORY_DOCS_MSG}, status=400)
+        readiness = calculate_document_readiness(item)
+
+        if not readiness["ready_for_review"]:
+            return Response(
+                {
+                    "detail": _MANDATORY_DOCS_MSG,
+                    "code": "DOCUMENT_DEPENDENCIES_BLOCKED",
+                    "document_readiness": readiness,
+                },
+                status=400,
+            )
         comment = request.data.get("comment", "")
         with transaction.atomic():
             item.completed_at = timezone.now()

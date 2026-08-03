@@ -9,6 +9,7 @@ from contexts.configuration.models import Domain, Service
 from contexts.identity.models import Employee
 
 from . import ownership
+from .document_intelligence import calculate_document_readiness
 from .models import DocumentAttachment, DocumentRequest, WorkItem, WorkNote
 
 _AUDIT = ("id", "tenant_id", "created_at", "created_by", "updated_at", "updated_by", "row_version")
@@ -31,6 +32,14 @@ class WorkItemSerializer(serializers.ModelSerializer):
     can_submit_for_review = serializers.SerializerMethodField()
     can_review = serializers.SerializerMethodField()
     can_upload_internal = serializers.SerializerMethodField()
+
+    document_ready = serializers.SerializerMethodField()
+    document_readiness_state = serializers.SerializerMethodField()
+    document_health_score = serializers.SerializerMethodField()
+    mandatory_document_total = serializers.SerializerMethodField()
+    mandatory_document_satisfied = serializers.SerializerMethodField()
+    mandatory_document_missing = serializers.SerializerMethodField()
+    document_blockers = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkItem
@@ -115,7 +124,58 @@ class WorkItemSerializer(serializers.ModelSerializer):
         return ownership.can_review_work_item(obj, self._principal())
 
     def get_can_upload_internal(self, obj):
-        return ownership.can_upload_internal(obj, self._principal())
+        return ownership.can_upload_internal(
+            obj,
+            self._principal(),
+        )
+
+    @staticmethod
+    def _document_readiness(obj):
+        cache_name = "_vridhi_document_readiness"
+
+        if not hasattr(obj, cache_name):
+            setattr(
+                obj,
+                cache_name,
+                calculate_document_readiness(obj),
+            )
+
+        return getattr(obj, cache_name)
+
+    def get_document_ready(self, obj):
+        return self._document_readiness(obj)[
+            "ready_for_review"
+        ]
+
+    def get_document_readiness_state(self, obj):
+        return self._document_readiness(obj)[
+            "readiness_state"
+        ]
+
+    def get_document_health_score(self, obj):
+        return self._document_readiness(obj)[
+            "health_score"
+        ]
+
+    def get_mandatory_document_total(self, obj):
+        return self._document_readiness(obj)[
+            "mandatory_total"
+        ]
+
+    def get_mandatory_document_satisfied(self, obj):
+        return self._document_readiness(obj)[
+            "mandatory_satisfied"
+        ]
+
+    def get_mandatory_document_missing(self, obj):
+        return self._document_readiness(obj)[
+            "mandatory_missing"
+        ]
+
+    def get_document_blockers(self, obj):
+        return self._document_readiness(obj)[
+            "blockers"
+        ]
 
 
 class WorkNoteSerializer(serializers.ModelSerializer):
