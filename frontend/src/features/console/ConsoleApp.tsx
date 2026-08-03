@@ -9,6 +9,7 @@ import { useBrand } from './branding';
 import { EmployeeDashboard, ExecutiveDashboard } from './dashboards';
 import { ExpertisePanel } from './expertise';
 import { AuditViewer } from './audit';
+import { GlobalSearch } from './GlobalSearch';
 import { CLIENT_TYPES, CLIENT_LIFECYCLE_STATUS, ENGAGEMENT_STATUS, WORK_STATUS, isOverdue, label } from './types';
 import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
@@ -74,62 +75,795 @@ function Dashboard(): React.JSX.Element {
   const services = useRows('services');
   const work = useRows('work-items');
   const docs = useRows('document-requests');
-  if (clients.loading || work.loading) return <Loading />;
-  const open = work.rows.filter((w) => w.status !== 'COMPLETED' && w.status !== 'CANCELLED');
-  const overdue = open.filter((w) => isOverdue(w.due_date, w.status));
-  const waiting = work.rows.filter((w) => w.status === 'WAITING_FOR_CLIENT').length;
-  const ready = work.rows.filter((w) => w.status === 'READY_FOR_REVIEW').length;
-  const rework = work.rows.filter((w) => w.status === 'REWORK_REQUIRED').length;
-  const completedToday = work.rows.filter((w) => String(w.completed_at ?? '').slice(0, 10) === todayStr()).length;
-  const pendingDocs = docs.rows.filter((d) => d.status === 'REQUESTED' || d.status === 'PARTIALLY_RECEIVED').length;
-  const byStatus = WORK_STATUS.map((s) => ({ s, n: work.rows.filter((w) => w.status === s).length })).filter((x) => x.n > 0);
-  const recent = [...work.rows].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at))).slice(0, 8);
-  const card = (n: number | string, l: string, danger = false): React.JSX.Element => (
-    <div className="cx-card"><div className="n" style={danger && Number(n) > 0 ? { color: '#b42318' } : undefined}>{n}</div><div className="l">{l}</div></div>
+
+  const loading =
+    clients.loading
+    || employees.loading
+    || services.loading
+    || work.loading
+    || docs.loading;
+
+  if (loading) return <Loading />;
+
+  const now = new Date();
+  const today = todayStr();
+
+  const isOpen = (row: Row): boolean => (
+    row.status !== 'COMPLETED'
+    && row.status !== 'CANCELLED'
   );
+
+  const daysFromToday = (value: unknown): number | null => {
+    if (!value) return null;
+
+    const parsed = new Date(String(value));
+
+    if (Number.isNaN(parsed.getTime())) return null;
+
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+
+    const dateStart = new Date(
+      parsed.getFullYear(),
+      parsed.getMonth(),
+      parsed.getDate(),
+    );
+
+    return Math.round(
+      (dateStart.getTime() - todayStart.getTime())
+      / (1000 * 60 * 60 * 24),
+    );
+  };
+
+  const ageInDays = (value: unknown): number => {
+    if (!value) return 0;
+
+    const parsed = new Date(String(value));
+
+    if (Number.isNaN(parsed.getTime())) return 0;
+
+    return Math.max(
+      0,
+      Math.floor(
+        (now.getTime() - parsed.getTime())
+        / (1000 * 60 * 60 * 24),
+      ),
+    );
+  };
+
+  const activeClients = clients.rows.filter(
+    (client) => client.engagement_status === 'ACTIVE',
+  );
+
+  const openWork = work.rows.filter(isOpen);
+
+  const overdueWork = openWork.filter(
+    (row) => isOverdue(row.due_date, row.status),
+  );
+
+  const dueToday = openWork.filter(
+    (row) => String(row.due_date ?? '').slice(0, 10) === today,
+  );
+
+  const dueSoon = openWork.filter((row) => {
+    const days = daysFromToday(row.due_date);
+    return days !== null && days > 0 && days <= 7;
+  });
+
+  const waitingForClient = openWork.filter(
+    (row) => row.status === 'WAITING_FOR_CLIENT',
+  );
+
+  const readyForReview = openWork.filter(
+    (row) => row.status === 'READY_FOR_REVIEW',
+  );
+
+  const reworkRequired = openWork.filter(
+    (row) => row.status === 'REWORK_REQUIRED',
+  );
+
+  const highPriorityOverdue = overdueWork.filter((row) => (
+    row.priority === 'HIGH'
+    || row.priority === 'URGENT'
+    || row.priority === 'CRITICAL'
+  ));
+
+  const completedToday = work.rows.filter(
+    (row) => String(row.completed_at ?? '').slice(0, 10) === today,
+  );
+
+  const pendingDocuments = docs.rows.filter((row) => (
+    row.status === 'REQUESTED'
+    || row.status === 'PARTIALLY_RECEIVED'
+  ));
+
+  const documentAgeBuckets = [
+    {
+      label: '0–3 days',
+      count: pendingDocuments.filter(
+        (row) => ageInDays(row.created_at || row.requested_at) <= 3,
+      ).length,
+      tone: 'good',
+    },
+    {
+      label: '4–7 days',
+      count: pendingDocuments.filter((row) => {
+        const age = ageInDays(row.created_at || row.requested_at);
+        return age >= 4 && age <= 7;
+      }).length,
+      tone: 'watch',
+    },
+    {
+      label: '8–15 days',
+      count: pendingDocuments.filter((row) => {
+        const age = ageInDays(row.created_at || row.requested_at);
+        return age >= 8 && age <= 15;
+      }).length,
+      tone: 'risk',
+    },
+    {
+      label: '15+ days',
+      count: pendingDocuments.filter(
+        (row) => ageInDays(row.created_at || row.requested_at) > 15,
+      ).length,
+      tone: 'critical',
+    },
+  ];
+
+  const statusDistribution = WORK_STATUS
+    .map((status) => ({
+      status,
+      count: work.rows.filter((row) => row.status === status).length,
+    }))
+    .filter((item) => item.count > 0);
+
+  const maxStatusCount = Math.max(
+    1,
+    ...statusDistribution.map((item) => item.count),
+  );
+
+  const employeeWorkload = employees.rows
+    .filter((employee) => employee.is_active !== false)
+    .map((employee) => {
+      const assigned = openWork.filter(
+        (row) => String(row.owner_user_id) === String(employee.id),
+      );
+
+      const overdue = assigned.filter(
+        (row) => isOverdue(row.due_date, row.status),
+      );
+
+      const review = openWork.filter(
+        (row) => (
+          String(row.reviewer_user_id) === String(employee.id)
+          && row.status === 'READY_FOR_REVIEW'
+        ),
+      );
+
+      const score =
+        assigned.length
+        + (overdue.length * 2)
+        + review.length;
+
+      const pressure =
+        score >= 8
+          ? 'OVERLOADED'
+          : score >= 5
+            ? 'BUSY'
+            : score >= 2
+              ? 'BALANCED'
+              : 'AVAILABLE';
+
+      return {
+        id: String(employee.id),
+        name: String(employee.name || employee.email || 'Unnamed employee'),
+        assigned: assigned.length,
+        overdue: overdue.length,
+        review: review.length,
+        score,
+        pressure,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const maxEmployeeScore = Math.max(
+    1,
+    ...employeeWorkload.map((employee) => employee.score),
+  );
+
+  const clientRisk = activeClients
+    .map((client) => {
+      const clientId = String(client.id);
+
+      const clientWork = openWork.filter(
+        (row) => String(row.client_id) === clientId,
+      );
+
+      const overdue = clientWork.filter(
+        (row) => isOverdue(row.due_date, row.status),
+      );
+
+      const waiting = clientWork.filter(
+        (row) => row.status === 'WAITING_FOR_CLIENT',
+      );
+
+      const nextDue = clientWork
+        .filter((row) => row.due_date)
+        .sort(
+          (a, b) => String(a.due_date).localeCompare(String(b.due_date)),
+        )[0];
+
+      const riskScore =
+        (overdue.length * 3)
+        + (waiting.length * 2)
+        + clientWork.length;
+
+      return {
+        id: clientId,
+        name: String(
+          client.trade_name
+          || client.legal_name
+          || 'Unnamed client',
+        ),
+        open: clientWork.length,
+        overdue: overdue.length,
+        waiting: waiting.length,
+        nextDue: String(nextDue?.due_date ?? ''),
+        riskScore,
+        risk:
+          riskScore >= 10
+            ? 'HIGH'
+            : riskScore >= 5
+              ? 'MEDIUM'
+              : 'LOW',
+      };
+    })
+    .filter((client) => client.open > 0)
+    .sort((a, b) => b.riskScore - a.riskScore)
+    .slice(0, 6);
+
+  const recentActivity = [...work.rows]
+    .sort(
+      (a, b) => String(b.updated_at).localeCompare(String(a.updated_at)),
+    )
+    .slice(0, 7);
+
+  const attentionItems: {
+    title: string;
+    detail: string;
+    tone: 'critical' | 'risk' | 'watch' | 'info';
+  }[] = [];
+
+  if (highPriorityOverdue.length > 0) {
+    attentionItems.push({
+      title: `${highPriorityOverdue.length} high-priority overdue item${
+        highPriorityOverdue.length === 1 ? '' : 's'
+      }`,
+      detail: 'Immediate partner or manager intervention is recommended.',
+      tone: 'critical',
+    });
+  }
+
+  if (overdueWork.length > 0) {
+    attentionItems.push({
+      title: `${overdueWork.length} overdue work item${
+        overdueWork.length === 1 ? '' : 's'
+      }`,
+      detail: 'Review ownership, blockers and revised completion plans.',
+      tone: 'risk',
+    });
+  }
+
+  if (readyForReview.length > 0) {
+    attentionItems.push({
+      title: `${readyForReview.length} item${
+        readyForReview.length === 1 ? '' : 's'
+      } awaiting review`,
+      detail: 'Reviewer action can unblock completion and client delivery.',
+      tone: 'watch',
+    });
+  }
+
+  const agedDocuments = pendingDocuments.filter(
+    (row) => ageInDays(row.created_at || row.requested_at) > 7,
+  );
+
+  if (agedDocuments.length > 0) {
+    attentionItems.push({
+      title: `${agedDocuments.length} document request${
+        agedDocuments.length === 1 ? '' : 's'
+      } pending beyond 7 days`,
+      detail: 'Client follow-up may be required to protect due dates.',
+      tone: 'watch',
+    });
+  }
+
+  const overloadedEmployees = employeeWorkload.filter(
+    (employee) => employee.pressure === 'OVERLOADED',
+  );
+
+  if (overloadedEmployees.length > 0) {
+    attentionItems.push({
+      title: `${overloadedEmployees.length} employee${
+        overloadedEmployees.length === 1 ? '' : 's'
+      } under high workload pressure`,
+      detail: 'Consider redistribution before additional work is assigned.',
+      tone: 'risk',
+    });
+  }
+
+  if (attentionItems.length === 0) {
+    attentionItems.push({
+      title: 'No critical operational exceptions',
+      detail: 'Current workload and deadlines appear under control.',
+      tone: 'info',
+    });
+  }
+
+  const healthPenalty =
+    (overdueWork.length * 8)
+    + (highPriorityOverdue.length * 7)
+    + (agedDocuments.length * 3)
+    + (overloadedEmployees.length * 6)
+    + (reworkRequired.length * 4);
+
+  const healthScore = Math.max(35, Math.min(100, 100 - healthPenalty));
+
+  const healthLabel =
+    healthScore >= 85
+      ? 'Strong'
+      : healthScore >= 70
+        ? 'Stable'
+        : healthScore >= 55
+          ? 'Attention required'
+          : 'At risk';
+
+  const healthTone =
+    healthScore >= 85
+      ? 'good'
+      : healthScore >= 70
+        ? 'stable'
+        : healthScore >= 55
+          ? 'watch'
+          : 'risk';
+
+  const kpis = [
+    {
+      label: 'Active Clients',
+      value: activeClients.length,
+      note: `${clients.rows.length} total client records`,
+      tone: 'blue',
+    },
+    {
+      label: 'Open Work',
+      value: openWork.length,
+      note: `${completedToday.length} completed today`,
+      tone: 'indigo',
+    },
+    {
+      label: 'Overdue',
+      value: overdueWork.length,
+      note: highPriorityOverdue.length
+        ? `${highPriorityOverdue.length} high priority`
+        : 'No high-priority exposure',
+      tone: overdueWork.length ? 'red' : 'green',
+    },
+    {
+      label: 'Due in 7 Days',
+      value: dueSoon.length + dueToday.length,
+      note: `${dueToday.length} due today`,
+      tone: dueToday.length ? 'amber' : 'violet',
+    },
+    {
+      label: 'Waiting for Client',
+      value: waitingForClient.length,
+      note: `${pendingDocuments.length} document requests pending`,
+      tone: waitingForClient.length ? 'amber' : 'green',
+    },
+    {
+      label: 'Ready for Review',
+      value: readyForReview.length,
+      note: `${reworkRequired.length} in rework`,
+      tone: readyForReview.length ? 'violet' : 'green',
+    },
+  ];
+
+  const error =
+    clients.error
+    || employees.error
+    || services.error
+    || work.error
+    || docs.error;
+
   return (
-    <>
-      <ErrorBar error={clients.error || work.error} />
-      <div className="cx-cards">
-        {card(clients.rows.filter((c) => c.engagement_status === 'ACTIVE').length, 'Active clients')}
-        {card(employees.rows.length, 'Employees')}
-        {card(services.rows.length, 'Services')}
-        {card(open.length, 'Open work')}
-        {card(overdue.length, 'Overdue', true)}
-        {card(waiting, 'Waiting for client')}
-        {card(ready, 'Ready for review')}
-        {card(rework, 'Rework required', true)}
-        {card(completedToday, 'Completed today')}
-        {card(pendingDocs, 'Pending documents')}
-      </div>
-      <div className="cx-panel">
-        <h3>Work by status</h3>
-        <div style={{ padding: '12px 16px' }}>
-          {byStatus.length === 0 ? (
-            <span style={{ color: '#64748b' }}>No work items yet.</span>
-          ) : (
-            byStatus.map((x) => (
-              <span key={x.s} style={{ marginRight: 10, display: 'inline-block', marginBottom: 6 }}>
-                <Chip value={x.s} tone={statusTone(x.s)} /> {x.n}
-              </span>
-            ))
-          )}
+    <div className="cx-executive-dashboard">
+      <ErrorBar error={error} />
+
+      <section className="cx-executive-hero">
+        <div>
+          <span className="cx-executive-eyebrow">
+            Firm Operations Command Center
+          </span>
+
+          <h1>Vridhi Consultants</h1>
+
+          <p>
+            A live executive view of client delivery, deadlines,
+            document dependencies and team workload.
+          </p>
         </div>
-      </div>
-      <div className="cx-panel">
-        <h3>Recent work activity</h3>
-        <DataTable
-          empty="No work yet."
-          columns={[
-            { key: 'title', header: 'Title' },
-            { key: 'client_name', header: 'Client', render: (r) => String(r.client_name || '""') },
-            { key: 'status', header: 'Status', render: (r) => <Chip value={String(r.status)} tone={statusTone(String(r.status))} /> },
-            { key: 'updated_at', header: 'Updated', render: (r) => String(r.updated_at ?? '').slice(0, 10) },
-          ]}
-          rows={recent}
-        />
-      </div>
-    </>
+
+        <div className={`cx-health-card ${healthTone}`}>
+          <div className="cx-health-ring">
+            <strong>{healthScore}</strong>
+            <small>/100</small>
+          </div>
+
+          <div>
+            <span>Firm Health</span>
+            <strong>{healthLabel}</strong>
+            <small>Updated from current operational data</small>
+
+            <span
+              className="cx-health-method"
+              title="The score considers overdue work, high-priority overdue exposure, aged client-document requests, rework and employee workload pressure."
+            >
+              ⓘ How this score is calculated
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section className="cx-executive-kpis">
+        {kpis.map((kpi) => (
+          <article
+            key={kpi.label}
+            className={`cx-executive-kpi ${kpi.tone}`}
+          >
+            <span>{kpi.label}</span>
+            <strong>{kpi.value}</strong>
+            <small>{kpi.note}</small>
+          </article>
+        ))}
+      </section>
+
+      <section className="cx-executive-grid primary">
+        <article className="cx-executive-panel attention">
+          <div className="cx-executive-panel-head">
+            <div>
+              <span className="cx-panel-kicker">Action Center</span>
+              <h2>Needs Attention</h2>
+            </div>
+
+            <span className="cx-panel-count">
+              {attentionItems.length}
+            </span>
+          </div>
+
+          <div className="cx-attention-list">
+            {attentionItems.map((item) => (
+              <div
+                key={`${item.title}-${item.detail}`}
+                className={`cx-attention-item ${item.tone}`}
+              >
+                <span className="cx-attention-marker" />
+
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{item.detail}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="cx-executive-panel deadline">
+          <div className="cx-executive-panel-head">
+            <div>
+              <span className="cx-panel-kicker">Delivery Control</span>
+              <h2>Deadline Risk</h2>
+            </div>
+          </div>
+
+          <div className="cx-risk-grid">
+            <div className="cx-risk-metric good">
+              <strong>
+                {Math.max(
+                  0,
+                  openWork.length
+                  - overdueWork.length
+                  - dueSoon.length
+                  - dueToday.length,
+                )}
+              </strong>
+              <span>On Track</span>
+            </div>
+
+            <div className="cx-risk-metric watch">
+              <strong>{dueSoon.length}</strong>
+              <span>Due Soon</span>
+            </div>
+
+            <div className="cx-risk-metric amber">
+              <strong>{dueToday.length}</strong>
+              <span>Due Today</span>
+            </div>
+
+            <div className="cx-risk-metric critical">
+              <strong>{overdueWork.length}</strong>
+              <span>Overdue</span>
+            </div>
+          </div>
+
+          <div className="cx-risk-summary">
+            <span>High-priority overdue exposure</span>
+            <strong>{highPriorityOverdue.length}</strong>
+          </div>
+        </article>
+      </section>
+
+      <section className="cx-executive-grid analytics">
+        <article className="cx-executive-panel">
+          <div className="cx-executive-panel-head">
+            <div>
+              <span className="cx-panel-kicker">Portfolio Flow</span>
+              <h2>Work Status Distribution</h2>
+            </div>
+
+            <span className="cx-panel-count">
+              {work.rows.length}
+            </span>
+          </div>
+
+          {statusDistribution.length === 0 ? (
+            <div className="cx-executive-empty">
+              No work items available.
+            </div>
+          ) : (
+            <div className="cx-status-bars">
+              {statusDistribution.map((item) => (
+                <div className="cx-status-row" key={item.status}>
+                  <div className="cx-status-label">
+                    <Chip
+                      value={item.status}
+                      tone={statusTone(item.status)}
+                    />
+                    <strong>{item.count}</strong>
+                  </div>
+
+                  <div className="cx-status-track">
+                    <span
+                      style={{
+                        width: `${
+                          Math.max(
+                            8,
+                            (item.count / maxStatusCount) * 100,
+                          )
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="cx-executive-panel">
+          <div className="cx-executive-panel-head">
+            <div>
+              <span className="cx-panel-kicker">Client Dependency</span>
+              <h2>Document Aging</h2>
+            </div>
+
+            <span className="cx-panel-count">
+              {pendingDocuments.length}
+            </span>
+          </div>
+
+          <div className="cx-aging-grid">
+            {documentAgeBuckets.map((bucket) => (
+              <div
+                key={bucket.label}
+                className={`cx-aging-card ${bucket.tone}`}
+              >
+                <strong>{bucket.count}</strong>
+                <span>{bucket.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <p className="cx-panel-footnote">
+            Pending client documents grouped by request age.
+          </p>
+        </article>
+      </section>
+
+      <section className="cx-executive-grid wide">
+        <article className="cx-executive-panel workload">
+          <div className="cx-executive-panel-head">
+            <div>
+              <span className="cx-panel-kicker">Resource Management</span>
+              <h2>Team Workload Pressure</h2>
+            </div>
+
+            <span className="cx-panel-count">
+              {employeeWorkload.length}
+            </span>
+          </div>
+
+          {employeeWorkload.length === 0 ? (
+            <div className="cx-executive-empty">
+              No active employees available.
+            </div>
+          ) : (
+            <div className="cx-workload-table">
+              <div className="cx-workload-header">
+                <span>Employee</span>
+                <span>Open</span>
+                <span>Overdue</span>
+                <span>Review</span>
+                <span>Pressure</span>
+              </div>
+
+              {employeeWorkload.slice(0, 8).map((employee) => (
+                <div
+                  className="cx-workload-row"
+                  key={employee.id}
+                >
+                  <div>
+                    <strong>{employee.name}</strong>
+
+                    <div className="cx-workload-track">
+                      <span
+                        style={{
+                          width: `${
+                            Math.max(
+                              4,
+                              (employee.score / maxEmployeeScore) * 100,
+                            )
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <span>{employee.assigned}</span>
+
+                  <span className={
+                    employee.overdue > 0
+                      ? 'cx-number-danger'
+                      : ''
+                  }>
+                    {employee.overdue}
+                  </span>
+
+                  <span>{employee.review}</span>
+
+                  <Chip
+                    value={employee.pressure}
+                    tone={
+                      employee.pressure === 'OVERLOADED'
+                        ? 'danger'
+                        : employee.pressure === 'BUSY'
+                          ? 'warn'
+                          : employee.pressure === 'BALANCED'
+                            ? 'ok'
+                            : 'muted'
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+      </section>
+
+      <section className="cx-executive-grid bottom">
+        <article className="cx-executive-panel client-risk">
+          <div className="cx-executive-panel-head">
+            <div>
+              <span className="cx-panel-kicker">Client Portfolio</span>
+              <h2>Client Risk Snapshot</h2>
+            </div>
+          </div>
+
+          {clientRisk.length === 0 ? (
+            <div className="cx-executive-empty">
+              No active client risk detected.
+            </div>
+          ) : (
+            <div className="cx-client-risk-table">
+              <div className="cx-client-risk-header">
+                <span>Client</span>
+                <span>Open</span>
+                <span>Overdue</span>
+                <span>Waiting</span>
+                <span>Next Due</span>
+                <span>Risk</span>
+              </div>
+
+              {clientRisk.map((client) => (
+                <div
+                  className="cx-client-risk-row"
+                  key={client.id}
+                >
+                  <strong>{client.name}</strong>
+                  <span>{client.open}</span>
+
+                  <span className={
+                    client.overdue > 0
+                      ? 'cx-number-danger'
+                      : ''
+                  }>
+                    {client.overdue}
+                  </span>
+
+                  <span>{client.waiting}</span>
+                  <span>{client.nextDue || '—'}</span>
+
+                  <Chip
+                    value={client.risk}
+                    tone={
+                      client.risk === 'HIGH'
+                        ? 'danger'
+                        : client.risk === 'MEDIUM'
+                          ? 'warn'
+                          : 'ok'
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="cx-executive-panel activity">
+          <div className="cx-executive-panel-head">
+            <div>
+              <span className="cx-panel-kicker">Latest Movement</span>
+              <h2>Recent Firm Activity</h2>
+            </div>
+          </div>
+
+          {recentActivity.length === 0 ? (
+            <div className="cx-executive-empty">
+              No recent activity available.
+            </div>
+          ) : (
+            <div className="cx-activity-feed">
+              {recentActivity.map((row) => (
+                <div
+                  className="cx-activity-item"
+                  key={String(row.id)}
+                >
+                  <span className="cx-activity-dot" />
+
+                  <div>
+                    <strong>{String(row.title || 'Work item')}</strong>
+
+                    <p>
+                      {String(row.client_name || 'Internal')}
+                      {' · '}
+                      {label(String(row.status || 'UPDATED'))}
+                    </p>
+                  </div>
+
+                  <time>
+                    {String(row.updated_at ?? '')
+                      .slice(0, 16)
+                      .replace('T', ' ')}
+                  </time>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+      </section>
+    </div>
   );
 }
 
@@ -562,6 +1296,7 @@ export function ConsoleApp(): React.JSX.Element {
       <div className="cx-main">
         <header className="cx-top">
           <h2>{NAV.find((n) => n.key === area)?.label}</h2>
+          <GlobalSearch onNavigate={setArea} />
           <span className="cx-user">Signed in - internal plane</span>
         </header>
         <div className="cx-body">{view}</div>
