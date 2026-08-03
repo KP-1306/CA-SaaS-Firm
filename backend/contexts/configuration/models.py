@@ -10,6 +10,27 @@ class CatalogueStatus(models.TextChoices):
     INACTIVE = "INACTIVE", "Inactive"
 
 
+class RequirementSetStatus(models.TextChoices):
+    DRAFT = "DRAFT", "Draft"
+    ACTIVE = "ACTIVE", "Active"
+    RETIRED = "RETIRED", "Retired"
+
+
+class RequirementDocumentCategory(models.TextChoices):
+    GST = "GST", "GST"
+    TDS = "TDS", "TDS"
+    INCOME_TAX = "INCOME_TAX", "Income Tax"
+    ROC_MCA = "ROC_MCA", "ROC / MCA"
+    AUDIT = "AUDIT", "Audit"
+    ACCOUNTING = "ACCOUNTING", "Accounting"
+    PAYROLL = "PAYROLL", "Payroll"
+    BANKING = "BANKING", "Banking"
+    REGISTRATION = "REGISTRATION", "Registration"
+    IDENTITY_KYC = "IDENTITY_KYC", "Identity / KYC"
+    LEGAL = "LEGAL", "Legal"
+    OTHER = "OTHER", "Other"
+
+
 class Vertical(TenantModel):
     name = models.CharField(max_length=160)
     code = models.CharField(max_length=40)
@@ -47,3 +68,137 @@ class Service(TenantModel):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["tenant_id", "domain_id", "code"], name="uq_service_code_domain")]
         ordering = ["name"]
+
+
+class ServiceDocumentRequirementSet(TenantModel):
+    """Versioned document checklist owned by one configured service.
+
+    Historical sets are retained so work created under an older regulatory
+    checklist can continue to use that checklist without being silently
+    changed by later configuration updates.
+    """
+
+    service_id = models.UUIDField(db_index=True)
+    name = models.CharField(max_length=180)
+    version_number = models.PositiveIntegerField(default=1)
+    effective_from = models.DateField(null=True, blank=True, db_index=True)
+    effective_until = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=RequirementSetStatus.choices,
+        default=RequirementSetStatus.DRAFT,
+        db_index=True,
+    )
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = [
+            "service_id",
+            "-version_number",
+            "-effective_from",
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "tenant_id",
+                    "service_id",
+                    "version_number",
+                ],
+                name="uq_docreqset_service_version",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "service_id",
+                    "status",
+                ],
+                name="idx_docreqset_service_status",
+            ),
+        ]
+
+
+class ServiceDocumentRequirement(TenantModel):
+    """One document definition inside a service requirement set."""
+
+    requirement_set_id = models.UUIDField(db_index=True)
+    service_id = models.UUIDField(db_index=True)
+
+    name = models.CharField(max_length=200)
+    code = models.CharField(max_length=60)
+    description = models.TextField(blank=True)
+
+    category = models.CharField(
+        max_length=20,
+        choices=RequirementDocumentCategory.choices,
+        default=RequirementDocumentCategory.OTHER,
+        db_index=True,
+    )
+
+    mandatory = models.BooleanField(default=True, db_index=True)
+    display_order = models.PositiveIntegerField(default=10)
+
+    financial_year_required = models.BooleanField(default=False)
+    assessment_year_required = models.BooleanField(default=False)
+    filing_period_required = models.BooleanField(default=False)
+
+    expiry_applicable = models.BooleanField(default=False)
+    expiry_reminder_days = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+    )
+
+    requires_review = models.BooleanField(default=True)
+    allow_multiple_versions = models.BooleanField(default=True)
+    allow_multiple_files = models.BooleanField(default=False)
+
+    allowed_extensions = models.CharField(
+        max_length=250,
+        blank=True,
+        help_text=(
+            "Comma-separated extensions, for example: "
+            "pdf,xlsx,xls,csv"
+        ),
+    )
+    maximum_file_size_mb = models.PositiveIntegerField(default=15)
+
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = [
+            "display_order",
+            "name",
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "tenant_id",
+                    "requirement_set_id",
+                    "code",
+                ],
+                name="uq_docrequirement_set_code",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "service_id",
+                    "is_active",
+                ],
+                name="idx_docreq_service_active",
+            ),
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "requirement_set_id",
+                    "display_order",
+                ],
+                name="idx_docrequirement_set_order",
+            ),
+        ]

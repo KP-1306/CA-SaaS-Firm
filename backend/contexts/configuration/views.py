@@ -1,6 +1,20 @@
+from django.db import models
+
 from core.api.viewsets import TenantModelViewSet
-from .models import Domain, Service, Vertical
-from .serializers import DomainSerializer, ServiceSerializer, VerticalSerializer
+from .models import (
+    Domain,
+    Service,
+    ServiceDocumentRequirement,
+    ServiceDocumentRequirementSet,
+    Vertical,
+)
+from .serializers import (
+    DomainSerializer,
+    ServiceDocumentRequirementSerializer,
+    ServiceDocumentRequirementSetSerializer,
+    ServiceSerializer,
+    VerticalSerializer,
+)
 
 class VerticalViewSet(TenantModelViewSet):
     queryset = Vertical.objects.all(); serializer_class = VerticalSerializer; search_fields = ["name", "code", "description"]
@@ -12,3 +26,89 @@ class ServiceViewSet(TenantModelViewSet):
     queryset = Service.objects.all(); serializer_class = ServiceSerializer; search_fields = ["name", "code", "description"]
     def get_queryset(self):
         qs=super().get_queryset(); value=self.request.query_params.get("domain_id"); return qs.filter(domain_id=value) if value else qs
+
+
+class ServiceDocumentRequirementSetViewSet(
+    TenantModelViewSet
+):
+    queryset = ServiceDocumentRequirementSet.objects.all()
+    serializer_class = ServiceDocumentRequirementSetSerializer
+
+    search_fields = [
+        "name",
+        "description",
+    ]
+
+    ordering_fields = [
+        "version_number",
+        "effective_from",
+        "effective_until",
+        "status",
+        "created_at",
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        for field in (
+            "service_id",
+            "status",
+            "version_number",
+        ):
+            value = params.get(field)
+
+            if value not in (None, ""):
+                qs = qs.filter(**{field: value})
+
+        active_on = params.get("active_on")
+
+        if active_on:
+            qs = qs.filter(
+                effective_from__lte=active_on,
+            ).filter(
+                models.Q(effective_until__isnull=True)
+                | models.Q(effective_until__gte=active_on)
+            )
+
+        return qs
+
+
+class ServiceDocumentRequirementViewSet(
+    TenantModelViewSet
+):
+    queryset = ServiceDocumentRequirement.objects.all()
+    serializer_class = ServiceDocumentRequirementSerializer
+
+    search_fields = [
+        "name",
+        "code",
+        "description",
+        "allowed_extensions",
+    ]
+
+    ordering_fields = [
+        "display_order",
+        "name",
+        "category",
+        "mandatory",
+        "created_at",
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        for field in (
+            "requirement_set_id",
+            "service_id",
+            "category",
+            "mandatory",
+            "is_active",
+        ):
+            value = params.get(field)
+
+            if value not in (None, ""):
+                qs = qs.filter(**{field: value})
+
+        return qs

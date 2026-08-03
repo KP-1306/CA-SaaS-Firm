@@ -4,7 +4,13 @@ from django.urls import URLPattern, URLResolver, include, path
 from rest_framework.routers import DefaultRouter
 
 from contexts.clients.views import ClientBranchViewSet, ClientContactViewSet, ClientGSTRegistrationViewSet, ClientViewSet
-from contexts.configuration.views import DomainViewSet, ServiceViewSet, VerticalViewSet
+from contexts.configuration.views import (
+    DomainViewSet,
+    ServiceDocumentRequirementSetViewSet,
+    ServiceDocumentRequirementViewSet,
+    ServiceViewSet,
+    VerticalViewSet,
+)
 from contexts.identity.views import EmployeeExpertiseViewSet, EmployeeViewSet
 from contexts.work.views import (
     DocumentAttachmentViewSet,
@@ -66,6 +72,16 @@ router.register("client-branches", ClientBranchViewSet, basename="client-branch"
 router.register("verticals", VerticalViewSet, basename="vertical")
 router.register("domains", DomainViewSet, basename="domain")
 router.register("services", ServiceViewSet, basename="service")
+router.register(
+    "service-document-requirement-sets",
+    ServiceDocumentRequirementSetViewSet,
+    basename="service-document-requirement-set",
+)
+router.register(
+    "service-document-requirements",
+    ServiceDocumentRequirementViewSet,
+    basename="service-document-requirement",
+)
 router.register("work-items", WorkItemViewSet, basename="work-item")
 router.register("work-notes", WorkNoteViewSet, basename="work-note")
 router.register("document-requests", DocumentRequestViewSet, basename="document-request")
