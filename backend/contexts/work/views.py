@@ -25,6 +25,18 @@ from contexts.configuration.models import (
     ServiceDocumentRequirementSet,
 )
 from contexts.identity.models import Employee
+from contexts.quality.services import (
+    cycle_summary as qa_cycle_summary,
+    mark_approved as qa_mark_approved,
+    mark_changes_requested as qa_mark_changes_requested,
+    mark_submitted as qa_mark_submitted,
+    prepare_cycle as qa_prepare_cycle,
+    qa_readiness,
+    raise_issue as qa_raise_issue,
+    resolve_issue as qa_resolve_issue,
+    review_history as qa_review_history,
+    save_responses as qa_save_responses,
+)
 
 from . import ownership
 from .document_intelligence import calculate_document_readiness
@@ -708,6 +720,150 @@ class WorkItemViewSet(TenantModelViewSet):
     # -- explicit review verbs -----------------------------------------
     @action(
         detail=True,
+        methods=["post"],
+        url_path="prepare-qa",
+    )
+    def prepare_qa(self, request, pk=None):
+        item = self.get_object()
+        if not ownership.is_owner(item, self.principal()):
+            raise PermissionDenied(
+                "Only the assigned owner may prepare the QA checklist."
+            )
+        try:
+            cycle = qa_prepare_cycle(item, self.principal())
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(
+            {
+                "qa_enabled": cycle is not None,
+                "cycle": qa_cycle_summary(cycle),
+                "qa_readiness": qa_readiness(item),
+            }
+        )
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="qa-readiness",
+    )
+    def qa_readiness_action(self, request, pk=None):
+        item = self.get_object()
+        return Response(qa_readiness(item))
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="qa-review-history",
+    )
+    def qa_review_history_action(self, request, pk=None):
+        item = self.get_object()
+        return Response(qa_review_history(item))
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="save-preparer-checklist",
+    )
+    def save_preparer_checklist(self, request, pk=None):
+        item = self.get_object()
+        if not ownership.is_owner(item, self.principal()):
+            raise PermissionDenied(
+                "Only the assigned owner may complete the preparer checklist."
+            )
+        try:
+            cycle = qa_save_responses(
+                item,
+                self.principal(),
+                request.data or {},
+                role="preparer",
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(
+            {
+                "cycle": qa_cycle_summary(cycle),
+                "qa_readiness": qa_readiness(item),
+            }
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="save-reviewer-checklist",
+    )
+    def save_reviewer_checklist(self, request, pk=None):
+        item = self.get_object()
+        self._require_reviewer(item)
+        try:
+            cycle = qa_save_responses(
+                item,
+                self.principal(),
+                request.data or {},
+                role="reviewer",
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(
+            {
+                "cycle": qa_cycle_summary(cycle),
+                "qa_readiness": qa_readiness(item),
+            }
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="raise-qa-issue",
+    )
+    def raise_qa_issue_action(self, request, pk=None):
+        item = self.get_object()
+        self._require_reviewer(item)
+        try:
+            issue = qa_raise_issue(
+                item,
+                self.principal(),
+                request.data or {},
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(
+            {
+                "issue_id": str(issue.id),
+                "qa_readiness": qa_readiness(item),
+            },
+            status=201,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="resolve-qa-issue",
+    )
+    def resolve_qa_issue_action(self, request, pk=None):
+        item = self.get_object()
+        if not ownership.is_owner(item, self.principal()):
+            raise PermissionDenied(
+                "Only the assigned owner may resolve a QA correction."
+            )
+        try:
+            issue = qa_resolve_issue(
+                item,
+                self.principal(),
+                (request.data or {}).get("issue_id"),
+                (request.data or {}).get("comment"),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(
+            {
+                "issue_id": str(issue.id),
+                "status": issue.status,
+                "qa_readiness": qa_readiness(item),
+            }
+        )
+
+    @action(
+        detail=True,
         methods=["get"],
         url_path="document-readiness",
     )
@@ -740,7 +896,6 @@ class WorkItemViewSet(TenantModelViewSet):
             )
 
         readiness = calculate_document_readiness(item)
-
         if not readiness["ready_for_review"]:
             return Response(
                 {
@@ -754,8 +909,34 @@ class WorkItemViewSet(TenantModelViewSet):
                 status=400,
             )
 
-        item.submitted_for_review_at = timezone.now()
+        try:
+            qa_prepare_cycle(item, self.principal())
+            qa_state = qa_readiness(item)
+            if qa_state["enabled"] and not qa_state["ready_for_submission"]:
+                return Response(
+                    {
+                        "detail": "QA preparer checklist is incomplete.",
+                        "code": "QA_CHECKLIST_BLOCKED",
+                        "qa_readiness": qa_state,
+                    },
+                    status=400,
+                )
+            cycle = qa_mark_submitted(
+                item,
+                self.principal(),
+                (request.data or {}).get("comment", ""),
+            )
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "code": "QA_CHECKLIST_BLOCKED",
+                    "qa_readiness": qa_readiness(item),
+                },
+                status=400,
+            )
 
+        item.submitted_for_review_at = timezone.now()
         self._transition(
             item,
             WorkStatus.READY_FOR_REVIEW,
@@ -763,16 +944,21 @@ class WorkItemViewSet(TenantModelViewSet):
             update_fields={"submitted_for_review_at"},
         )
 
-        return Response(self.get_serializer(item).data)
+        data = self.get_serializer(item).data
+        data["qa_review"] = qa_cycle_summary(cycle)
+        return Response(data)
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         item = self.get_object()
         self._require_reviewer(item)
         if item.status != WorkStatus.READY_FOR_REVIEW:
-            return Response({"detail": "Only work that is ready for review can be approved."}, status=400)
-        readiness = calculate_document_readiness(item)
+            return Response(
+                {"detail": "Only work that is ready for review can be approved."},
+                status=400,
+            )
 
+        readiness = calculate_document_readiness(item)
         if not readiness["ready_for_review"]:
             return Response(
                 {
@@ -782,34 +968,76 @@ class WorkItemViewSet(TenantModelViewSet):
                 },
                 status=400,
             )
-        comment = request.data.get("comment", "")
+
+        qa_state = qa_readiness(item)
+        if qa_state["enabled"] and not qa_state["ready_for_approval"]:
+            return Response(
+                {
+                    "detail": "QA reviewer checklist or issues are incomplete.",
+                    "code": "QA_REVIEW_BLOCKED",
+                    "qa_readiness": qa_state,
+                },
+                status=400,
+            )
+
+        comment = (request.data or {}).get("comment", "")
+        try:
+            cycle = qa_mark_approved(item, self.principal(), comment)
+        except ValueError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "code": "QA_REVIEW_BLOCKED",
+                    "qa_readiness": qa_readiness(item),
+                },
+                status=400,
+            )
+
         with transaction.atomic():
             item.completed_at = timezone.now()
             if comment:
                 item.review_comment = comment
             self._transition(
-                item, WorkStatus.COMPLETED, comment or "Approved and completed.",
+                item,
+                WorkStatus.COMPLETED,
+                comment or "Approved and completed.",
                 update_fields={"completed_at", "review_comment"},
             )
-        return Response(self.get_serializer(item).data)
+
+        data = self.get_serializer(item).data
+        data["qa_review"] = qa_cycle_summary(cycle)
+        return Response(data)
 
     @action(detail=True, methods=["post"])
     def return_for_rework(self, request, pk=None):
         item = self.get_object()
         self._require_reviewer(item)
         if item.status != WorkStatus.READY_FOR_REVIEW:
-            return Response({"detail": "Only work that is ready for review can be returned."}, status=400)
-        comment = request.data.get("comment", "")
+            return Response(
+                {"detail": "Only work that is ready for review can be returned."},
+                status=400,
+            )
+        comment = (request.data or {}).get("comment", "")
         if not comment:
-            return Response({"detail": "A review comment is required to return work for rework."}, status=400)
+            return Response(
+                {"detail": "A review comment is required to return work for rework."},
+                status=400,
+            )
+
+        cycle = qa_mark_changes_requested(item, self.principal(), comment)
         with transaction.atomic():
             item.review_comment = comment
             item.completed_at = None
             self._transition(
-                item, WorkStatus.REWORK_REQUIRED, f"Returned for rework: {comment}",
+                item,
+                WorkStatus.REWORK_REQUIRED,
+                f"Returned for rework: {comment}",
                 update_fields={"review_comment", "completed_at"},
             )
-        return Response(self.get_serializer(item).data)
+
+        data = self.get_serializer(item).data
+        data["qa_review"] = qa_cycle_summary(cycle)
+        return Response(data)
 
     @action(detail=True, methods=["post"])
     def assign(self, request, pk=None):
