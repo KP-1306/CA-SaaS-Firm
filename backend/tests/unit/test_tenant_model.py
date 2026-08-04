@@ -160,7 +160,7 @@ class TestMigrationSerialisation:
 # --------------------------------------------------------------------------- #
 
 
-class _TenantThing(TenantModel):
+class TenantThing(TenantModel):
     """Concrete subclass existing only for row_version persistence tests.
 
     Bound to the installed ``core_health`` app label so Django can resolve it;
@@ -168,7 +168,7 @@ class _TenantThing(TenantModel):
     and its table exists only inside the ``_thing_table`` fixture.
     """
 
-    objects: ClassVar[models.Manager[_TenantThing]] = models.Manager()
+    objects: ClassVar[models.Manager[TenantThing]] = models.Manager()
 
     class Meta:
         app_label = "core_health"
@@ -177,21 +177,21 @@ class _TenantThing(TenantModel):
 @pytest.fixture()
 def _thing_table() -> Iterator[None]:
     with connection.schema_editor() as editor:
-        editor.create_model(_TenantThing)
+        editor.create_model(TenantThing)
     try:
         yield
     finally:
         with connection.schema_editor() as editor:
-            editor.delete_model(_TenantThing)
+            editor.delete_model(TenantThing)
 
 
-@pytest.mark.django_db()
+@pytest.mark.django_db(transaction=True)
 class TestRowVersionPersistence:
     """row_version starts at 0 and advances by one per successful save."""
 
-    def _new(self) -> _TenantThing:
+    def _new(self) -> TenantThing:
         principal = uuid.uuid4()
-        return _TenantThing(tenant_id=uuid.uuid4(), created_by=principal, updated_by=principal)
+        return TenantThing(tenant_id=uuid.uuid4(), created_by=principal, updated_by=principal)
 
     def test_increments_and_persists(self, _thing_table: None) -> None:
         thing = self._new()
@@ -203,7 +203,7 @@ class TestRowVersionPersistence:
         thing.save()
         assert thing.row_version == 2
 
-        reloaded = _TenantThing.objects.get(pk=thing.pk)
+        reloaded = TenantThing.objects.get(pk=thing.pk)
         assert reloaded.row_version == 2
 
     def test_update_fields_persists_the_increment(self, _thing_table: None) -> None:
@@ -216,7 +216,7 @@ class TestRowVersionPersistence:
         thing.save(update_fields={"updated_by"})
         assert thing.row_version == 2
 
-        reloaded = _TenantThing.objects.get(pk=thing.pk)
+        reloaded = TenantThing.objects.get(pk=thing.pk)
         assert reloaded.row_version == 2
 
     def test_save_using_argument_is_accepted(self, _thing_table: None) -> None:
@@ -231,4 +231,4 @@ class TestRowVersionPersistence:
 
         thing.save(force_update=True)
         assert thing.row_version == 2
-        assert _TenantThing.objects.get(pk=thing.pk).row_version == 2
+        assert TenantThing.objects.get(pk=thing.pk).row_version == 2

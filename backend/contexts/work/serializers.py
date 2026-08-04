@@ -195,6 +195,18 @@ class WorkNoteSerializer(serializers.ModelSerializer):
 
 
 class DocumentRequestSerializer(serializers.ModelSerializer):
+    # Preserve the established standalone request contract.
+    #
+    # The model field is nullable, but its conditional uniqueness
+    # constraint can cause ModelSerializer field inference to mark it
+    # as required. Declare it explicitly so requests may remain
+    # standalone while supplied UUID values still receive normal DRF
+    # validation.
+    work_item_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+    )
+
     client_name = serializers.SerializerMethodField()
     requested_from_name = serializers.SerializerMethodField()
     attachment_count = serializers.SerializerMethodField()

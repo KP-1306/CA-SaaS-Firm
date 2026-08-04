@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.test import Client
+
+from config.settings import base as base_settings
 from django.urls import Resolver404, resolve, reverse
 
 
@@ -51,7 +53,10 @@ class TestProjectConfiguration:
 
     def test_database_engine_is_postgresql(self) -> None:
         """PostgreSQL is architecturally mandated: RLS is load-bearing (TAD §5)."""
-        assert settings.DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql"
+        assert (
+            base_settings.DATABASES["default"]["ENGINE"]
+            == "django.db.backends.postgresql"
+        )
 
     def test_timestamps_are_timezone_aware_utc(self) -> None:
         """All timestamps are stored in UTC (TD §1.3)."""

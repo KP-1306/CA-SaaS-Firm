@@ -476,8 +476,8 @@ def test_request_verify_accepts_newest_pending_attachment_and_derives_request_st
 
     http = HttpClient()
     doc = _make_doc(http)
-    first = _upload(http, doc["id"], "first.pdf", content=b"%PDF-1.4", ctype="application/pdf")
-    second = _upload(http, doc["id"], "second.pdf", content=b"%PDF-1.4", ctype="application/pdf")
+    first = _upload(http, doc["id"], "first.pdf", content=b"%PDF-1.4 first-version", ctype="application/pdf")
+    second = _upload(http, doc["id"], "second.pdf", content=b"%PDF-1.4 second-version", ctype="application/pdf")
     assert first.status_code == 201
     assert second.status_code == 201
 
