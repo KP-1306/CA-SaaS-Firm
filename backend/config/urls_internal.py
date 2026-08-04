@@ -49,6 +49,13 @@ from contexts.assignment.views import (
     ReviewerRuleViewSet,
 )
 from contexts.identity.views import SkillCatalogueViewSet
+from contexts.quality.views import (
+    QAReviewCycleViewSet,
+    QAReviewIssueViewSet,
+    QAReviewResponseViewSet,
+    ServiceQAChecklistItemViewSet,
+    ServiceQAChecklistSetViewSet,
+)
 from contexts.insight.views import (
     BrandingView,
     EmployeeDashboardView,
@@ -107,6 +114,19 @@ router.register("reviewer-rules", ReviewerRuleViewSet, basename="reviewer-rule")
 router.register("assignment-decisions", AssignmentDecisionViewSet, basename="assignment-decision")
 router.register("assignment-events", AssignmentEventViewSet, basename="assignment-event")
 router.register("assignment-recommendations", AssignmentRecommendationViewSet, basename="assignment-recommendation")
+router.register(
+    "service-qa-checklist-sets",
+    ServiceQAChecklistSetViewSet,
+    basename="service-qa-checklist-set",
+)
+router.register(
+    "service-qa-checklist-items",
+    ServiceQAChecklistItemViewSet,
+    basename="service-qa-checklist-item",
+)
+router.register("qa-review-cycles", QAReviewCycleViewSet, basename="qa-review-cycle")
+router.register("qa-review-responses", QAReviewResponseViewSet, basename="qa-review-response")
+router.register("qa-review-issues", QAReviewIssueViewSet, basename="qa-review-issue")
 
 urlpatterns: list[URLPattern | URLResolver] = [
     path("", bootstrap, name="bootstrap"),
