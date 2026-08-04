@@ -1,6 +1,12 @@
 import type * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { act, list, save, uploadMany } from './api';
+import {
+  act,
+  ApiRequestError,
+  list,
+  save,
+  uploadMany,
+} from './api';
 import {
   DOCUMENT_CATEGORIES,
   WORK_PRIORITY,
@@ -117,16 +123,36 @@ export async function executePendingDocumentDecision(
   });
 }
 
+type DuplicateResolution =
+  | 'CONFIRMED_DUPLICATE'
+  | 'KEPT_AS_VERSION';
+
 type AttachmentListProps = {
   rows: Row[];
   pendingDecision?: PendingDocumentDecision | null;
-  onSelectReview?: (attachment: Row, status: 'ACCEPTED' | 'REJECTED') => void;
+  onSelectReview?: (
+    attachment: Row,
+    status: 'ACCEPTED' | 'REJECTED',
+  ) => void;
+  onResolveDuplicate?:
+    | ((
+        attachment: Row,
+        resolution: DuplicateResolution,
+      ) => void)
+    | undefined;
+  onMarkCanonical?:
+    | ((attachment: Row) => void)
+    | undefined;
+  canOperateVersions?: boolean;
 };
 
 function AttachmentList({
   rows,
   pendingDecision = null,
   onSelectReview,
+  onResolveDuplicate,
+  onMarkCanonical,
+  canOperateVersions = false,
 }: AttachmentListProps): React.JSX.Element {
   if (rows.length === 0) {
     return <p style={{ color: '#64748b', fontSize: 13 }}>No files uploaded.</p>;
@@ -135,21 +161,61 @@ function AttachmentList({
     <ul className="cx-file-list">
       {rows.map((attachment) => {
         const attachmentId = String(attachment.id);
-        const reviewStatus = String(attachment.review_status || 'PENDING_REVIEW');
-        const isPending = reviewStatus === 'PENDING_REVIEW';
+
+        const reviewStatus = String(
+          attachment.review_status || 'PENDING_REVIEW',
+        );
+
+        const duplicateResolution = String(
+          attachment.duplicate_resolution ||
+            'NOT_APPLICABLE',
+        );
+
+        const isPending =
+          reviewStatus === 'PENDING_REVIEW';
+
+        const isAccepted =
+          reviewStatus === 'ACCEPTED';
+
+        const unresolvedDuplicate =
+          attachment.is_duplicate === true &&
+          duplicateResolution === 'UNRESOLVED';
         const selected =
           pendingDecision?.kind === 'ATTACHMENT_REVIEW' &&
           pendingDecision.attachmentId === attachmentId;
         return (
-          <li className="cx-file-row" key={attachmentId}>
+          <li
+            className={`cx-file-row${
+              attachment.is_canonical === true
+                ? ' canonical'
+                : ''
+            }${
+              unresolvedDuplicate
+                ? ' duplicate-unresolved'
+                : ''
+            }`}
+            key={attachmentId}
+          >
             <div className="cx-file-main">
               <div className="cx-document-file-title">
                 <a href={String(attachment.download_url)}>
                   {String(attachment.original_name)}
                 </a>
                 <span className="cx-version-badge">
-                  {String(attachment.version_label || `V${attachment.version_number || 1}`)}
+                  {String(
+                    attachment.version_label ||
+                      `V${String(
+                        attachment.version_number || 1,
+                      )}`,
+                  )}
                 </span>
+
+                {attachment.is_canonical === true ? (
+                  <span className="cx-canonical-badge">
+                    Current
+                  </span>
+                ) : null}
+
                 {attachment.is_duplicate === true ? (
                   <span className="cx-duplicate-badge">Duplicate</span>
                 ) : null}
@@ -186,7 +252,74 @@ function AttachmentList({
               ) : null}
             </div>
             <div className="cx-file-review">
-              <Chip value={reviewStatus} tone={statusTone(reviewStatus)} />
+              <Chip
+                value={reviewStatus}
+                tone={statusTone(reviewStatus)}
+              />
+
+              {attachment.is_canonical === true ? (
+                <span className="cx-canonical-status">
+                  Authoritative
+                </span>
+              ) : null}
+
+              {unresolvedDuplicate &&
+              canOperateVersions &&
+              onResolveDuplicate ? (
+                <div className="cx-duplicate-resolution-actions">
+                  <span>Duplicate decision required</span>
+
+                  <button
+                    type="button"
+                    className="cx-btn subtle"
+                    onClick={() =>
+                      onResolveDuplicate(
+                        attachment,
+                        'KEPT_AS_VERSION',
+                      )
+                    }
+                  >
+                    Keep as version
+                  </button>
+
+                  <button
+                    type="button"
+                    className="cx-btn danger"
+                    onClick={() =>
+                      onResolveDuplicate(
+                        attachment,
+                        'CONFIRMED_DUPLICATE',
+                      )
+                    }
+                  >
+                    Confirm duplicate
+                  </button>
+                </div>
+              ) : null}
+
+              {attachment.is_duplicate === true &&
+              !unresolvedDuplicate ? (
+                <span className="cx-duplicate-resolution-status">
+                  {label(duplicateResolution)}
+                </span>
+              ) : null}
+
+              {isAccepted &&
+              attachment.is_canonical !== true &&
+              !unresolvedDuplicate &&
+              canOperateVersions &&
+              onMarkCanonical ? (
+                <button
+                  type="button"
+                  className="cx-btn subtle"
+                  onClick={() =>
+                    onMarkCanonical(attachment)
+                  }
+                >
+                  Mark current
+                </button>
+              ) : null}
+
               {isPending && onSelectReview ? (
                 <div className="cx-doc-actions">
                   <button
@@ -576,7 +709,23 @@ export function DocumentsPanel({
   const [editing, setEditing] = useState<Row | null>(null);
   const [attachments, setAttachments] = useState<Record<string, Row[]>>({});
   const [err, setErr] = useState('');
-  const [pendingDecision, setPendingDecision] = useState<PendingDocumentDecision | null>(null);
+  const [pendingDecision, setPendingDecision] =
+    useState<PendingDocumentDecision | null>(null);
+
+  const [uploadIntentByRequest, setUploadIntentByRequest] =
+    useState<
+      Record<
+        string,
+        'NEW_VERSION' | 'SEPARATE_DOCUMENT'
+      >
+    >({});
+
+  const [duplicateUpload, setDuplicateUpload] =
+    useState<{
+      requestId: string;
+      files: File[];
+      existingAttachment: Row | null;
+    } | null>(null);
 
   const eligibleContacts = contacts.rows.filter(
     (c) => c.is_active && c.can_receive_document_requests !== false,
@@ -735,11 +884,138 @@ export function DocumentsPanel({
       .catch((e: unknown) => setErr(String(e instanceof Error ? e.message : e)));
   };
 
-  const uploadRequestFiles = (row: Row, files: FileList | null): void => {
+  const runRequestUpload = (
+    requestId: string,
+    files: File[],
+    uploadIntent:
+      | 'NEW_VERSION'
+      | 'SEPARATE_DOCUMENT',
+    allowDuplicate = false,
+  ): void => {
+    uploadMany(
+      'document-requests',
+      requestId,
+      'upload',
+      files,
+      {
+        source: 'CLIENT',
+        upload_intent: uploadIntent,
+        allow_duplicate:
+          allowDuplicate ? 'true' : 'false',
+      },
+    )
+      .then(() => {
+        setDuplicateUpload(null);
+        setErr('');
+        docs.reload();
+        loadAttachments(requestId);
+      })
+      .catch((error: unknown) => {
+        if (
+          error instanceof ApiRequestError &&
+          error.status === 409 &&
+          error.payload?.code ===
+            'DUPLICATE_ATTACHMENT'
+        ) {
+          const existing =
+            error.payload.existing_attachment;
+
+          setDuplicateUpload({
+            requestId,
+            files,
+            existingAttachment:
+              existing &&
+              typeof existing === 'object' &&
+              !Array.isArray(existing)
+                ? (existing as Row)
+                : null,
+          });
+
+          setErr('');
+          return;
+        }
+
+        setErr(
+          String(
+            error instanceof Error
+              ? error.message
+              : error,
+          ),
+        );
+      });
+  };
+
+  const uploadRequestFiles = (
+    row: Row,
+    files: FileList | null,
+  ): void => {
     if (!files?.length) return;
-    uploadMany('document-requests', String(row.id), 'upload', Array.from(files), { source: 'CLIENT' })
-      .then(() => { docs.reload(); loadAttachments(String(row.id)); })
-      .catch((e: unknown) => setErr(String(e instanceof Error ? e.message : e)));
+
+    const requestId = String(row.id);
+
+    runRequestUpload(
+      requestId,
+      Array.from(files),
+      uploadIntentByRequest[requestId] ||
+        'NEW_VERSION',
+    );
+  };
+
+  const resolveAttachmentDuplicate = (
+    attachment: Row,
+    resolution: DuplicateResolution,
+  ): void => {
+    const requestId = String(
+      attachment.document_request_id,
+    );
+
+    act(
+      'document-attachments',
+      String(attachment.id),
+      'resolve-duplicate',
+      { resolution },
+    )
+      .then(() => {
+        setErr('');
+        docs.reload();
+        loadAttachments(requestId);
+      })
+      .catch((error: unknown) =>
+        setErr(
+          String(
+            error instanceof Error
+              ? error.message
+              : error,
+          ),
+        ),
+      );
+  };
+
+  const markCanonicalAttachment = (
+    attachment: Row,
+  ): void => {
+    const requestId = String(
+      attachment.document_request_id,
+    );
+
+    act(
+      'document-attachments',
+      String(attachment.id),
+      'mark-canonical',
+    )
+      .then(() => {
+        setErr('');
+        loadAttachments(requestId);
+      })
+      .catch((error: unknown) =>
+        setErr(
+          String(
+            error instanceof Error
+              ? error.message
+              : error,
+          ),
+        ),
+      );
   };
 
   const uploadInternal = (files: FileList | null): void => {
@@ -751,7 +1027,73 @@ export function DocumentsPanel({
 
   return (
     <div>
-      <ErrorBar error={docs.error || contacts.error || internalFiles.error || err} />
+      <ErrorBar
+        error={
+          docs.error ||
+          contacts.error ||
+          internalFiles.error ||
+          err
+        }
+      />
+
+      {duplicateUpload ? (
+        <section className="cx-upload-conflict">
+          <div>
+            <span className="cx-readiness-eyebrow">
+              Duplicate file detected
+            </span>
+
+            <strong>
+              This exact file already exists.
+            </strong>
+
+            <p>
+              {duplicateUpload.existingAttachment
+                ? `Existing file: ${String(
+                    duplicateUpload.existingAttachment
+                      .original_name ||
+                      'Earlier upload',
+                  )} · ${String(
+                    duplicateUpload.existingAttachment
+                      .version_label ||
+                      `V${String(
+                        duplicateUpload
+                          .existingAttachment
+                          .version_number || 1,
+                      )}`,
+                  )}`
+                : 'The uploaded content matches an earlier attachment.'}
+            </p>
+          </div>
+
+          <div className="cx-upload-conflict-actions">
+            <button
+              type="button"
+              className="cx-btn subtle"
+              onClick={() =>
+                setDuplicateUpload(null)
+              }
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              className="cx-btn"
+              onClick={() =>
+                runRequestUpload(
+                  duplicateUpload.requestId,
+                  duplicateUpload.files,
+                  'NEW_VERSION',
+                  true,
+                )
+              }
+            >
+              Upload as version
+            </button>
+          </div>
+        </section>
+      ) : null}
       <div className="cx-subhead"><h4>Internal work documents</h4>{canUploadInternal ? (<label className="cx-btn subtle" style={{ cursor: 'pointer' }}>Upload files<input type="file" multiple style={{ display: 'none' }} onChange={(e) => uploadInternal(e.target.files)} /></label>) : (<span className="cx-readonly-note">Upload locked at this stage</span>)}</div>
       <AttachmentList rows={internalFiles.rows.filter((a) => !a.document_request_id)} />
       <section
@@ -1102,7 +1444,57 @@ export function DocumentsPanel({
           </div>
 
           <div className="cx-doc-actions">
-            <label className="cx-btn subtle" style={{ cursor: 'pointer' }}>Upload files<input type="file" multiple style={{ display: 'none' }} onChange={(e) => uploadRequestFiles(d, e.target.files)} /></label>
+            <div className="cx-version-upload-control">
+              <select
+                aria-label={`Upload intent for ${String(
+                  d.name,
+                )}`}
+                value={
+                  uploadIntentByRequest[String(d.id)] ||
+                  'NEW_VERSION'
+                }
+                onChange={(event) =>
+                  setUploadIntentByRequest(
+                    (current) => ({
+                      ...current,
+                      [String(d.id)]:
+                        event.target.value as
+                          | 'NEW_VERSION'
+                          | 'SEPARATE_DOCUMENT',
+                    }),
+                  )
+                }
+              >
+                <option value="NEW_VERSION">
+                  Upload as new version
+                </option>
+
+                <option value="SEPARATE_DOCUMENT">
+                  Upload as separate document
+                </option>
+              </select>
+
+              <label
+                className="cx-btn subtle"
+                style={{ cursor: 'pointer' }}
+              >
+                Upload files
+
+                <input
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    uploadRequestFiles(
+                      d,
+                      event.target.files,
+                    );
+
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
             <button className="cx-btn subtle" onClick={() => selectWaiver(d)}>Waive request</button>
           </div>
           {pendingDecision?.requestId === String(d.id) ? (
@@ -1118,6 +1510,19 @@ export function DocumentsPanel({
             rows={attachments[String(d.id)] ?? []}
             pendingDecision={pendingDecision}
             onSelectReview={selectAttachmentDecision}
+            onResolveDuplicate={
+              workItem.can_review === true
+                ? resolveAttachmentDuplicate
+                : undefined
+            }
+            onMarkCanonical={
+              workItem.can_review === true
+                ? markCanonicalAttachment
+                : undefined
+            }
+            canOperateVersions={
+              workItem.can_review === true
+            }
           />
         </div>
       ))}
