@@ -200,3 +200,58 @@ def access_permission(access_code: str) -> type[HasAccess]:
     )
 
     return BoundAccessPermission
+
+class ActionAccessPermission(BasePermission):
+    """
+    Resolve a capability from the current DRF action.
+
+    Existing header-principal requests remain available only when the explicit
+    test/development compatibility setting is enabled. Production session
+    requests always use the certified AccessProfile resolver.
+    """
+
+    action_access_map: dict[str, str] = {}
+
+    def has_permission(self, request: Any, view: Any) -> bool:
+        from django.conf import settings
+
+        account = getattr(request, "vridhi_account", None)
+        membership = getattr(request, "vridhi_membership", None)
+
+        if account is None or membership is None:
+            if bool(
+                getattr(
+                    settings,
+                    "ALLOW_HEADER_PRINCIPAL_AUTH",
+                    False,
+                )
+            ):
+                return True
+
+            raise AuthorizationDenied(
+                "A session-authenticated Vridhi account is required."
+            )
+
+        action = str(getattr(view, "action", "") or "")
+        access_code = self.action_access_map.get(action)
+
+        if not access_code:
+            raise RuntimeError(
+                f"No access capability is configured for action: {action or 'unknown'}."
+            )
+
+        require_access(request, access_code)
+        return True
+
+
+class ClientAccessPermission(ActionAccessPermission):
+    """Client and client-child CRUD authorization."""
+
+    action_access_map = {
+        "list": "clients.view",
+        "retrieve": "clients.view",
+        "create": "clients.create",
+        "update": "clients.edit",
+        "partial_update": "clients.edit",
+        "destroy": "clients.delete",
+    }
