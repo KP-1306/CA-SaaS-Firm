@@ -152,6 +152,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("auth/me/", VridhiMeView.as_view(), name="vridhi-me"),
     path("auth/password-change/", VridhiPasswordChangeView.as_view(), name="vridhi-password-change"),
     path("auth/sessions/", VridhiSessionsView.as_view(), name="vridhi-sessions"),
+    path("authorization/", include("contexts.authorization.urls")),
     path("identity/consultants/", ConsultantCollectionView.as_view(), name="consultant-list"),
     path("identity/consultants/<uuid:account_id>/", ConsultantDetailView.as_view(), name="consultant-detail"),
     path("identity/consultants/<uuid:account_id>/status/", ConsultantStatusView.as_view(), name="consultant-status"),
