@@ -2447,3 +2447,177 @@ button.cx-btn.pending { box-shadow: 0 0 0 2px #f59e0b; }
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Vridhi service-driven operational work */
+.cx-operational-fields {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(
+    --cx-border,
+    #dfe4ea
+  );
+  border-radius: 14px;
+  background: rgba(
+    248,
+    250,
+    252,
+    0.72
+  );
+}
+
+.cx-operational-fields-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.cx-operational-fields-heading h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.cx-operational-fields-heading p {
+  margin: 4px 0 0;
+  color: var(
+    --cx-muted,
+    #667085
+  );
+  font-size: 0.88rem;
+}
+
+.cx-operational-field-count {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #475467;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.cx-operational-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(230px, 1fr)
+  );
+  gap: 14px 16px;
+}
+
+.cx-operational-field {
+  margin: 0;
+}
+
+.cx-operational-field.wide {
+  grid-column: 1 / -1;
+}
+
+.cx-required-marker {
+  color: #b42318;
+  font-weight: 700;
+}
+
+.cx-field-help {
+  display: block;
+  margin-top: 5px;
+  color: var(
+    --cx-muted,
+    #667085
+  );
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.cx-operational-service-prompt {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px dashed #c7d0dc;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #667085;
+  font-size: 0.88rem;
+}
+
+.cx-checklist-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.cx-checklist-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.cx-checklist-state.missing {
+  border-color: #d0d5dd;
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.cx-checklist-state.missing
+.cx-checklist-state-icon {
+  background: #d0d5dd;
+  color: #475467;
+}
+
+.cx-checklist-state.pending {
+  border-color: #fedf89;
+  background: #fffaeb;
+  color: #93370d;
+}
+
+.cx-checklist-state.pending
+.cx-checklist-state-icon {
+  background: #f79009;
+  color: #ffffff;
+}
+
+.cx-checklist-state.received {
+  border-color: #a6f4c5;
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.cx-checklist-state.received
+.cx-checklist-state-icon {
+  background: #12b76a;
+  color: #ffffff;
+}
+
+.cx-checklist-state.rejected {
+  border-color: #fecdca;
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.cx-checklist-state.rejected
+.cx-checklist-state-icon {
+  background: #f04438;
+  color: #ffffff;
+}
+
+@media (max-width: 720px) {
+  .cx-operational-fields-heading {
+    flex-direction: column;
+  }
+
+  .cx-operational-fields-grid {
+    grid-template-columns: 1fr;
+  }
+}

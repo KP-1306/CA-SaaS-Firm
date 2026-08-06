@@ -31,6 +31,16 @@ class RequirementDocumentCategory(models.TextChoices):
     OTHER = "OTHER", "Other"
 
 
+
+class OperationalFieldType(models.TextChoices):
+    TEXT = "TEXT", "Text"
+    LONG_TEXT = "LONG_TEXT", "Long text"
+    NUMBER = "NUMBER", "Number"
+    DATE = "DATE", "Date"
+    BOOLEAN = "BOOLEAN", "Yes / No"
+    SELECT = "SELECT", "Selection"
+
+
 class Vertical(TenantModel):
     name = models.CharField(max_length=160)
     code = models.CharField(max_length=40)
@@ -200,5 +210,49 @@ class ServiceDocumentRequirement(TenantModel):
                     "display_order",
                 ],
                 name="idx_docrequirement_set_order",
+            ),
+        ]
+
+
+class ServiceOperationalField(TenantModel):
+    """
+    One operational field shown for work belonging to a service.
+
+    The field definition belongs to the service catalogue. Individual values
+    are stored on WorkItem.operational_data.
+    """
+
+    service_id = models.UUIDField(db_index=True)
+    key = models.CharField(max_length=80)
+    label = models.CharField(max_length=180)
+    field_type = models.CharField(
+        max_length=20,
+        choices=OperationalFieldType.choices,
+        default=OperationalFieldType.TEXT,
+    )
+    help_text = models.TextField(blank=True)
+    placeholder = models.CharField(max_length=200, blank=True)
+    required = models.BooleanField(default=False, db_index=True)
+    options = models.JSONField(default=list, blank=True)
+    display_order = models.PositiveIntegerField(default=10)
+    is_active = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        ordering = ["display_order", "label", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant_id", "service_id", "key"],
+                name="uq_service_operational_field_key",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "service_id",
+                    "is_active",
+                    "display_order",
+                ],
+                name="idx_service_operational_fields",
             ),
         ]

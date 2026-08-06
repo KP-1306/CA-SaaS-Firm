@@ -52,6 +52,14 @@ class WorkItem(TenantModel):
     submitted_for_review_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     estimated_hours = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    operational_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Service-specific operational values captured "
+            "for this work item."
+        ),
+    )
 
     class Meta:
         ordering = ["due_date", "-created_at"]

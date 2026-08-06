@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from rest_framework import serializers
 
 from .models import (
@@ -8,6 +9,7 @@ from .models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
     Vertical,
+    ServiceOperationalField,
 )
 
 
@@ -266,3 +268,134 @@ class ServiceDocumentRequirementSerializer(
             if requirement_set
             else None
         )
+
+
+class ServiceOperationalFieldSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = ServiceOperationalField
+        fields = "__all__"
+        read_only_fields = (
+            "id",
+            "tenant_id",
+            "created_at",
+            "created_by",
+            "updated_at",
+            "updated_by",
+            "row_version",
+        )
+        validators = []
+
+    def validate(self, attrs):
+        instance = getattr(self, "instance", None)
+
+        service_id = attrs.get(
+            "service_id",
+            getattr(instance, "service_id", None),
+        )
+
+        key = str(
+            attrs.get(
+                "key",
+                getattr(instance, "key", ""),
+            )
+            or ""
+        ).strip().lower()
+
+        label = str(
+            attrs.get(
+                "label",
+                getattr(instance, "label", ""),
+            )
+            or ""
+        ).strip()
+
+        field_type = attrs.get(
+            "field_type",
+            getattr(instance, "field_type", "TEXT"),
+        )
+
+        options = attrs.get(
+            "options",
+            getattr(instance, "options", []),
+        )
+
+        if not re.fullmatch(r"[a-z][a-z0-9_]{1,79}", key):
+            raise serializers.ValidationError(
+                {
+                    "key": (
+                        "Use a lowercase key beginning with a letter "
+                        "and containing only letters, numbers and "
+                        "underscores."
+                    )
+                }
+            )
+
+        if not label:
+            raise serializers.ValidationError(
+                {"label": "A field label is required."}
+            )
+
+        if field_type == "SELECT":
+            if not isinstance(options, list):
+                raise serializers.ValidationError(
+                    {
+                        "options": (
+                            "Selection options must be provided as a list."
+                        )
+                    }
+                )
+
+            cleaned_options = []
+
+            for value in options:
+                text = str(value).strip()
+
+                if text and text not in cleaned_options:
+                    cleaned_options.append(text)
+
+            if not cleaned_options:
+                raise serializers.ValidationError(
+                    {
+                        "options": (
+                            "At least one option is required for a "
+                            "selection field."
+                        )
+                    }
+                )
+
+            attrs["options"] = cleaned_options
+        else:
+            attrs["options"] = []
+
+        request = self.context.get("request")
+        tenant_id = (
+            getattr(getattr(request, "user", None), "tenant_id", None)
+            if request
+            else None
+        )
+
+        duplicate = ServiceOperationalField.objects.filter(
+            tenant_id=tenant_id,
+            service_id=service_id,
+            key=key,
+        )
+
+        if instance is not None:
+            duplicate = duplicate.exclude(pk=instance.pk)
+
+        if duplicate.exists():
+            raise serializers.ValidationError(
+                {
+                    "key": (
+                        "This operational field key already exists "
+                        "for the selected service."
+                    )
+                }
+            )
+
+        attrs["key"] = key
+        attrs["label"] = label
+
+        return attrs

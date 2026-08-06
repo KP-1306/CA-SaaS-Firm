@@ -7,6 +7,7 @@ from .models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
     Vertical,
+    ServiceOperationalField,
 )
 from .serializers import (
     DomainSerializer,
@@ -14,6 +15,7 @@ from .serializers import (
     ServiceDocumentRequirementSetSerializer,
     ServiceSerializer,
     VerticalSerializer,
+    ServiceOperationalFieldSerializer,
 )
 
 class VerticalViewSet(TenantModelViewSet):
@@ -104,6 +106,43 @@ class ServiceDocumentRequirementViewSet(
             "service_id",
             "category",
             "mandatory",
+            "is_active",
+        ):
+            value = params.get(field)
+
+            if value not in (None, ""):
+                qs = qs.filter(**{field: value})
+
+        return qs
+
+
+class ServiceOperationalFieldViewSet(TenantModelViewSet):
+    queryset = ServiceOperationalField.objects.all()
+    serializer_class = ServiceOperationalFieldSerializer
+
+    search_fields = [
+        "key",
+        "label",
+        "help_text",
+        "placeholder",
+    ]
+
+    ordering_fields = [
+        "display_order",
+        "label",
+        "field_type",
+        "required",
+        "created_at",
+    ]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        for field in (
+            "service_id",
+            "field_type",
+            "required",
             "is_active",
         ):
             value = params.get(field)

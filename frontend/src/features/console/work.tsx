@@ -224,9 +224,9 @@ function AttachmentList({
 
               <div className="cx-muted">
                 {label(String(attachment.source))}
-                {' · '}
+                {' Â· '}
                 {formatBytes(attachment.size_bytes)}
-                {' · '}
+                {' Â· '}
                 {String(attachment.created_at ?? '').slice(0, 16).replace('T', ' ')}
               </div>
 
@@ -364,9 +364,9 @@ function documentDependencyReason(row: Row): string {
 
   switch (String(row.status)) {
     case 'REJECTED':
-      return 'Rejected — upload a corrected document';
+      return 'Rejected â€” upload a corrected document';
     case 'RECEIVED':
-      return 'Received — waiting for acceptance';
+      return 'Received â€” waiting for acceptance';
     case 'PARTIALLY_RECEIVED':
       return 'Partially received';
     case 'REQUESTED':
@@ -559,7 +559,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'EXPIRED',
-        message: 'Expired — obtain a valid replacement',
+        message: 'Expired â€” obtain a valid replacement',
         priority: 10,
         document: row,
       });
@@ -594,7 +594,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'REJECTED',
-        message: 'Rejected — corrected document required',
+        message: 'Rejected â€” corrected document required',
         priority: 15,
         document: row,
       });
@@ -608,7 +608,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'PENDING_REVIEW',
-        message: 'Uploaded — review and accept or reject',
+        message: 'Uploaded â€” review and accept or reject',
         priority: 30,
         document: row,
       });
@@ -692,6 +692,343 @@ function documentQueueTone(
 
   return 'muted';
 }
+
+
+export type ServiceOperationalFieldDefinition = {
+  id: string;
+  service_id: string;
+  key: string;
+  label: string;
+  field_type:
+    | 'TEXT'
+    | 'LONG_TEXT'
+    | 'NUMBER'
+    | 'DATE'
+    | 'BOOLEAN'
+    | 'SELECT';
+  help_text?: string;
+  placeholder?: string;
+  required?: boolean;
+  options?: unknown[];
+  display_order?: number;
+  is_active?: boolean;
+};
+
+export type ChecklistVisualState = {
+  key: 'MISSING' | 'PENDING_REVIEW' | 'RECEIVED' | 'REJECTED';
+  label: string;
+  tone: 'missing' | 'pending' | 'received' | 'rejected';
+};
+
+export function checklistVisualState(
+  row: Row,
+): ChecklistVisualState {
+  const accepted = Number(
+    row.accepted_attachment_count ?? 0,
+  );
+
+  const pendingReview = Number(
+    row.pending_review_count ?? 0,
+  );
+
+  const attachmentCount = Number(
+    row.attachment_count ?? 0,
+  );
+
+  const status = String(row.status ?? '');
+  const reviewStatus = String(row.review_status ?? '');
+
+  if (
+    status === 'REJECTED' ||
+    reviewStatus === 'REJECTED'
+  ) {
+    return {
+      key: 'REJECTED',
+      label: 'Document rejected',
+      tone: 'rejected',
+    };
+  }
+
+  if (
+    status === 'ACCEPTED' ||
+    status === 'WAIVED' ||
+    accepted > 0
+  ) {
+    return {
+      key: 'RECEIVED',
+      label:
+        status === 'WAIVED'
+          ? 'Requirement waived'
+          : 'Received and accepted',
+      tone: 'received',
+    };
+  }
+
+  if (
+    pendingReview > 0 ||
+    attachmentCount > 0
+  ) {
+    return {
+      key: 'PENDING_REVIEW',
+      label: 'Uploaded â€” pending review',
+      tone: 'pending',
+    };
+  }
+
+  return {
+    key: 'MISSING',
+    label: 'Required document missing',
+    tone: 'missing',
+  };
+}
+
+
+function operationalValue(
+  values: Row,
+  key: string,
+): unknown {
+  return values[key] ?? '';
+}
+
+
+export function OperationalFieldsPanel({
+  definitions,
+  values,
+  disabled = false,
+  loading = false,
+  onChange,
+}: {
+  definitions: ServiceOperationalFieldDefinition[];
+  values: Row;
+  disabled?: boolean;
+  loading?: boolean;
+  onChange: (
+    key: string,
+    value: unknown,
+  ) => void;
+}): React.JSX.Element | null {
+  const activeDefinitions = definitions
+    .filter(
+      (field) =>
+        field.is_active !== false,
+    )
+    .sort(
+      (left, right) =>
+        Number(left.display_order ?? 10) -
+          Number(right.display_order ?? 10) ||
+        left.label.localeCompare(right.label),
+    );
+
+  if (loading) {
+    return (
+      <section
+        className="cx-operational-fields"
+        aria-label="Operational details"
+      >
+        <div className="cx-operational-fields-heading">
+          <div>
+            <h4>Operational details</h4>
+            <p>
+              Loading fields for the selected serviceâ€¦
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (activeDefinitions.length === 0) {
+    return null;
+  }
+
+  return (
+    <section
+      className="cx-operational-fields"
+      aria-label="Operational details"
+    >
+      <div className="cx-operational-fields-heading">
+        <div>
+          <h4>Operational details</h4>
+          <p>
+            Complete the information required for the
+            selected service.
+          </p>
+        </div>
+
+        <span className="cx-operational-field-count">
+          {activeDefinitions.length}{' '}
+          field
+          {activeDefinitions.length === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      <div className="cx-operational-fields-grid">
+        {activeDefinitions.map((field) => {
+          const fieldId =
+            `operational-${field.key}`;
+
+          const value = operationalValue(
+            values,
+            field.key,
+          );
+
+          const options = Array.isArray(
+            field.options,
+          )
+            ? field.options.map(
+                (option) => String(option),
+              )
+            : [];
+
+          return (
+            <div
+              className={
+                `cx-field cx-operational-field ${
+                  field.field_type === 'LONG_TEXT'
+                    ? 'wide'
+                    : ''
+                }`
+              }
+              key={field.id || field.key}
+            >
+              <label htmlFor={fieldId}>
+                {field.label}
+
+                {field.required ? (
+                  <span
+                    className="cx-required-marker"
+                    aria-label="required"
+                  >
+                    {' '}*
+                  </span>
+                ) : null}
+              </label>
+
+              {field.field_type === 'LONG_TEXT' ? (
+                <textarea
+                  id={fieldId}
+                  value={String(value)}
+                  placeholder={
+                    field.placeholder || ''
+                  }
+                  disabled={disabled}
+                  required={
+                    field.required === true
+                  }
+                  onChange={(event) =>
+                    onChange(
+                      field.key,
+                      event.target.value,
+                    )
+                  }
+                />
+              ) : field.field_type === 'SELECT' ? (
+                <select
+                  id={fieldId}
+                  value={String(value)}
+                  disabled={disabled}
+                  required={
+                    field.required === true
+                  }
+                  onChange={(event) =>
+                    onChange(
+                      field.key,
+                      event.target.value,
+                    )
+                  }
+                >
+                  <option value="">
+                    Select {field.label}
+                  </option>
+
+                  {options.map((option) => (
+                    <option
+                      key={option}
+                      value={option}
+                    >
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : field.field_type === 'BOOLEAN' ? (
+                <select
+                  id={fieldId}
+                  value={
+                    typeof value === 'boolean'
+                      ? String(value)
+                      : ''
+                  }
+                  disabled={disabled}
+                  required={
+                    field.required === true
+                  }
+                  onChange={(event) => {
+                    const selected =
+                      event.target.value;
+
+                    onChange(
+                      field.key,
+                      selected === ''
+                        ? ''
+                        : selected === 'true',
+                    );
+                  }}
+                >
+                  <option value="">
+                    Select Yes or No
+                  </option>
+                  <option value="true">
+                    Yes
+                  </option>
+                  <option value="false">
+                    No
+                  </option>
+                </select>
+              ) : (
+                <input
+                  id={fieldId}
+                  type={
+                    field.field_type === 'NUMBER'
+                      ? 'number'
+                      : field.field_type === 'DATE'
+                        ? 'date'
+                        : 'text'
+                  }
+                  value={String(value)}
+                  placeholder={
+                    field.placeholder || ''
+                  }
+                  disabled={disabled}
+                  required={
+                    field.required === true
+                  }
+                  step={
+                    field.field_type === 'NUMBER'
+                      ? 'any'
+                      : undefined
+                  }
+                  onChange={(event) =>
+                    onChange(
+                      field.key,
+                      event.target.value,
+                    )
+                  }
+                />
+              )}
+
+              {field.help_text ? (
+                <small className="cx-field-help">
+                  {field.help_text}
+                </small>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 
 export function DocumentsPanel({
   workItemId,
@@ -1054,7 +1391,7 @@ export function DocumentsPanel({
                     duplicateUpload.existingAttachment
                       .original_name ||
                       'Earlier upload',
-                  )} · ${String(
+                  )} Â· ${String(
                     duplicateUpload.existingAttachment
                       .version_label ||
                       `V${String(
@@ -1374,7 +1711,7 @@ export function DocumentsPanel({
       </div>
       {eligibleContacts.length === 0 ? (
         <p className="cx-warning">
-          No eligible document contact exists for this client. Add or enable one under Client → Contacts.
+          No eligible document contact exists for this client. Add or enable one under Client â†’ Contacts.
         </p>
       ) : null}
       {docs.loading ? <Loading /> : docs.rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>No documents requested yet.</p> : docs.rows.map((d) => (
@@ -1419,6 +1756,40 @@ export function DocumentsPanel({
                 ) : null}
               </div>
             </div>
+
+            {(() => {
+              const visualState =
+                checklistVisualState(d);
+
+              return (
+                <div
+                  className={
+                    `cx-checklist-state ${
+                      visualState.tone
+                    }`
+                  }
+                  data-state={visualState.key}
+                >
+                  <span
+                    className="cx-checklist-state-icon"
+                    aria-hidden="true"
+                  >
+                    {visualState.key === 'RECEIVED'
+                      ? 'âœ“'
+                      : visualState.key === 'REJECTED'
+                        ? '!'
+                        : visualState.key ===
+                            'PENDING_REVIEW'
+                          ? 'â€¦'
+                          : 'â—‹'}
+                  </span>
+
+                  <span>
+                    {visualState.label}
+                  </span>
+                </div>
+              );
+            })()}
 
             <Chip
               value={expiryText(d)}
@@ -1672,6 +2043,72 @@ export function WorkArea(): React.JSX.Element {
   const params = useMemo(() => (statusFilter ? { status: statusFilter } : {}), [statusFilter]);
   const work = useList('work-items', params);
   const [editing, setEditing] = useState<Row | null>(null);
+
+  const selectedServiceId = String(
+    editing?.service_id ?? '',
+  );
+
+  const operationalFields = useList(
+    'service-operational-fields',
+    selectedServiceId
+      ? {
+          service_id: selectedServiceId,
+          is_active: 'true',
+        }
+      : {
+          service_id: '__none__',
+        },
+  );
+
+  const updateWorkField = (
+    name: string,
+    value: unknown,
+  ): void => {
+    setEditing((current) => {
+      if (!current) return current;
+
+      if (name === 'service_id') {
+        return {
+          ...current,
+          service_id: value,
+          operational_data: {},
+        };
+      }
+
+      return {
+        ...current,
+        [name]: value,
+      };
+    });
+  };
+
+  const updateOperationalField = (
+    key: string,
+    value: unknown,
+  ): void => {
+    setEditing((current) => {
+      if (!current) return current;
+
+      const existing =
+        current.operational_data &&
+        typeof current.operational_data ===
+          'object' &&
+        !Array.isArray(
+          current.operational_data,
+        )
+          ? current.operational_data as Row
+          : {};
+
+      return {
+        ...current,
+        operational_data: {
+          ...existing,
+          [key]: value,
+        },
+      };
+    });
+  };
+
   const [err, setErr] = useState('');
   const [tab, setTab] = useState<'details' | 'documents' | 'qa' | 'history'>('details');
   const [pendingAction, setPendingAction] = useState<PendingWorkAction | null>(null);
@@ -1869,17 +2306,57 @@ export function WorkArea(): React.JSX.Element {
                   <div className="cx-field" key={f.name}>
                     <label>{label(f.name.replace(/_id$/, '').replace(/_user$/, ''))}</label>
                     {f.kind === 'textarea' ? (
-                      <textarea value={String(editing[f.name] ?? '')} onChange={(e) => setEditing({ ...editing, [f.name]: e.target.value })} />
+                      <textarea value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)} />
                     ) : f.kind === 'select' ? (
-                      <select value={String(editing[f.name] ?? '')} onChange={(e) => setEditing({ ...editing, [f.name]: e.target.value })}>
+                      <select value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)}>
                         <option value="">""</option>
                         {(f.options ?? []).map((o) => <option key={o} value={o}>{f.labels ? f.labels(o) : label(o)}</option>)}
                       </select>
                     ) : (
-                      <input type={f.kind === 'date' ? 'date' : 'text'} value={String(editing[f.name] ?? '')} onChange={(e) => setEditing({ ...editing, [f.name]: e.target.value })} />
+                      <input type={f.kind === 'date' ? 'date' : 'text'} value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)} />
                     )}
                   </div>
                 ))}
+
+                {selectedServiceId ? (
+                  <OperationalFieldsPanel
+                    definitions={
+                      operationalFields.rows as unknown as ServiceOperationalFieldDefinition[]
+                    }
+                    values={
+                      editing.operational_data &&
+                      typeof editing.operational_data ===
+                        'object' &&
+                      !Array.isArray(
+                        editing.operational_data,
+                      )
+                        ? (editing.operational_data as Row)
+                        : {}
+                    }
+                    loading={
+                      operationalFields.loading
+                    }
+                    disabled={
+                      editing.id
+                        ? editing.can_edit !== true
+                        : false
+                    }
+                    onChange={
+                      updateOperationalField
+                    }
+                  />
+                ) : (
+                  <div
+                    className={
+                      "cx-operational-service-prompt"
+                    }
+                    role="note"
+                  >
+                    Select a service to display
+                    its operational fields and
+                    document checklist.
+                  </div>
+                )}
                 <div className="cx-drawer-actions">
                   <button type="button" className="cx-btn subtle" onClick={closeWorkDrawer}>Close</button>
                   {(!editing.id || editing.can_edit === true) ? (

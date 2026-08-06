@@ -10,6 +10,7 @@ from contexts.configuration.views import (
     ServiceDocumentRequirementViewSet,
     ServiceViewSet,
     VerticalViewSet,
+    ServiceOperationalFieldViewSet,
 )
 from contexts.identity.views import EmployeeExpertiseViewSet, EmployeeViewSet
 from contexts.identity.auth_views import (
@@ -97,6 +98,11 @@ router.register("client-branches", ClientBranchViewSet, basename="client-branch"
 router.register("verticals", VerticalViewSet, basename="vertical")
 router.register("domains", DomainViewSet, basename="domain")
 router.register("services", ServiceViewSet, basename="service")
+router.register(
+    "service-operational-fields",
+    ServiceOperationalFieldViewSet,
+    basename="service-operational-field",
+)
 router.register(
     "service-document-requirement-sets",
     ServiceDocumentRequirementSetViewSet,

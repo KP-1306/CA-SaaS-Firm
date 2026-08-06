@@ -5,7 +5,11 @@ from datetime import date
 from rest_framework import serializers
 
 from contexts.clients.models import Client, ClientContact
-from contexts.configuration.models import Domain, Service
+from contexts.configuration.models import (
+    Domain,
+    Service,
+    ServiceOperationalField,
+)
 from contexts.identity.models import Employee
 
 from . import ownership
@@ -176,6 +180,198 @@ class WorkItemSerializer(serializers.ModelSerializer):
         return self._document_readiness(obj)[
             "blockers"
         ]
+
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        instance = getattr(self, "instance", None)
+
+        service_id = attrs.get(
+            "service_id",
+            getattr(instance, "service_id", None),
+        )
+
+        operational_data = attrs.get(
+            "operational_data",
+            getattr(instance, "operational_data", {}),
+        )
+
+        attrs["operational_data"] = self._validate_operational_data(
+            service_id,
+            operational_data,
+        )
+
+        return attrs
+
+    def _validate_operational_data(
+        self,
+        service_id,
+        operational_data,
+    ):
+        if operational_data in (None, ""):
+            operational_data = {}
+
+        if not isinstance(operational_data, dict):
+            raise serializers.ValidationError(
+                {
+                    "operational_data": (
+                        "Operational values must be supplied as an object."
+                    )
+                }
+            )
+
+        if not service_id:
+            if operational_data:
+                raise serializers.ValidationError(
+                    {
+                        "operational_data": (
+                            "Operational values require a selected service."
+                        )
+                    }
+                )
+
+            return {}
+
+        fields = list(
+            ServiceOperationalField.objects.filter(
+                tenant_id=self._tenant(),
+                service_id=service_id,
+                is_active=True,
+            ).order_by(
+                "display_order",
+                "label",
+                "id",
+            )
+        )
+
+        definitions = {
+            field.key: field
+            for field in fields
+        }
+
+        unknown = sorted(
+            set(operational_data) - set(definitions)
+        )
+
+        if unknown:
+            raise serializers.ValidationError(
+                {
+                    "operational_data": (
+                        "Unknown operational field(s): "
+                        + ", ".join(unknown)
+                    )
+                }
+            )
+
+        cleaned = {}
+
+        for field in fields:
+            supplied = field.key in operational_data
+            value = operational_data.get(field.key)
+
+            if value is None:
+                value = ""
+
+            if (
+                field.required
+                and (
+                    not supplied
+                    or value == ""
+                    or value == []
+                )
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "operational_data": {
+                            field.key: (
+                                f"{field.label} is required."
+                            )
+                        }
+                    }
+                )
+
+            if not supplied or value == "":
+                continue
+
+            if field.field_type in ("TEXT", "LONG_TEXT"):
+                cleaned[field.key] = str(value).strip()
+
+            elif field.field_type == "NUMBER":
+                if isinstance(value, bool):
+                    raise serializers.ValidationError(
+                        {
+                            "operational_data": {
+                                field.key: (
+                                    f"{field.label} must be a number."
+                                )
+                            }
+                        }
+                    )
+
+                try:
+                    cleaned[field.key] = float(value)
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError(
+                        {
+                            "operational_data": {
+                                field.key: (
+                                    f"{field.label} must be a number."
+                                )
+                            }
+                        }
+                    )
+
+            elif field.field_type == "BOOLEAN":
+                if not isinstance(value, bool):
+                    raise serializers.ValidationError(
+                        {
+                            "operational_data": {
+                                field.key: (
+                                    f"{field.label} must be Yes or No."
+                                )
+                            }
+                        }
+                    )
+
+                cleaned[field.key] = value
+
+            elif field.field_type == "DATE":
+                date_field = serializers.DateField()
+
+                try:
+                    cleaned[field.key] = (
+                        date_field.to_internal_value(value).isoformat()
+                    )
+                except serializers.ValidationError:
+                    raise serializers.ValidationError(
+                        {
+                            "operational_data": {
+                                field.key: (
+                                    f"{field.label} must be a valid date."
+                                )
+                            }
+                        }
+                    )
+
+            elif field.field_type == "SELECT":
+                text = str(value).strip()
+
+                if text not in field.options:
+                    raise serializers.ValidationError(
+                        {
+                            "operational_data": {
+                                field.key: (
+                                    f"Select a valid value for "
+                                    f"{field.label}."
+                                )
+                            }
+                        }
+                    )
+
+                cleaned[field.key] = text
+
+        return cleaned
 
 
 class WorkNoteSerializer(serializers.ModelSerializer):
