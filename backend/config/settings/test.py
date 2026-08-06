@@ -28,3 +28,5 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 # unchanged: the root logger level remains WARNING.
 _root_logging = cast(dict[str, Any], LOGGING["root"])
 _root_logging["level"] = "WARNING"
+# Legacy request-header identity is permitted only inside automated tests.
+ALLOW_HEADER_PRINCIPAL_AUTH = True

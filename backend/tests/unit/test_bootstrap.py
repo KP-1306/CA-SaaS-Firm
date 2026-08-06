@@ -39,6 +39,7 @@ class TestProjectConfiguration:
             "contexts.portal",
             "contexts.capacity",
             "contexts.assignment",
+            "contexts.authorization",
         }
         installed = {
             app
@@ -52,20 +53,20 @@ class TestProjectConfiguration:
         )
 
     def test_database_engine_is_postgresql(self) -> None:
-        """PostgreSQL is architecturally mandated: RLS is load-bearing (TAD §5)."""
+        """PostgreSQL is architecturally mandated: RLS is load-bearing (TAD Â§5)."""
         assert (
             base_settings.DATABASES["default"]["ENGINE"]
             == "django.db.backends.postgresql"
         )
 
     def test_timestamps_are_timezone_aware_utc(self) -> None:
-        """All timestamps are stored in UTC (TD §1.3)."""
+        """All timestamps are stored in UTC (TD Â§1.3)."""
         assert settings.USE_TZ is True
         assert settings.TIME_ZONE == "UTC"
 
 
 class TestDjangoAdminIsAbsent:
-    """The admin bypasses the tenant model and permission layer (EIB §7.4)."""
+    """The admin bypasses the tenant model and permission layer (EIB Â§7.4)."""
 
     def test_admin_app_is_not_installed(self) -> None:
         assert "django.contrib.admin" not in settings.INSTALLED_APPS
@@ -77,7 +78,7 @@ class TestDjangoAdminIsAbsent:
 
 
 class TestThreePlanes:
-    """Internal, portal and platform planes are structurally separate (AR §2.4)."""
+    """Internal, portal and platform planes are structurally separate (AR Â§2.4)."""
 
     def test_each_plane_namespace_is_registered(self) -> None:
         from config import urls_internal, urls_platform, urls_portal
@@ -105,7 +106,7 @@ class TestThreePlanes:
 
 
 class TestHealthEndpoint:
-    """The health endpoint proves the application starts (EWP-000.1A §12)."""
+    """The health endpoint proves the application starts (EWP-000.1A Â§12)."""
 
     def test_returns_ok(self) -> None:
         response = Client().get("/health/")
