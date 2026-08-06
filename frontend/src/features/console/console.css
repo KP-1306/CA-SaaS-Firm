@@ -1839,3 +1839,176 @@ button.cx-btn.pending { box-shadow: 0 0 0 2px #f59e0b; }
     flex-direction: column;
   }
 }
+
+/* PHASE 2C FINAL QA WORKSPACE */
+.cx-qa-workspace,
+.cx-qa-catalogue {
+  display: grid;
+  gap: 14px;
+}
+
+.cx-qa-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.cx-qa-summary > div,
+.cx-qa-panel,
+.cx-qa-queue {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  padding: 14px;
+}
+
+.cx-qa-summary span,
+.cx-qa-summary strong {
+  display: block;
+}
+
+.cx-qa-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.cx-qa-summary strong {
+  margin-top: 5px;
+  color: var(--ink);
+}
+
+.cx-qa-panel-head,
+.cx-qa-check-title,
+.cx-qa-actions,
+.cx-qa-resolve {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cx-qa-panel-head {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.cx-qa-panel-head h3,
+.cx-qa-panel-head h4 {
+  margin: 2px 0 0;
+}
+
+.cx-qa-checklist,
+.cx-qa-issues,
+.cx-qa-history,
+.cx-qa-config-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cx-qa-check,
+.cx-qa-issue,
+.cx-qa-history article,
+.cx-qa-config-list article {
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.cx-qa-check-controls,
+.cx-qa-issue-form,
+.cx-qa-config-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.cx-qa-check-controls {
+  grid-template-columns: 180px 1fr;
+  margin-top: 8px;
+}
+
+.cx-qa-check-controls input,
+.cx-qa-check-controls select,
+.cx-qa-issue-form input,
+.cx-qa-issue-form textarea,
+.cx-qa-issue-form select,
+.cx-qa-resolve input,
+.cx-qa-panel input,
+.cx-qa-panel select {
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid #d8dfe8;
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+}
+
+.cx-qa-issue-form {
+  grid-template-columns: 1fr 1fr 140px auto;
+  margin-top: 12px;
+}
+
+.cx-qa-issue-form textarea {
+  min-height: 36px;
+}
+
+.cx-qa-blockers {
+  border-left: 4px solid #d97706;
+  border-radius: 6px;
+  background: #fff8eb;
+  padding: 12px;
+}
+
+.cx-qa-blockers ul {
+  margin: 7px 0 0;
+}
+
+.cx-qa-queue {
+  margin-bottom: 14px;
+}
+
+.cx-qa-queue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.cx-qa-queue-grid button {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fafbfc;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.cx-qa-config-grid {
+  grid-template-columns: repeat(2, minmax(250px, 1fr));
+}
+
+.cx-qa-config-grid .cx-qa-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.cx-qa-config-list {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.cx-qa-config-list article,
+.cx-qa-history article {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 800px) {
+  .cx-qa-summary,
+  .cx-qa-config-grid,
+  .cx-qa-check-controls,
+  .cx-qa-issue-form {
+    grid-template-columns: 1fr;
+  }
+}

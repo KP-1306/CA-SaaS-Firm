@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { WorkArea } from '../src/features/console/work';
 import { lockMessage } from '../src/features/console/types';
 
@@ -57,7 +57,8 @@ describe('C4 WorkArea flag-driven UI', () => {
   it('shows a lock banner and disables Save when can_edit is false', async () => {
     mockFetchReturning([LOCKED_ITEM]);
     render(<WorkArea />);
-    const row = await screen.findByText('Locked Work');
+    const table = await screen.findByRole('table');
+    const row = within(table).getByText('Locked Work');
     fireEvent.click(row);
     await waitFor(() => expect(screen.getByText(/submitted for review/i)).toBeInTheDocument());
     const saveButtons = screen.getAllByRole('button', { name: /^Save$/ });

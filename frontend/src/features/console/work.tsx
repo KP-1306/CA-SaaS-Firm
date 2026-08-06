@@ -18,6 +18,7 @@ import {
 import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Field } from './ui';
+import { QAOperationalQueue, QAWorkspace } from './qa';
 
 function statusTone(s: string): string {
   if (s === 'COMPLETED' || s === 'RECEIVED' || s === 'ACCEPTED') return 'ok';
@@ -1672,7 +1673,7 @@ export function WorkArea(): React.JSX.Element {
   const work = useList('work-items', params);
   const [editing, setEditing] = useState<Row | null>(null);
   const [err, setErr] = useState('');
-  const [tab, setTab] = useState<'details' | 'documents' | 'history'>('details');
+  const [tab, setTab] = useState<'details' | 'documents' | 'qa' | 'history'>('details');
   const [pendingAction, setPendingAction] = useState<PendingWorkAction | null>(null);
 
   const closeWorkDrawer = (): void => {
@@ -1778,6 +1779,16 @@ export function WorkArea(): React.JSX.Element {
         <button className="cx-btn" onClick={() => { setEditing({ title: '', priority: 'NORMAL', status: 'NOT_STARTED' }); setPendingAction(null); setTab('details'); setErr(''); }}>Add Work Item</button>
       </div>
       <ErrorBar error={work.error} />
+      {!work.loading ? (
+        <QAOperationalQueue
+          workRows={work.rows}
+          onOpen={(row) => {
+            setEditing({ ...row });
+            setTab('qa');
+            setErr('');
+          }}
+        />
+      ) : null}
       {work.loading ? (
         <Loading />
       ) : (
@@ -1827,7 +1838,7 @@ export function WorkArea(): React.JSX.Element {
             <h3>{editing.id ? String(editing.title) : 'New Work Item'}</h3>
             {editing.id ? (
               <div className="cx-toolbar" style={{ marginBottom: 12 }}>
-                {(['details', 'documents', 'history'] as const).map((t) => (
+                {(['details', 'documents', 'qa', 'history'] as const).map((t) => (
                   <button key={t} className={`cx-btn ${t === tab ? '' : 'subtle'}`} onClick={() => setTab(t)}>{label(t)}</button>
                 ))}
               </div>
@@ -1891,6 +1902,14 @@ export function WorkArea(): React.JSX.Element {
                   editing.can_upload_internal === true
                 }
                 workItem={editing}
+              />
+            ) : null}
+            {tab === 'qa' && editing.id ? (
+              <QAWorkspace
+                workItem={editing}
+                onWorkChanged={() => {
+                  work.reload();
+                }}
               />
             ) : null}
             {tab === 'history' && editing.id ? <HistoryPanel workItemId={String(editing.id)} /> : null}

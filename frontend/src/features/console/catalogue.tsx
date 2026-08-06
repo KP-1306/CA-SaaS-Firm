@@ -14,6 +14,7 @@ import {
   ErrorBar,
   Loading,
 } from './ui';
+import { QACataloguePanel } from './qa';
 
 type Level =
   | 'verticals'
@@ -728,6 +729,7 @@ export function CatalogueArea(): React.JSX.Element {
           ]}
         />
       ) : null}
+      <QACataloguePanel services={activeServices} />
     </>
   );
 }
