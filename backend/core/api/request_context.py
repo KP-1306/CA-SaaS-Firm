@@ -17,12 +17,26 @@ class InternalPrincipal:
 class HeaderPrincipalAuthentication(authentication.BaseAuthentication):
     """Temporary internal-plane adapter until session authentication is wired."""
 
-    def authenticate(self, request: Any) -> tuple[InternalPrincipal, None]:
+    def authenticate(self, request: Any):
+        from contexts.identity.auth_service import VridhiSessionAuthentication
+
+        session_result = VridhiSessionAuthentication().authenticate(request)
+        if session_result is not None:
+            return session_result
+
+        from django.conf import settings
+
         tenant = request.headers.get("X-Tenant-ID")
         principal = request.headers.get("X-Principal-ID")
+        if not tenant and not principal:
+            return None
+        if not settings.ALLOW_HEADER_PRINCIPAL_AUTH:
+            raise exceptions.AuthenticationFailed(
+                "Header principal authentication is disabled."
+            )
         if not tenant or not principal:
             raise exceptions.AuthenticationFailed(
-                "X-Tenant-ID and X-Principal-ID headers are required."
+                "X-Tenant-ID and X-Principal-ID must be supplied together."
             )
         try:
             identity = InternalPrincipal(uuid.UUID(principal), uuid.UUID(tenant))

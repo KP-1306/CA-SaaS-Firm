@@ -17,3 +17,7 @@ DATABASES = {
 # Keep test execution deterministic and fast without changing production.
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+# Phase 3A.1 test compatibility
+ALLOW_HEADER_PRINCIPAL_AUTH = True
+VRIDHI_AUTH_COOKIE_SECURE = False

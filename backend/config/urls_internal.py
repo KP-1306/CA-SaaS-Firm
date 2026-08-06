@@ -12,6 +12,12 @@ from contexts.configuration.views import (
     VerticalViewSet,
 )
 from contexts.identity.views import EmployeeExpertiseViewSet, EmployeeViewSet
+from contexts.identity.auth_views import (
+    VridhiLoginView,
+    VridhiLogoutView,
+    VridhiMeView,
+    VridhiSessionsView,
+)
 from contexts.work.views import (
     DocumentAttachmentViewSet,
     DocumentRequestViewSet,
@@ -129,6 +135,10 @@ router.register("qa-review-responses", QAReviewResponseViewSet, basename="qa-rev
 router.register("qa-review-issues", QAReviewIssueViewSet, basename="qa-review-issue")
 
 urlpatterns: list[URLPattern | URLResolver] = [
+    path("auth/login/", VridhiLoginView.as_view(), name="vridhi-login"),
+    path("auth/logout/", VridhiLogoutView.as_view(), name="vridhi-logout"),
+    path("auth/me/", VridhiMeView.as_view(), name="vridhi-me"),
+    path("auth/sessions/", VridhiSessionsView.as_view(), name="vridhi-sessions"),
     path("", bootstrap, name="bootstrap"),
     path("branding/", BrandingView.as_view(), name="branding"),
     path("dashboard/employee/", EmployeeDashboardView.as_view(), name="dashboard-employee"),

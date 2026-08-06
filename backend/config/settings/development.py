@@ -41,3 +41,7 @@ DATABASES = {
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
+
+# Phase 3A.1 local compatibility
+ALLOW_HEADER_PRINCIPAL_AUTH = True
+VRIDHI_AUTH_COOKIE_SECURE = False

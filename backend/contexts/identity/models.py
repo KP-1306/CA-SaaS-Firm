@@ -174,3 +174,174 @@ class EmployeeExpertise(TenantModel):
             )
         ]
         ordering = ["category"]
+
+# --- Phase 3A.1 Vridhi consultant authentication foundation ---
+
+import hashlib
+
+from django.contrib.auth.hashers import check_password, make_password
+from django.utils import timezone
+
+from core.db.uuid7 import uuid7
+
+
+class UserAccountStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    SUSPENDED = "SUSPENDED", "Suspended"
+    DISABLED = "DISABLED", "Disabled"
+
+
+class ProviderRole(models.TextChoices):
+    PLATFORM_ADMIN = "PLATFORM_ADMIN", "Platform administrator"
+    OPERATIONS_ADMIN = "OPERATIONS_ADMIN", "Operations administrator"
+    IMPLEMENTATION_CONSULTANT = "IMPLEMENTATION_CONSULTANT", "Implementation consultant"
+    SUPPORT_CONSULTANT = "SUPPORT_CONSULTANT", "Support consultant"
+    SECURITY_AUDITOR = "SECURITY_AUDITOR", "Security auditor"
+
+
+class MembershipStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    SUSPENDED = "SUSPENDED", "Suspended"
+    ENDED = "ENDED", "Ended"
+
+
+class AuthenticationEventType(models.TextChoices):
+    LOGIN_SUCCEEDED = "LOGIN_SUCCEEDED", "Login succeeded"
+    LOGIN_FAILED = "LOGIN_FAILED", "Login failed"
+    LOGOUT = "LOGOUT", "Logout"
+    SESSION_CREATED = "SESSION_CREATED", "Session created"
+    SESSION_REVOKED = "SESSION_REVOKED", "Session revoked"
+    ACCESS_DENIED = "ACCESS_DENIED", "Access denied"
+    PASSWORD_CHANGED = "PASSWORD_CHANGED", "Password changed"
+    ACCOUNT_STATUS_CHANGED = "ACCOUNT_STATUS_CHANGED", "Account status changed"
+    MEMBERSHIP_CHANGED = "MEMBERSHIP_CHANGED", "Membership changed"
+
+
+class AuthenticationOutcome(models.TextChoices):
+    SUCCESS = "SUCCESS", "Success"
+    FAILURE = "FAILURE", "Failure"
+    DENIED = "DENIED", "Denied"
+
+
+class UserAccount(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    email = models.EmailField(unique=True)
+    display_name = models.CharField(max_length=180)
+    password_hash = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=12,
+        choices=UserAccountStatus.choices,
+        default=UserAccountStatus.ACTIVE,
+        db_index=True,
+    )
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+    failed_login_count = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["email"]
+
+    def save(self, *args, **kwargs):
+        self.email = (self.email or "").strip().lower()
+        super().save(*args, **kwargs)
+
+    def set_password(self, raw_password: str) -> None:
+        self.password_hash = make_password(raw_password)
+        self.password_changed_at = timezone.now()
+
+    def check_password(self, raw_password: str) -> bool:
+        return check_password(raw_password, self.password_hash)
+
+    @property
+    def is_authenticated(self) -> bool:
+        return True
+
+
+class ProviderMembership(TenantModel):
+    user_account_id = models.UUIDField(db_index=True)
+    employee_id = models.UUIDField(null=True, blank=True, db_index=True)
+    role = models.CharField(max_length=32, choices=ProviderRole.choices)
+    status = models.CharField(
+        max_length=12,
+        choices=MembershipStatus.choices,
+        default=MembershipStatus.ACTIVE,
+        db_index=True,
+    )
+    effective_from = models.DateTimeField(default=timezone.now)
+    effective_to = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant_id", "user_account_id"],
+                condition=models.Q(status=MembershipStatus.ACTIVE),
+                name="uq_active_provider_membership",
+            )
+        ]
+        ordering = ["user_account_id"]
+
+
+class AuthSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    user_account_id = models.UUIDField(db_index=True)
+    membership_id = models.UUIDField(db_index=True)
+    tenant_id = models.UUIDField(db_index=True)
+    principal_id = models.UUIDField(db_index=True)
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField(db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent_hash = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user_account_id", "revoked_at"]),
+            models.Index(fields=["tenant_id", "expires_at"]),
+        ]
+        ordering = ["-created_at"]
+
+    @staticmethod
+    def digest(raw_token: str) -> str:
+        return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    @property
+    def is_active(self) -> bool:
+        return self.revoked_at is None and self.expires_at > timezone.now()
+
+
+class AuthenticationEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    occurred_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    tenant_id = models.UUIDField(null=True, blank=True, db_index=True)
+    user_account_id = models.UUIDField(null=True, blank=True, db_index=True)
+    principal_id = models.UUIDField(null=True, blank=True, db_index=True)
+    session_id = models.UUIDField(null=True, blank=True, db_index=True)
+    event_type = models.CharField(max_length=32, choices=AuthenticationEventType.choices, db_index=True)
+    outcome = models.CharField(max_length=10, choices=AuthenticationOutcome.choices, db_index=True)
+    email = models.EmailField(blank=True)
+    reason = models.CharField(max_length=200, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-occurred_at"]
+        indexes = [
+            models.Index(fields=["tenant_id", "occurred_at"]),
+            models.Index(fields=["event_type", "outcome"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self.pk and AuthenticationEvent.objects.filter(pk=self.pk).exists():
+            raise RuntimeError("Authentication events are append-only.")
+        self.email = (self.email or "").strip().lower()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("Authentication events are append-only.")

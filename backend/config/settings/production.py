@@ -45,3 +45,8 @@ X_FRAME_OPTIONS = "DENY"
 
 # Explicit origins only; never a wildcard (EWP-000.1A §9.8).
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
+
+# Phase 3A.1 production identity settings
+VRIDHI_PROVIDER_TENANT_ID = env.str("VRIDHI_PROVIDER_TENANT_ID")
+ALLOW_HEADER_PRINCIPAL_AUTH = False
+VRIDHI_AUTH_COOKIE_SECURE = True

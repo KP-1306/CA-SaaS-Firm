@@ -153,3 +153,23 @@ LOGGING = {
 }
 
 from .media import *  # noqa: F401,F403  workflow media settings
+
+# --- Phase 3A.1 Vridhi consultant authentication policy ---
+VRIDHI_PROVIDER_TENANT_ID = env.str(
+    "VRIDHI_PROVIDER_TENANT_ID",
+    default="11111111-1111-1111-1111-111111111111",
+)
+VRIDHI_SESSION_AGE_SECONDS = env.int(
+    "VRIDHI_SESSION_AGE_SECONDS",
+    default=43_200,
+)
+VRIDHI_MAX_LOGIN_FAILURES = env.int(
+    "VRIDHI_MAX_LOGIN_FAILURES",
+    default=5,
+)
+VRIDHI_LOGIN_LOCK_SECONDS = env.int(
+    "VRIDHI_LOGIN_LOCK_SECONDS",
+    default=900,
+)
+ALLOW_HEADER_PRINCIPAL_AUTH = False
+VRIDHI_AUTH_COOKIE_SECURE = True
