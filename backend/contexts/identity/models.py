@@ -239,6 +239,10 @@ class UserAccount(models.Model):
     locked_until = models.DateTimeField(null=True, blank=True)
     last_login_at = models.DateTimeField(null=True, blank=True)
     password_changed_at = models.DateTimeField(null=True, blank=True)
+    must_change_password = models.BooleanField(default=False)
+    invitation_sent_at = models.DateTimeField(null=True, blank=True)
+    invited_by_principal_id = models.UUIDField(null=True, blank=True)
+    activated_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

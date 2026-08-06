@@ -18,6 +18,17 @@ from contexts.identity.auth_views import (
     VridhiMeView,
     VridhiSessionsView,
 )
+from contexts.identity.consultant_admin_views import (
+    ConsultantAuditView,
+    ConsultantCollectionView,
+    ConsultantDetailView,
+    ConsultantEmployeeLinkView,
+    ConsultantPasswordResetView,
+    ConsultantRoleView,
+    ConsultantSessionsView,
+    ConsultantStatusView,
+    ConsultantUnlockView,
+)
 from contexts.work.views import (
     DocumentAttachmentViewSet,
     DocumentRequestViewSet,
@@ -139,6 +150,15 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("auth/logout/", VridhiLogoutView.as_view(), name="vridhi-logout"),
     path("auth/me/", VridhiMeView.as_view(), name="vridhi-me"),
     path("auth/sessions/", VridhiSessionsView.as_view(), name="vridhi-sessions"),
+    path("identity/consultants/", ConsultantCollectionView.as_view(), name="consultant-list"),
+    path("identity/consultants/<uuid:account_id>/", ConsultantDetailView.as_view(), name="consultant-detail"),
+    path("identity/consultants/<uuid:account_id>/status/", ConsultantStatusView.as_view(), name="consultant-status"),
+    path("identity/consultants/<uuid:account_id>/role/", ConsultantRoleView.as_view(), name="consultant-role"),
+    path("identity/consultants/<uuid:account_id>/employee-link/", ConsultantEmployeeLinkView.as_view(), name="consultant-employee-link"),
+    path("identity/consultants/<uuid:account_id>/password-reset/", ConsultantPasswordResetView.as_view(), name="consultant-password-reset"),
+    path("identity/consultants/<uuid:account_id>/unlock/", ConsultantUnlockView.as_view(), name="consultant-unlock"),
+    path("identity/consultants/<uuid:account_id>/sessions/", ConsultantSessionsView.as_view(), name="consultant-admin-sessions"),
+    path("identity/consultants/<uuid:account_id>/audit/", ConsultantAuditView.as_view(), name="consultant-auth-audit"),
     path("", bootstrap, name="bootstrap"),
     path("branding/", BrandingView.as_view(), name="branding"),
     path("dashboard/employee/", EmployeeDashboardView.as_view(), name="dashboard-employee"),
