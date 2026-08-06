@@ -255,3 +255,48 @@ class ClientAccessPermission(ActionAccessPermission):
         "partial_update": "clients.edit",
         "destroy": "clients.delete",
     }
+
+class WorkItemAccessPermission(ActionAccessPermission):
+    """
+    Simple WorkItem action-to-capability mapping.
+
+    Uses only the approved Phase 3B catalogue. Existing owner, reviewer,
+    workflow-state, QA and audit guards remain the final business controls.
+    """
+
+    action_access_map = {
+        # Core work-item CRUD.
+        "list": "work.view",
+        "retrieve": "work.view",
+        "create": "work.create",
+        "update": "work.submit",
+        "partial_update": "work.submit",
+
+        # Deletion remains prohibited by the existing controller guard.
+        # work.view allows that stable business denial to remain visible.
+        "destroy": "work.view",
+
+        # Existing owner-controlled execution and submission actions.
+        "set_status": "work.submit",
+        "submit_for_review": "work.submit",
+        "prepare_qa": "work.submit",
+        "save_preparer_checklist": "work.submit",
+        "resolve_qa_issue_action": "work.submit",
+
+        # Read-only QA information attached to a work item.
+        "qa_readiness_action": "work.view",
+        "qa_review_history_action": "work.view",
+
+        # Existing reviewer-controlled actions.
+        "save_reviewer_checklist": "quality.review",
+        "raise_qa_issue_action": "quality.review",
+        "approve": "work.approve",
+        "return_for_rework": "work.approve",
+
+        # Existing dedicated assignment action.
+        "assign": "work.assign",
+
+        # WorkItem-owned document generation uses the approved document
+        # upload capability; document APIs themselves remain Phase 3B.5C.
+        "generate_document_requests": "documents.upload",
+    }

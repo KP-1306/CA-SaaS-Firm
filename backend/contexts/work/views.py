@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rest_framework.permissions import IsAuthenticated
+from contexts.authorization.permissions import WorkItemAccessPermission
 import hashlib
 import os
 import uuid
@@ -278,6 +280,10 @@ def _create_attachment(
 
 
 class WorkItemViewSet(TenantModelViewSet):
+    permission_classes = [
+        IsAuthenticated,
+        WorkItemAccessPermission,
+    ]
     queryset = WorkItem.objects.all()
     serializer_class = WorkItemSerializer
     search_fields = ["title", "period", "notes", "description"]
