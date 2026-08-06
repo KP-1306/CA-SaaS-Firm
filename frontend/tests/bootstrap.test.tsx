@@ -35,11 +35,12 @@ describe('internal plane', () => {
   it('renders the operational console', async () => {
     render(<InternalApp />);
 
-    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Dashboard' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Clients' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Work' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Services' })).toBeInTheDocument();
-    expect(screen.getByText('Signed in - internal plane')).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.queryByText('Loading...')).not.toBeInTheDocument();

@@ -10,13 +10,20 @@ import { EmployeeDashboard, ExecutiveDashboard } from './dashboards';
 import { ExpertisePanel } from './expertise';
 import { AuditViewer } from './audit';
 import { GlobalSearch } from './GlobalSearch';
+import {
+  ConsultantAdministration,
+  IdentityGate,
+  UserMenu,
+  isProviderAdmin,
+  useIdentity,
+} from './identity';
 import { CLIENT_TYPES, CLIENT_LIFECYCLE_STATUS, ENGAGEMENT_STATUS, WORK_STATUS, isOverdue, label } from './types';
 import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Column, Field } from './ui';
 import './console.css';
 
-type Area = 'dashboard' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'servicing' | 'employee-ops' | 'team' | 'services' | 'reports' | 'audit' | 'settings';
+type Area = 'dashboard' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'servicing' | 'employee-ops' | 'team' | 'services' | 'reports' | 'audit' | 'identity' | 'settings';
 
 const NAV: { key: Area; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -30,6 +37,7 @@ const NAV: { key: Area; label: string }[] = [
   { key: 'services', label: 'Services' },
   { key: 'reports', label: 'Reports' },
   { key: 'audit', label: 'Audit' },
+  { key: 'identity', label: 'Identity & Access' },
   { key: 'settings', label: 'Settings' },
 ];
 
@@ -1162,8 +1170,9 @@ function Reports(): React.JSX.Element {
 }
 
 // ---------------- Root ----------------
-export function ConsoleApp(): React.JSX.Element {
+function OperationalConsole(): React.JSX.Element {
   const [area, setArea] = useState<Area>('dashboard');
+  const { identity } = useIdentity();
   const brand = useBrand();
   const view = ((): React.JSX.Element => {
     switch (area) {
@@ -1175,6 +1184,8 @@ export function ConsoleApp(): React.JSX.Element {
         return <ExecutiveDashboard onDrill={(f) => { setArea('work'); void f; }} />;
       case 'audit':
         return <AuditViewer />;
+      case 'identity':
+        return isProviderAdmin(identity) ? <ConsultantAdministration /> : <div className="cx-warning">Administrator access is required.</div>;
       case 'clients':
         return (
           <ResourceManager
@@ -1285,7 +1296,13 @@ export function ConsoleApp(): React.JSX.Element {
       <aside className="cx-side">
         <div className="cx-brand">{brand.firm_name}<small>Internal console</small></div>
         <nav className="cx-nav">
-          {NAV.filter((n) => (n.key === 'firm-overview' || n.key === 'audit') ? brand.capabilities?.is_executive === true : true).map((n) => (
+          {NAV.filter((n) => {
+            if (n.key === 'identity') return isProviderAdmin(identity);
+            if (n.key === 'firm-overview' || n.key === 'audit') {
+              return brand.capabilities?.is_executive === true;
+            }
+            return true;
+          }).map((n) => (
             <button key={n.key} className={n.key === area ? 'active' : ''} onClick={() => setArea(n.key)}>
               {n.label}
             </button>
@@ -1297,10 +1314,17 @@ export function ConsoleApp(): React.JSX.Element {
         <header className="cx-top">
           <h2>{NAV.find((n) => n.key === area)?.label}</h2>
           <GlobalSearch onNavigate={setArea} />
-          <span className="cx-user">Signed in - internal plane</span>
+          <UserMenu />
         </header>
         <div className="cx-body">{view}</div>
       </div>
     </div>
+  );
+}
+export function ConsoleApp(): React.JSX.Element {
+  return (
+    <IdentityGate>
+      <OperationalConsole />
+    </IdentityGate>
   );
 }

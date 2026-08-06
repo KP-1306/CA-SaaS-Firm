@@ -145,3 +145,104 @@ class VridhiSessionsView(APIView):
             raise exceptions.NotFound("Session not found.")
         revoke_session(request=request, session=target, reason="USER_REVOKED")
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(trim_whitespace=False, write_only=True)
+    new_password = serializers.CharField(
+        trim_whitespace=False,
+        write_only=True,
+        min_length=12,
+    )
+
+    def validate_new_password(self, value):
+        if not any(character.islower() for character in value):
+            raise serializers.ValidationError("Include a lowercase letter.")
+        if not any(character.isupper() for character in value):
+            raise serializers.ValidationError("Include an uppercase letter.")
+        if not any(character.isdigit() for character in value):
+            raise serializers.ValidationError("Include a number.")
+        if value.isalnum():
+            raise serializers.ValidationError("Include a symbol.")
+        return value
+
+
+class VridhiPasswordChangeView(APIView):
+    authentication_classes = [VridhiSessionAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from django.db import transaction
+
+        from .auth_service import record_auth_event, revoke_session
+        from .models import (
+            AuthenticationEventType,
+            AuthenticationOutcome,
+        )
+
+        serializer = PasswordChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        account: UserAccount = request.vridhi_account
+        membership: ProviderMembership = request.vridhi_membership
+        current_session: AuthSession = request.auth
+
+        if not account.check_password(
+            serializer.validated_data["current_password"]
+        ):
+            record_auth_event(
+                request=request,
+                event_type=AuthenticationEventType.ACCESS_DENIED,
+                outcome=AuthenticationOutcome.DENIED,
+                account=account,
+                membership=membership,
+                session=current_session,
+                reason="PASSWORD_CHANGE_CURRENT_PASSWORD_INVALID",
+            )
+            raise serializers.ValidationError(
+                {"current_password": "Current password is incorrect."}
+            )
+
+        with transaction.atomic():
+            account.set_password(serializer.validated_data["new_password"])
+            account.must_change_password = False
+            account.failed_login_count = 0
+            account.locked_until = None
+            account.save(
+                update_fields=[
+                    "password_hash",
+                    "password_changed_at",
+                    "must_change_password",
+                    "failed_login_count",
+                    "locked_until",
+                    "updated_at",
+                ]
+            )
+
+            for session in AuthSession.objects.filter(
+                user_account_id=account.id,
+                revoked_at__isnull=True,
+                expires_at__gt=timezone.now(),
+            ).exclude(id=current_session.id):
+                revoke_session(
+                    request=request,
+                    session=session,
+                    reason="PASSWORD_CHANGED_OTHER_SESSION",
+                )
+
+            record_auth_event(
+                request=request,
+                event_type=AuthenticationEventType.PASSWORD_CHANGED,
+                outcome=AuthenticationOutcome.SUCCESS,
+                account=account,
+                membership=membership,
+                session=current_session,
+                reason="SELF_SERVICE_PASSWORD_CHANGE",
+            )
+
+        return Response(
+            {
+                "password_changed": True,
+                "must_change_password": False,
+            }
+        )

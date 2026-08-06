@@ -16,6 +16,7 @@ from contexts.identity.auth_views import (
     VridhiLoginView,
     VridhiLogoutView,
     VridhiMeView,
+    VridhiPasswordChangeView,
     VridhiSessionsView,
 )
 from contexts.identity.consultant_admin_views import (
@@ -149,6 +150,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("auth/login/", VridhiLoginView.as_view(), name="vridhi-login"),
     path("auth/logout/", VridhiLogoutView.as_view(), name="vridhi-logout"),
     path("auth/me/", VridhiMeView.as_view(), name="vridhi-me"),
+    path("auth/password-change/", VridhiPasswordChangeView.as_view(), name="vridhi-password-change"),
     path("auth/sessions/", VridhiSessionsView.as_view(), name="vridhi-sessions"),
     path("identity/consultants/", ConsultantCollectionView.as_view(), name="consultant-list"),
     path("identity/consultants/<uuid:account_id>/", ConsultantDetailView.as_view(), name="consultant-detail"),

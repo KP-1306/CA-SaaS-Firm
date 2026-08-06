@@ -165,3 +165,48 @@ def test_authentication_event_is_append_only():
         event.save()
     with pytest.raises(RuntimeError, match="append-only"):
         event.delete()
+@pytest.mark.django_db
+def test_consultant_can_change_password_and_clear_first_login_requirement():
+    account, membership = _account()
+    account.must_change_password = True
+    account.save(update_fields=["must_change_password", "updated_at"])
+
+    other_session = AuthSession.objects.create(
+        user_account_id=account.id,
+        membership_id=membership.id,
+        tenant_id=TENANT,
+        principal_id=PRINCIPAL,
+        token_hash=AuthSession.digest("other-session-token"),
+        expires_at=timezone.now() + timedelta(hours=1),
+    )
+
+    http = HttpClient()
+    login = http.post(
+        "/api/v1/auth/login/",
+        data={
+            "email": account.email,
+            "password": "Strong-Test-Password-123!",
+        },
+        content_type="application/json",
+    )
+    assert login.status_code == 200
+
+    response = http.post(
+        "/api/v1/auth/password-change/",
+        data={
+            "current_password": "Strong-Test-Password-123!",
+            "new_password": "New-Strong-Password-456!",
+        },
+        content_type="application/json",
+    )
+    assert response.status_code == 200, response.content
+
+    account.refresh_from_db()
+    other_session.refresh_from_db()
+    assert account.must_change_password is False
+    assert account.check_password("New-Strong-Password-456!")
+    assert other_session.revoked_at is not None
+    assert AuthenticationEvent.objects.filter(
+        event_type=AuthenticationEventType.PASSWORD_CHANGED,
+        reason="SELF_SERVICE_PASSWORD_CHANGE",
+    ).exists()

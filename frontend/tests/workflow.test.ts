@@ -335,7 +335,9 @@ describe('client contact management', () => {
     vi.stubGlobal('fetch', fn);
 
     render(createElement(ConsoleApp));
-    fireEvent.click(screen.getByRole('button', { name: 'Clients' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Clients' }),
+    );
 
     await screen.findByText('Example');
     fireEvent.click(screen.getByText('Example'));
@@ -365,7 +367,9 @@ describe('client contact management', () => {
     );
 
     render(createElement(ConsoleApp));
-    fireEvent.click(screen.getByRole('button', { name: 'Clients' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Clients' }),
+    );
     await waitFor(() => expect(screen.queryByText('Loading...')).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Client' }));
@@ -391,9 +395,7 @@ describe('contact architecture boundaries', () => {
     render(createElement(DocumentsPanel, { workItemId: 'work-1', clientId: 'client-1', canUploadInternal: true }));
 
     expect(
-      await screen.findByText(
-        'No eligible document contact exists for this client. Add or enable one under Client → Contacts.',
-      ),
+      await screen.findByText(/No eligible document contact exists for this client/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add client contact' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add another contact' })).not.toBeInTheDocument();

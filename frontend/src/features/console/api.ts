@@ -4,13 +4,35 @@ const API_BASE = '/api/v1';
 const DEV_TENANT = '11111111-1111-1111-1111-111111111111';
 const DEV_PRINCIPAL = '22222222-2222-2222-2222-222222222222';
 
+function cookieValue(name: string): string {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const item = document.cookie
+    .split(';')
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(prefix));
+  return item ? decodeURIComponent(item.slice(prefix.length)) : '';
+}
+
 function headers(json = true): Record<string, string> {
   const base: Record<string, string> = {
     'X-Tenant-ID': localStorage.getItem('tenantId') ?? DEV_TENANT,
     'X-Principal-ID': localStorage.getItem('principalId') ?? DEV_PRINCIPAL,
   };
+  const csrf = cookieValue('csrftoken');
+  if (csrf) base['X-CSRFToken'] = csrf;
   if (json) base['Content-Type'] = 'application/json';
   return base;
+}
+
+function options(init: RequestInit = {}): RequestInit {
+  return {
+    credentials: 'include',
+    ...init,
+    headers: {
+      ...headers(!(init.body instanceof FormData)),
+      ...(init.headers ?? {}),
+    },
+  };
 }
 
 export type Row = Record<string, unknown>;
@@ -106,39 +128,37 @@ async function fail(res: Response): Promise<never> {
 }
 
 export async function list(resource: string, params: Record<string, string | undefined> = {}): Promise<Row[]> {
-  const res = await fetch(`${API_BASE}/${resource}/${qs(params)}`, { headers: headers() });
+  const res = await fetch(`${API_BASE}/${resource}/${qs(params)}`, options());
   if (!res.ok) return fail(res);
   return (await res.json()) as Row[];
 }
 
 export async function getObject(path: string, params: Record<string, string | undefined> = {}): Promise<Row> {
-  const res = await fetch(`${API_BASE}/${path}/${qs(params)}`, { headers: headers() });
+  const res = await fetch(`${API_BASE}/${path}/${qs(params)}`, options());
   if (!res.ok) return fail(res);
   return (await res.json()) as Row;
 }
 
 export async function save(resource: string, value: Row): Promise<Row> {
   const id = value.id as string | undefined;
-  const res = await fetch(`${API_BASE}/${resource}/${id ? `${id}/` : ''}`, {
+  const res = await fetch(`${API_BASE}/${resource}/${id ? `${id}/` : ''}`, options({
     method: id ? 'PATCH' : 'POST',
-    headers: headers(),
     body: JSON.stringify(value),
-  });
+  }));
   if (!res.ok) return fail(res);
   return (await res.json()) as Row;
 }
 
 export async function remove(resource: string, id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/${resource}/${id}/`, { method: 'DELETE', headers: headers() });
+  const res = await fetch(`${API_BASE}/${resource}/${id}/`, options({ method: 'DELETE' }));
   if (!res.ok && res.status !== 404) return fail(res);
 }
 
 export async function act(resource: string, id: string, verb: string, body: Row = {}): Promise<Row> {
-  const res = await fetch(`${API_BASE}/${resource}/${id}/${verb}/`, {
+  const res = await fetch(`${API_BASE}/${resource}/${id}/${verb}/`, options({
     method: 'POST',
-    headers: headers(),
     body: JSON.stringify(body),
-  });
+  }));
   if (!res.ok) return fail(res);
   return (await res.json()) as Row;
 }
@@ -146,11 +166,10 @@ export async function act(resource: string, id: string, verb: string, body: Row 
 export async function upload(resource: string, id: string, verb: string, file: File): Promise<Row> {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`${API_BASE}/${resource}/${id}/${verb}/`, {
+  const res = await fetch(`${API_BASE}/${resource}/${id}/${verb}/`, options({
     method: 'POST',
-    headers: headers(false),
     body: form,
-  });
+  }));
   if (!res.ok) return fail(res);
   return (await res.json()) as Row;
 }
@@ -159,7 +178,43 @@ export async function uploadMany(resource: string, id: string, verb: string, fil
   const form = new FormData();
   for (const file of files) form.append('files', file);
   for (const [key, value] of Object.entries(extra)) form.append(key, value);
-  const res = await fetch(`${API_BASE}/${resource}/${id}/${verb}/`, { method: 'POST', headers: headers(false), body: form });
+  const res = await fetch(`${API_BASE}/${resource}/${id}/${verb}/`, options({ method: 'POST', body: form }));
   if (!res.ok) return fail(res);
   return (await res.json()) as Row[];
+}
+
+export async function requestObject(
+  path: string,
+  init: RequestInit = {},
+): Promise<Row> {
+  const res = await fetch(`${API_BASE}/${path}`, options(init));
+  if (!res.ok) return fail(res);
+  if (res.status === 204) return {};
+  return (await res.json()) as Row;
+}
+
+export async function requestRows(
+  path: string,
+  params: Record<string, string | undefined> = {},
+): Promise<Row[]> {
+  const res = await fetch(`${API_BASE}/${path}${qs(params)}`, options());
+  if (!res.ok) return fail(res);
+  return (await res.json()) as Row[];
+}
+
+export async function postPath(path: string, body: Row = {}): Promise<Row> {
+  return requestObject(path, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deletePath(path: string, body?: Row): Promise<Row> {
+  const init: RequestInit = { method: 'DELETE' };
+
+  if (body !== undefined) {
+    init.body = JSON.stringify(body);
+  }
+
+  return requestObject(path, init);
 }
