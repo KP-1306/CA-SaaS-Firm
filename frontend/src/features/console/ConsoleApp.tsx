@@ -10,8 +10,8 @@ import { EmployeeDashboard, ExecutiveDashboard } from './dashboards';
 import { ExpertisePanel } from './expertise';
 import { AuditViewer } from './audit';
 import { GlobalSearch } from './GlobalSearch';
+import { IdentityAccessAdministration } from './authorization';
 import {
-  ConsultantAdministration,
   IdentityGate,
   UserMenu,
   isProviderAdmin,
@@ -190,14 +190,14 @@ function Dashboard(): React.JSX.Element {
 
   const documentAgeBuckets = [
     {
-      label: '0–3 days',
+      label: '0Ã¢â‚¬â€œ3 days',
       count: pendingDocuments.filter(
         (row) => ageInDays(row.created_at || row.requested_at) <= 3,
       ).length,
       tone: 'good',
     },
     {
-      label: '4–7 days',
+      label: '4Ã¢â‚¬â€œ7 days',
       count: pendingDocuments.filter((row) => {
         const age = ageInDays(row.created_at || row.requested_at);
         return age >= 4 && age <= 7;
@@ -205,7 +205,7 @@ function Dashboard(): React.JSX.Element {
       tone: 'watch',
     },
     {
-      label: '8–15 days',
+      label: '8Ã¢â‚¬â€œ15 days',
       count: pendingDocuments.filter((row) => {
         const age = ageInDays(row.created_at || row.requested_at);
         return age >= 8 && age <= 15;
@@ -519,7 +519,7 @@ function Dashboard(): React.JSX.Element {
               className="cx-health-method"
               title="The score considers overdue work, high-priority overdue exposure, aged client-document requests, rework and employee workload pressure."
             >
-              ⓘ How this score is calculated
+              Ã¢â€œËœ How this score is calculated
             </span>
           </div>
         </div>
@@ -811,7 +811,7 @@ function Dashboard(): React.JSX.Element {
                   </span>
 
                   <span>{client.waiting}</span>
-                  <span>{client.nextDue || '—'}</span>
+                  <span>{client.nextDue || 'Ã¢â‚¬â€'}</span>
 
                   <Chip
                     value={client.risk}
@@ -855,7 +855,7 @@ function Dashboard(): React.JSX.Element {
 
                     <p>
                       {String(row.client_name || 'Internal')}
-                      {' · '}
+                      {' Ã‚Â· '}
                       {label(String(row.status || 'UPDATED'))}
                     </p>
                   </div>
@@ -1185,7 +1185,7 @@ function OperationalConsole(): React.JSX.Element {
       case 'audit':
         return <AuditViewer />;
       case 'identity':
-        return isProviderAdmin(identity) ? <ConsultantAdministration /> : <div className="cx-warning">Administrator access is required.</div>;
+        return isProviderAdmin(identity) ? <IdentityAccessAdministration /> : <div className="cx-warning">Administrator access is required.</div>;
       case 'clients':
         return (
           <ResourceManager
