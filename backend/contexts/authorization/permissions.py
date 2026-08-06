@@ -300,3 +300,53 @@ class WorkItemAccessPermission(ActionAccessPermission):
         # upload capability; document APIs themselves remain Phase 3B.5C.
         "generate_document_requests": "documents.upload",
     }
+
+class DocumentRequestAccessPermission(ActionAccessPermission):
+    """
+    Authorization for document-request APIs.
+
+    Existing contact, ownership, lifecycle, evidence and verification rules
+    remain unchanged and execute after this capability check.
+    """
+
+    action_access_map = {
+        "list": "documents.view",
+        "retrieve": "documents.view",
+        "attachments": "documents.view",
+
+        "create": "documents.upload",
+        "update": "documents.upload",
+        "partial_update": "documents.upload",
+        "upload": "documents.upload",
+
+        "verify": "documents.review",
+
+        # Deletion remains blocked by the existing controller rule.
+        "destroy": "documents.view",
+    }
+
+
+class DocumentAttachmentAccessPermission(ActionAccessPermission):
+    """
+    Authorization for document-attachment APIs.
+
+    Generic mutation and deletion remain prohibited by existing business
+    guards. Review, duplicate resolution and canonical selection retain their
+    existing reviewer and evidence rules.
+    """
+
+    action_access_map = {
+        "list": "documents.view",
+        "retrieve": "documents.view",
+        "download": "documents.view",
+
+        # Preserve the stable business denials for generic mutation.
+        "create": "documents.view",
+        "update": "documents.view",
+        "partial_update": "documents.view",
+        "destroy": "documents.view",
+
+        "review": "documents.review",
+        "resolve_duplicate": "documents.review",
+        "mark_canonical": "documents.approve",
+    }

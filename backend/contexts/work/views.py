@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from rest_framework.permissions import IsAuthenticated
-from contexts.authorization.permissions import WorkItemAccessPermission
+from contexts.authorization.permissions import (
+    DocumentAttachmentAccessPermission,
+    DocumentRequestAccessPermission,
+    WorkItemAccessPermission,
+)
 import hashlib
 import os
 import uuid
@@ -1194,6 +1198,10 @@ class WorkNoteViewSet(TenantModelViewSet):
 
 
 class DocumentRequestViewSet(TenantModelViewSet):
+    permission_classes = [
+        IsAuthenticated,
+        DocumentRequestAccessPermission,
+    ]
     queryset = DocumentRequest.objects.all()
     serializer_class = DocumentRequestSerializer
     search_fields = ["name", "notes", "description", "remarks"]
@@ -1495,6 +1503,10 @@ class DocumentRequestViewSet(TenantModelViewSet):
 
 
 class DocumentAttachmentViewSet(TenantModelViewSet):
+    permission_classes = [
+        IsAuthenticated,
+        DocumentAttachmentAccessPermission,
+    ]
     queryset = DocumentAttachment.objects.all()
     serializer_class = DocumentAttachmentSerializer
 
