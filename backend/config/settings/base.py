@@ -4,7 +4,7 @@ Deliberately minimal. This module is imported by every environment-specific
 settings module and must not contain development conveniences or production
 credentials.
 
-Scope note (EWP-000.1A §5): authentication, sessions, tenant isolation,
+Scope note (EWP-000.1A Ã‚Â§5): authentication, sessions, tenant isolation,
 row-level security, audit, Celery, Redis, S3, SES and observability are NOT
 configured here. Each is owned by a later work package.
 """
@@ -23,7 +23,7 @@ env = environ.Env()
 # --------------------------------------------------------------------- core --
 # SECRET_KEY, DEBUG and ALLOWED_HOSTS are intentionally NOT defaulted here.
 # Each environment module is responsible for supplying them, so that production
-# cannot silently inherit an insecure development value (EWP-000.1A §9.4).
+# cannot silently inherit an insecure development value (EWP-000.1A Ã‚Â§9.4).
 
 # -------------------------------------------------------------- application --
 DJANGO_APPS = [
@@ -32,18 +32,19 @@ DJANGO_APPS = [
     "django.contrib.staticfiles",
     # django.contrib.admin is deliberately absent.
     # The admin bypasses the tenant model and the permission layer and is never
-    # installed or routed (EIB §7.4, EWP-000.1A §9.7).
+    # installed or routed (EIB Ã‚Â§7.4, EWP-000.1A Ã‚Â§9.7).
 ]
 
 THIRD_PARTY_APPS = [
     "rest_framework",
 ]
 
-# The 15 bounded contexts of AR §4. Each package currently contains only its
+# The 15 bounded contexts of AR Ã‚Â§4. Each package currently contains only its
 # AppConfig; domain models are owned by later work packages.
 CONTEXT_APPS = [
     "contexts.platform",
     "contexts.identity",
+"contexts.authorization",
     "contexts.organisation",
     "contexts.configuration",
     "contexts.clients",
@@ -96,7 +97,7 @@ TEMPLATES = [
 ]
 
 # ----------------------------------------------------------------- database --
-# PostgreSQL is the architectural database (TAD §5): row-level security is a
+# PostgreSQL is the architectural database (TAD Ã‚Â§5): row-level security is a
 # load-bearing tenant-isolation mechanism, so no other engine is permitted.
 # EWP-000.1A opens no connection; provisioning is a later work package.
 DATABASES = {
@@ -114,7 +115,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ------------------------------------------------------ internationalisation --
 LANGUAGE_CODE = "en-gb"
-# All timestamps are stored in UTC (TD §1.3). Display-time zone conversion is a
+# All timestamps are stored in UTC (TD Ã‚Â§1.3). Display-time zone conversion is a
 # presentation concern owned by a later work package.
 TIME_ZONE = "UTC"
 USE_I18N = True
@@ -127,7 +128,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # --------------------------------------------------------------------- DRF --
 # Defaults are intentionally restrictive. Authentication and permission classes
 # are supplied by the work package that implements the authorisation model
-# (TD §7.4); until then no endpoint may rely on a permissive default.
+# (TD Ã‚Â§7.4); until then no endpoint may rely on a permissive default.
 REST_FRAMEWORK: dict[str, object] = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": [
@@ -139,7 +140,7 @@ REST_FRAMEWORK: dict[str, object] = {
 # ------------------------------------------------------------------ logging --
 # Bootstrap logging only: console output, no external transport, no request
 # body capture. Structured logging with sensitive-field redaction is owned by
-# the observability work package (EIB §4.11).
+# the observability work package (EIB Ã‚Â§4.11).
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
