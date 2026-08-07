@@ -2035,14 +2035,209 @@ export function workPrimaryAction(status: unknown): WorkPrimaryAction {
   return null;
 }
 
+
+export function WorkCatalogueCascade({
+  verticalRows,
+  domainRows,
+  serviceRows,
+  selectedVerticalId,
+  selectedDomainId,
+  selectedServiceId,
+  disabled = false,
+  onVerticalChange,
+  onDomainChange,
+  onServiceChange,
+}: {
+  verticalRows: Row[];
+  domainRows: Row[];
+  serviceRows: Row[];
+  selectedVerticalId: string;
+  selectedDomainId: string;
+  selectedServiceId: string;
+  disabled?: boolean;
+  onVerticalChange: (value: string) => void;
+  onDomainChange: (value: string) => void;
+  onServiceChange: (value: string) => void;
+}): React.JSX.Element {
+  const availableVerticals = verticalRows
+    .filter(
+      (row) =>
+        row.status === 'ACTIVE' ||
+        String(row.id) === selectedVerticalId,
+    )
+    .sort((left, right) =>
+      String(left.name).localeCompare(
+        String(right.name),
+      ),
+    );
+
+  const availableDomains = domainRows
+    .filter(
+      (row) =>
+        String(row.vertical_id) ===
+          selectedVerticalId &&
+        (
+          row.status === 'ACTIVE' ||
+          String(row.id) === selectedDomainId
+        ),
+    )
+    .sort((left, right) =>
+      String(left.name).localeCompare(
+        String(right.name),
+      ),
+    );
+
+  const availableServices = serviceRows
+    .filter(
+      (row) =>
+        String(row.domain_id) ===
+          selectedDomainId &&
+        (
+          row.status === 'ACTIVE' ||
+          String(row.id) === selectedServiceId
+        ),
+    )
+    .sort((left, right) =>
+      String(left.name).localeCompare(
+        String(right.name),
+      ),
+    );
+
+  return (
+    <section
+      className="cx-operational-fields"
+      aria-label="Service classification"
+    >
+      <div className="cx-operational-fields-heading">
+        <div>
+          <h4>Service classification</h4>
+          <p>
+            Select the Vridhi vertical, domain and
+            service for this work item.
+          </p>
+        </div>
+      </div>
+
+      <div className="cx-operational-fields-grid">
+        <div className="cx-field">
+          <label htmlFor="work-vertical">
+            Vertical
+          </label>
+
+          <select
+            id="work-vertical"
+            value={selectedVerticalId}
+            disabled={disabled}
+            onChange={(event) =>
+              onVerticalChange(
+                event.target.value,
+              )
+            }
+          >
+            <option value="">
+              Select vertical
+            </option>
+
+            {availableVerticals.map((row) => (
+              <option
+                key={String(row.id)}
+                value={String(row.id)}
+              >
+                {String(row.name)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="cx-field">
+          <label htmlFor="work-domain">
+            Domain
+          </label>
+
+          <select
+            id="work-domain"
+            value={selectedDomainId}
+            disabled={
+              disabled ||
+              !selectedVerticalId
+            }
+            onChange={(event) =>
+              onDomainChange(
+                event.target.value,
+              )
+            }
+          >
+            <option value="">
+              {selectedVerticalId
+                ? 'Select domain'
+                : 'Select vertical first'}
+            </option>
+
+            {availableDomains.map((row) => (
+              <option
+                key={String(row.id)}
+                value={String(row.id)}
+              >
+                {String(row.name)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="cx-field">
+          <label htmlFor="work-service">
+            Service
+          </label>
+
+          <select
+            id="work-service"
+            value={selectedServiceId}
+            disabled={
+              disabled ||
+              !selectedDomainId
+            }
+            onChange={(event) =>
+              onServiceChange(
+                event.target.value,
+              )
+            }
+          >
+            <option value="">
+              {selectedDomainId
+                ? 'Select service'
+                : 'Select domain first'}
+            </option>
+
+            {availableServices.map((row) => (
+              <option
+                key={String(row.id)}
+                value={String(row.id)}
+              >
+                {String(row.name)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
 export function WorkArea(): React.JSX.Element {
   const clients = useList('clients');
+  const verticals = useList('verticals');
+  const domains = useList('domains');
   const services = useList('services');
   const employees = useList('employees');
   const [statusFilter, setStatusFilter] = useState('');
   const params = useMemo(() => (statusFilter ? { status: statusFilter } : {}), [statusFilter]);
   const work = useList('work-items', params);
   const [editing, setEditing] = useState<Row | null>(null);
+  const [selectedVerticalId, setSelectedVerticalId] =
+    useState('');
+  const [selectedDomainId, setSelectedDomainId] =
+    useState('');
 
   const selectedServiceId = String(
     editing?.service_id ?? '',
@@ -2059,6 +2254,35 @@ export function WorkArea(): React.JSX.Element {
           service_id: '__none__',
         },
   );
+
+  useEffect(() => {
+    if (!selectedServiceId) return;
+
+    const service = services.rows.find(
+      (row) =>
+        String(row.id) === selectedServiceId,
+    );
+
+    if (!service?.domain_id) return;
+
+    const domainId = String(service.domain_id);
+
+    const domain = domains.rows.find(
+      (row) =>
+        String(row.id) === domainId,
+    );
+
+    if (!domain?.vertical_id) return;
+
+    setSelectedDomainId(domainId);
+    setSelectedVerticalId(
+      String(domain.vertical_id),
+    );
+  }, [
+    selectedServiceId,
+    services.rows,
+    domains.rows,
+  ]);
 
   const updateWorkField = (
     name: string,
@@ -2115,6 +2339,8 @@ export function WorkArea(): React.JSX.Element {
 
   const closeWorkDrawer = (): void => {
     setPendingAction(null);
+    setSelectedVerticalId('');
+    setSelectedDomainId('');
     setEditing(null);
   };
 
@@ -2196,7 +2422,6 @@ export function WorkArea(): React.JSX.Element {
   const fields: Field[] = [
     { name: 'title' },
     { name: 'client_id', kind: 'select', options: clients.rows.map((c) => String(c.id)), labels: (v) => String(clients.rows.find((c) => c.id === v)?.trade_name || clients.rows.find((c) => c.id === v)?.legal_name || v) },
-    { name: 'service_id', kind: 'select', options: services.rows.filter((s) => s.status === 'ACTIVE').map((s) => String(s.id)), labels: (v) => String(services.rows.find((s) => s.id === v)?.name ?? v) },
     { name: 'owner_user_id', kind: 'select', options: employees.rows.filter((e) => e.is_active).map((e) => String(e.id)), labels: (v) => String(employees.rows.find((e) => e.id === v)?.name ?? v) },
     { name: 'reviewer_user_id', kind: 'select', options: employees.rows.filter((e) => e.is_active).map((e) => String(e.id)), labels: (v) => String(employees.rows.find((e) => e.id === v)?.name ?? v) },
     { name: 'period' },
@@ -2317,6 +2542,49 @@ export function WorkArea(): React.JSX.Element {
                     )}
                   </div>
                 ))}
+
+                <WorkCatalogueCascade
+                  verticalRows={verticals.rows}
+                  domainRows={domains.rows}
+                  serviceRows={services.rows}
+                  selectedVerticalId={
+                    selectedVerticalId
+                  }
+                  selectedDomainId={
+                    selectedDomainId
+                  }
+                  selectedServiceId={
+                    selectedServiceId
+                  }
+                  disabled={
+                    editing.id
+                      ? editing.can_edit !== true
+                      : false
+                  }
+                  onVerticalChange={(value) => {
+                    setSelectedVerticalId(value);
+                    setSelectedDomainId('');
+
+                    updateWorkField(
+                      'service_id',
+                      '',
+                    );
+                  }}
+                  onDomainChange={(value) => {
+                    setSelectedDomainId(value);
+
+                    updateWorkField(
+                      'service_id',
+                      '',
+                    );
+                  }}
+                  onServiceChange={(value) =>
+                    updateWorkField(
+                      'service_id',
+                      value,
+                    )
+                  }
+                />
 
                 {selectedServiceId ? (
                   <OperationalFieldsPanel

@@ -27,7 +27,7 @@ function mockFetchReturning(rows: unknown[]): void {
       const url = String(input);
       // Every collection endpoint consumed by WorkArea must return an array.
       // Only the work-items collection receives the test rows; lookup collections are empty.
-      const isCollection = /\/api\/v1\/(clients|services|employees|work-items)\/(?:\?.*)?$/.test(url);
+      const isCollection = /\/api\/v1\/(clients|verticals|domains|services|employees|work-items)\/(?:\?.*)?$/.test(url);
       const isWorkItemsCollection = /\/api\/v1\/work-items\/(?:\?.*)?$/.test(url);
       const body = isWorkItemsCollection ? rows : isCollection ? [] : {};
       return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
