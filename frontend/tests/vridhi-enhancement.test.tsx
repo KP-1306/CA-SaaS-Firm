@@ -43,6 +43,27 @@ describe('Executive dashboard (backend aggregation)', () => {
           client_health: { rows: [] },
           heatmap_priority_status: {},
           action_centre: {},
+          work_health: {
+            healthy: 5,
+            attention_required: 2,
+            high_risk: 1,
+            due_soon: 2,
+            overdue: 1,
+            waiting_on_client: 2,
+            waiting_on_reviewer: 1,
+            longest_waiting_days: 8,
+            immediate_actions: [
+              {
+                id: 'w1',
+                title: 'GST Return',
+                health: 'RED',
+                risk: 'HIGH',
+                current_controller: 'CLIENT',
+                waiting_days: 8,
+                next_action: 'Await client documents',
+              },
+            ],
+          },
         });
       }
       return jsonResponse({});
@@ -50,6 +71,18 @@ describe('Executive dashboard (backend aggregation)', () => {
     render(<ExecutiveDashboard />);
     await waitFor(() => expect(screen.getByText('Active work')).toBeInTheDocument());
     expect(screen.getByText('9')).toBeInTheDocument();
+    expect(
+      screen.getByText('Firm Work Health'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Attention required'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('High risk'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Await client documents'),
+    ).toBeInTheDocument();
   });
 });
 

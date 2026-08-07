@@ -15,6 +15,7 @@ from django.utils import timezone
 from contexts.clients.models import Client
 from contexts.identity.models import Employee
 from contexts.work.models import DocumentAttachment, DocumentRequest, WorkItem, WorkNote
+from contexts.work.work_health import calculate_work_health
 
 _OPEN_EXCLUDED = ("COMPLETED", "CANCELLED")
 _AGE_BUCKETS = ((0, 7), (8, 30), (31, 90), (91, None))
@@ -191,6 +192,145 @@ def employee_dashboard(tenant_id, identity_ids, period="month", employee_id=None
     }
 
 
+
+def _executive_work_health(open_items):
+    """Aggregate the certified Work Health engine for leadership.
+
+    This function defines no new health rules. Every per-item decision is
+    delegated to calculate_work_health(), then summarized for the executive
+    dashboard.
+    """
+    snapshots = []
+
+    for item in open_items:
+        health = calculate_work_health(item)
+
+        snapshots.append({
+            "work_item": item,
+            "health": health,
+        })
+
+    healthy = 0
+    attention_required = 0
+    high_risk = 0
+    due_soon = 0
+    overdue = 0
+    waiting_on_client = 0
+    waiting_on_reviewer = 0
+    longest_waiting_days = 0
+
+    actions = []
+
+    for entry in snapshots:
+        item = entry["work_item"]
+        health = entry["health"]
+
+        health_state = health.get("health")
+        risk_state = health.get("risk")
+        due_state = health.get("due_state")
+        controller = health.get("current_controller")
+        waiting_days = int(
+            health.get("waiting_days") or 0
+        )
+
+        if health_state == "GREEN":
+            healthy += 1
+        elif health_state == "AMBER":
+            attention_required += 1
+
+        if (
+            health_state == "RED"
+            or risk_state == "HIGH"
+        ):
+            high_risk += 1
+
+        if due_state == "DUE_SOON":
+            due_soon += 1
+        elif due_state == "OVERDUE":
+            overdue += 1
+
+        if controller == "CLIENT":
+            waiting_on_client += 1
+        elif controller == "REVIEWER":
+            waiting_on_reviewer += 1
+
+        longest_waiting_days = max(
+            longest_waiting_days,
+            waiting_days,
+        )
+
+        next_action = health.get("next_action") or {}
+
+        if (
+            health_state in ("AMBER", "RED")
+            or risk_state == "HIGH"
+            or due_state in ("DUE_SOON", "OVERDUE")
+            or waiting_days > 0
+        ):
+            actions.append({
+                "work_item_id": str(item.id),
+                "title": item.title,
+                "client_id": (
+                    str(item.client_id)
+                    if item.client_id
+                    else None
+                ),
+                "status": item.status,
+                "priority": item.priority,
+                "health": health_state,
+                "risk": risk_state,
+                "due_state": due_state,
+                "days_to_due": health.get("days_to_due"),
+                "current_controller": controller,
+                "waiting_days": waiting_days,
+                "next_action_code": next_action.get("code"),
+                "next_action": next_action.get("label"),
+            })
+
+    health_rank = {
+        "RED": 3,
+        "AMBER": 2,
+        "GREEN": 1,
+        None: 0,
+    }
+
+    risk_rank = {
+        "HIGH": 3,
+        "MEDIUM": 2,
+        "LOW": 1,
+        None: 0,
+    }
+
+    due_rank = {
+        "OVERDUE": 3,
+        "DUE_SOON": 2,
+        "ON_TRACK": 1,
+        None: 0,
+    }
+
+    actions.sort(
+        key=lambda row: (
+            health_rank.get(row["health"], 0),
+            risk_rank.get(row["risk"], 0),
+            due_rank.get(row["due_state"], 0),
+            row["waiting_days"],
+        ),
+        reverse=True,
+    )
+
+    return {
+        "healthy": healthy,
+        "attention_required": attention_required,
+        "high_risk": high_risk,
+        "due_soon": due_soon,
+        "overdue": overdue,
+        "waiting_on_client": waiting_on_client,
+        "waiting_on_reviewer": waiting_on_reviewer,
+        "longest_waiting_days": longest_waiting_days,
+        "immediate_actions": actions[:10],
+    }
+
+
 # ---------------------------------------------------------------- executive view
 def executive_dashboard(tenant_id, period="month"):
     start, end = _period_bounds(period)
@@ -287,6 +427,7 @@ def executive_dashboard(tenant_id, period="month"):
         "client_health": {"rows": client_rows},
         "heatmap_priority_status": status_by_priority,
         "action_centre": action_centre,
+        "work_health": _executive_work_health(open_items),
     }
 
 

@@ -321,3 +321,38 @@ def test_pending_reviews_no_double_count_across_reviewer_representations():
         )
     data = HttpClient().get("/api/v1/dashboard/employee/", **_h(principal=STAFF_A)).json()
     assert data["workload"]["pending_reviews_assigned"] == 2
+@pytest.mark.django_db
+def test_executive_dashboard_exposes_certified_work_health():
+    from contexts.work.models import WorkItem
+
+    _employee(PARTNER, "P", "PARTNER")
+
+    WorkItem.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        title="Executive Health Work",
+        client_id=uuid.uuid4(),
+        owner_user_id=PARTNER,
+        priority="HIGH",
+        status="IN_PROGRESS",
+    )
+
+    response = HttpClient().get(
+        "/api/v1/dashboard/executive/",
+        **_h(principal=PARTNER),
+    )
+
+    assert response.status_code == 200
+
+    health = response.json()["work_health"]
+
+    assert "healthy" in health
+    assert "attention_required" in health
+    assert "high_risk" in health
+    assert "due_soon" in health
+    assert "overdue" in health
+    assert "waiting_on_client" in health
+    assert "waiting_on_reviewer" in health
+    assert "longest_waiting_days" in health
+    assert "immediate_actions" in health

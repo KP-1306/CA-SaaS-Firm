@@ -2877,3 +2877,129 @@ button.cx-btn.pending { box-shadow: 0 0 0 2px #f59e0b; }
     grid-template-columns: 1fr;
   }
 }
+/* ================================================================
+   PHASE 4A.3 FIRM WORK HEALTH
+   ================================================================ */
+
+.cx-firm-health {
+  margin-bottom: 20px;
+  overflow: hidden;
+  border: 1px solid #dce4ed;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.cx-firm-health-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid #e8edf2;
+}
+
+.cx-firm-health-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cx-firm-health-head h3 {
+  margin: 3px 0 0;
+  font-size: 18px;
+}
+
+.cx-firm-health-head small {
+  color: var(--muted);
+  text-align: right;
+}
+
+.cx-firm-health-kpis {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(120px, 1fr));
+  gap: 1px;
+  background: #e7ecf2;
+  border-bottom: 1px solid #e7ecf2;
+}
+
+.cx-firm-health-kpis > div {
+  min-height: 88px;
+  padding: 15px 16px;
+  background: #fff;
+}
+
+.cx-firm-health-kpis strong {
+  display: block;
+  color: #172033;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.cx-firm-health-kpis span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.cx-firm-health-kpis > div.stable {
+  box-shadow:
+    inset 0 3px 0 #469b69;
+}
+
+.cx-firm-health-kpis > div.watch {
+  box-shadow:
+    inset 0 3px 0 #c58b2c;
+}
+
+.cx-firm-health-kpis > div.risk {
+  box-shadow:
+    inset 0 3px 0 #c94f4f;
+}
+
+.cx-firm-health-actions {
+  padding: 16px 18px 18px;
+}
+
+.cx-firm-health-actions-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.cx-firm-health-actions-head strong {
+  font-size: 14px;
+}
+
+.cx-firm-health-actions-head span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+@media (max-width: 1000px) {
+  .cx-firm-health-kpis {
+    grid-template-columns:
+      repeat(2, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .cx-firm-health-head,
+  .cx-firm-health-actions-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cx-firm-health-head small {
+    text-align: left;
+  }
+
+  .cx-firm-health-kpis {
+    grid-template-columns: 1fr;
+  }
+}

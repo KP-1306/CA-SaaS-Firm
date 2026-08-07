@@ -126,9 +126,161 @@ export function ExecutiveDashboard({ onDrill }: { onDrill?: (filter: Record<stri
   const byStatus = (ops.by_status ?? {}) as Dict;
   const workloadRows = ((wl.rows ?? []) as Row[]);
   const clientRows = ((ch.rows ?? []) as Row[]);
+
+  const wh =
+    (data.work_health ?? {}) as Dict;
+
+  const healthActions =
+    ((wh.immediate_actions ?? []) as Row[]);
+
   return (
     <>
       <PeriodPicker period={period} setPeriod={setPeriod} />
+
+      <section
+        className="cx-firm-health"
+        aria-label="Firm Work Health"
+      >
+        <div className="cx-firm-health-head">
+          <div>
+            <span>
+              Firm Work Health
+            </span>
+            <h3>
+              What needs attention now
+            </h3>
+          </div>
+
+          <small>
+            Based on the certified Work Health engine
+          </small>
+        </div>
+
+        <div className="cx-firm-health-kpis">
+          <div className="stable">
+            <strong>
+              {String(
+                wh.healthy ?? 0
+              )}
+            </strong>
+            <span>Healthy</span>
+          </div>
+
+          <div className="watch">
+            <strong>
+              {String(
+                wh.attention_required ?? 0
+              )}
+            </strong>
+            <span>
+              Attention required
+            </span>
+          </div>
+
+          <div className="risk">
+            <strong>
+              {String(
+                wh.high_risk ?? 0
+              )}
+            </strong>
+            <span>High risk</span>
+          </div>
+
+          <div>
+            <strong>
+              {String(
+                wh.overdue ?? 0
+              )}
+            </strong>
+            <span>Overdue</span>
+          </div>
+
+          <div>
+            <strong>
+              {String(
+                wh.due_soon ?? 0
+              )}
+            </strong>
+            <span>Due soon</span>
+          </div>
+
+          <div>
+            <strong>
+              {String(
+                wh.waiting_on_client ?? 0
+              )}
+            </strong>
+            <span>
+              Waiting on client
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              {String(
+                wh.waiting_on_reviewer ?? 0
+              )}
+            </strong>
+            <span>
+              Waiting on reviewer
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              {String(
+                wh.longest_waiting_days ?? 0
+              )}
+            </strong>
+            <span>
+              Longest wait (days)
+            </span>
+          </div>
+        </div>
+
+        <div className="cx-firm-health-actions">
+          <div className="cx-firm-health-actions-head">
+            <strong>
+              Immediate next actions
+            </strong>
+            <span>
+              Highest-risk work first
+            </span>
+          </div>
+
+          <DataTable
+            empty="No work currently requires immediate attention."
+            columns={[
+              {
+                key: 'title',
+                header: 'Work item',
+              },
+              {
+                key: 'health',
+                header: 'Health',
+              },
+              {
+                key: 'risk',
+                header: 'Risk',
+              },
+              {
+                key: 'current_controller',
+                header: 'Waiting on',
+              },
+              {
+                key: 'waiting_days',
+                header: 'Days',
+              },
+              {
+                key: 'next_action',
+                header: 'Next action',
+              },
+            ]}
+            rows={healthActions}
+          />
+        </div>
+      </section>
+
       <h3 className="cx-section-title">Executive Overview</h3>
       <div className="cx-cards">
         <MetricCard n={ov.active_clients} label="Active clients" />
