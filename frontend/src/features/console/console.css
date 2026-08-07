@@ -2621,3 +2621,259 @@ button.cx-btn.pending { box-shadow: 0 0 0 2px #f59e0b; }
     grid-template-columns: 1fr;
   }
 }
+/* ==========================================================
+   PHASE 4A.2 WORK HEALTH UI
+   ========================================================== */
+
+.cx-work-health-shell {
+  margin: 12px 0 14px;
+  padding: 16px;
+  border: 1px solid #dbe3ec;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 30, 50, 0.05);
+}
+
+.cx-work-health-shell.stable {
+  border-color: #b9dcc8;
+  background: #fbfefc;
+}
+
+.cx-work-health-shell.watch {
+  border-color: #f1d49a;
+  background: #fffdf8;
+}
+
+.cx-work-health-shell.risk {
+  border-color: #efb4b4;
+  background: #fffafa;
+}
+
+.cx-work-health-shell.loading,
+.cx-work-health-shell.unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #64748b;
+}
+
+.cx-work-health-shell.unavailable {
+  border-style: dashed;
+}
+
+.cx-work-health-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.cx-work-health-progress {
+  width: 76px;
+  height: 76px;
+  flex: 0 0 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 7px solid #dbe3ec;
+  border-radius: 50%;
+  background: #f6f8fb;
+}
+
+.cx-work-health-shell.stable .cx-work-health-progress {
+  border-color: #69b788;
+}
+
+.cx-work-health-shell.watch .cx-work-health-progress {
+  border-color: #dca847;
+}
+
+.cx-work-health-shell.risk .cx-work-health-progress {
+  border-color: #d76b6b;
+}
+
+.cx-work-health-progress strong {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.cx-work-health-progress span {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.cx-work-health-status {
+  min-width: 0;
+  flex: 1;
+}
+
+.cx-work-health-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cx-work-health-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: #475569;
+}
+
+.cx-work-health-status-line strong {
+  color: #0f1e32;
+  font-size: 19px;
+}
+
+.cx-work-health-progress-track {
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8edf3;
+}
+
+.cx-work-health-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #66758a;
+}
+
+.cx-work-health-shell.stable
+.cx-work-health-progress-track span {
+  background: #469b69;
+}
+
+.cx-work-health-shell.watch
+.cx-work-health-progress-track span {
+  background: #c58b2c;
+}
+
+.cx-work-health-shell.risk
+.cx-work-health-progress-track span {
+  background: #c94f4f;
+}
+
+.cx-work-health-metrics {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cx-work-health-metrics > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 10px 11px;
+  border: 1px solid #e4e9ef;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.cx-work-health-metrics span,
+.cx-work-health-next span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.cx-work-health-metrics strong {
+  margin-top: 2px;
+  color: #142033;
+  font-size: 14px;
+}
+
+.cx-work-health-metrics small {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.cx-work-health-next {
+  margin-top: 10px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  background: #f5f8fb;
+}
+
+.cx-work-health-next span,
+.cx-work-health-next strong {
+  display: block;
+}
+
+.cx-work-health-next strong {
+  margin-top: 2px;
+  color: #142033;
+}
+
+.cx-work-health-reasons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 9px;
+}
+
+.cx-work-health-reasons span {
+  position: relative;
+  padding-left: 13px;
+  color: #5c6878;
+  font-size: 11px;
+}
+
+.cx-work-health-reasons span::before {
+  position: absolute;
+  left: 1px;
+  content: "•";
+}
+
+/*
+  Existing document intelligence remains authoritative.
+  Phase 4A.2 adds scanability only.
+*/
+
+.cx-checklist-state {
+  min-width: 116px;
+  justify-content: center;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.cx-checklist-state[data-state="RECEIVED"] {
+  box-shadow: inset 3px 0 0 #55a978;
+}
+
+.cx-checklist-state[data-state="PENDING_REVIEW"] {
+  box-shadow: inset 3px 0 0 #d9a13a;
+}
+
+.cx-checklist-state[data-state="REJECTED"] {
+  box-shadow: inset 3px 0 0 #cf5b5b;
+}
+
+.cx-checklist-state[data-state="MISSING"] {
+  box-shadow: inset 3px 0 0 #94a3b8;
+}
+
+@media (max-width: 560px) {
+  .cx-work-health-main {
+    align-items: flex-start;
+  }
+
+  .cx-work-health-progress {
+    width: 66px;
+    height: 66px;
+    flex-basis: 66px;
+  }
+
+  .cx-work-health-metrics {
+    grid-template-columns: 1fr;
+  }
+}
