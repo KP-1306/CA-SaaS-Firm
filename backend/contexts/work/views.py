@@ -46,6 +46,7 @@ from contexts.quality.services import (
 
 from . import ownership
 from .document_intelligence import calculate_document_readiness
+from .work_health import calculate_work_health
 from contexts.audit.recording import record_event
 from contexts.audit.models import AuditAction
 
@@ -870,6 +871,19 @@ class WorkItemViewSet(TenantModelViewSet):
                 "status": issue.status,
                 "qa_readiness": qa_readiness(item),
             }
+        )
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="health",
+    )
+    def health(self, request, pk=None):
+        item = self.get_object()
+
+        return Response(
+            calculate_work_health(item),
+            status=http_status.HTTP_200_OK,
         )
 
     @action(
