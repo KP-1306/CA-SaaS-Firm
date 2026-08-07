@@ -3003,3 +3003,803 @@ button.cx-btn.pending { box-shadow: 0 0 0 2px #f59e0b; }
     grid-template-columns: 1fr;
   }
 }
+
+
+/* =========================================================
+   VRIDHI OPERATIONAL WORKSPACE UX V2
+   Full-page operational execution
+   ========================================================= */
+
+/*
+ * Work Item workspace.
+ *
+ * This replaces only the custom Work drawer presentation.
+ * The smaller reusable Drawer component is untouched.
+ */
+.cx-workspace-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #f6f8fb;
+}
+
+.cx-workspace-page {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100vh;
+  padding: 24px 32px 48px;
+  background: #f6f8fb;
+}
+
+
+/*
+ * The work header becomes a proper page header.
+ */
+.cx-workspace-page .cx-drawer-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin: -24px -32px 20px;
+  padding: 18px 32px;
+  background: rgba(255, 255, 255, 0.98);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 8px rgba(15, 30, 50, 0.05);
+}
+
+
+/*
+ * Use the entire screen width for work execution.
+ */
+.cx-workspace-page > * {
+  max-width: 100%;
+}
+
+.cx-workspace-page .cx-panel,
+.cx-workspace-page .cx-card {
+  max-width: none;
+}
+
+
+/*
+ * Main tab navigation becomes easy to scan.
+ */
+.cx-workspace-page .cx-tabs {
+  position: sticky;
+  top: 74px;
+  z-index: 8;
+  padding: 8px 0;
+  background: #f6f8fb;
+}
+
+
+/*
+ * Duplicate queue removed from naked-eye view.
+ *
+ * The calculation remains available in code and can still power
+ * health/work intelligence.
+ */
+.cx-operator-duplicate {
+  display: none !important;
+}
+
+
+/*
+ * Document progress is a compact summary, not another operational
+ * document list.
+ */
+.cx-workspace-page .cx-operator-readiness {
+  padding: 18px 20px;
+  margin: 14px 0 20px;
+}
+
+.cx-workspace-page .cx-readiness-score {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.cx-workspace-page .cx-readiness-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+
+/*
+ * The blocker list inside readiness duplicates the actual
+ * operational document records below. Hide that detail here.
+ */
+.cx-workspace-page
+.cx-operator-readiness
+.cx-readiness-blockers,
+
+.cx-workspace-page
+.cx-operator-readiness
+.cx-readiness-blocker-list,
+
+.cx-workspace-page
+.cx-operator-readiness
+.cx-readiness-dependencies {
+  display: none !important;
+}
+
+
+/*
+ * Actual document records become the single operational list.
+ */
+.cx-workspace-page .cx-doc-card {
+  margin: 8px 0;
+  padding: 14px 16px;
+  border-radius: 10px;
+}
+
+.cx-workspace-page .cx-document-request-head {
+  display: grid;
+  grid-template-columns:
+    minmax(260px, 2fr)
+    minmax(180px, 1fr)
+    auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.cx-workspace-page .cx-document-title-row {
+  min-width: 0;
+}
+
+.cx-workspace-page .cx-document-metadata {
+  margin-top: 4px;
+  color: #64748b;
+}
+
+
+/*
+ * Secondary/technical information stays visually quiet.
+ */
+.cx-workspace-page .cx-document-intelligence-strip,
+.cx-workspace-page .cx-file-list small,
+.cx-workspace-page .cx-muted {
+  color: #718096;
+}
+
+
+/*
+ * Make actions easier to distinguish from metadata.
+ */
+.cx-workspace-page .cx-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+
+/*
+ * Prevent narrow-drawer horizontal scrolling.
+ */
+.cx-workspace-page,
+.cx-workspace-page * {
+  box-sizing: border-box;
+}
+
+.cx-workspace-page .cx-doc-card,
+.cx-workspace-page .cx-panel,
+.cx-workspace-page .cx-file-row {
+  min-width: 0;
+}
+
+
+/*
+ * Desktop operational layout.
+ */
+@media (min-width: 1100px) {
+  .cx-workspace-page {
+    padding-left: 42px;
+    padding-right: 42px;
+  }
+
+  .cx-workspace-page .cx-drawer-header {
+    margin-left: -42px;
+    margin-right: -42px;
+    padding-left: 42px;
+    padding-right: 42px;
+  }
+}
+
+
+/*
+ * Tablet/mobile fallback.
+ */
+@media (max-width: 900px) {
+  .cx-workspace-page {
+    padding: 16px;
+  }
+
+  .cx-workspace-page .cx-drawer-header {
+    margin: -16px -16px 16px;
+    padding: 14px 16px;
+  }
+
+  .cx-workspace-page .cx-tabs {
+    top: 64px;
+    overflow-x: auto;
+  }
+
+  .cx-workspace-page .cx-readiness-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .cx-workspace-page .cx-document-request-head {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* =========================================================
+   VRIDHI GLOBAL FULL-SCREEN OPERATION STANDARD V1
+
+   Product rule:
+   Operational create / edit / detail experiences must use the
+   available workspace rather than a narrow right-side drawer.
+
+   Business behavior is unchanged. This is presentation only.
+   ========================================================= */
+
+
+/* ---------------------------------------------------------
+   GENERIC OPERATIONAL DRAWER
+   --------------------------------------------------------- */
+
+.cx-drawer-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 50 !important;
+
+  display: block !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  background: #f6f8fb !important;
+}
+
+
+.cx-drawer {
+  box-sizing: border-box !important;
+
+  width: 100% !important;
+  max-width: none !important;
+
+  min-height: 100vh !important;
+  height: auto !important;
+
+  margin: 0 !important;
+  padding: 24px 34px 48px !important;
+
+  overflow: visible !important;
+
+  background: #f6f8fb !important;
+
+  box-shadow: none !important;
+
+  border: 0 !important;
+}
+
+
+/* ---------------------------------------------------------
+   PAGE HEADER
+   --------------------------------------------------------- */
+
+.cx-drawer > .cx-drawer-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 12 !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+
+  margin:
+    -24px
+    -34px
+    24px !important;
+
+  padding:
+    18px
+    34px !important;
+
+  background:
+    rgba(255, 255, 255, 0.98) !important;
+
+  border-bottom:
+    1px solid var(--line) !important;
+
+  box-shadow:
+    0 1px 8px
+    rgba(15, 30, 50, 0.05) !important;
+
+  backdrop-filter:
+    blur(8px);
+}
+
+
+.cx-drawer > .cx-drawer-header h3 {
+  margin: 0 !important;
+}
+
+
+/* Back is navigation, not a tiny close affordance. */
+
+.cx-drawer-back {
+  flex: 0 0 auto !important;
+}
+
+
+/* ---------------------------------------------------------
+   FORM / DETAIL CONTENT
+   --------------------------------------------------------- */
+
+.cx-drawer form,
+.cx-drawer .cx-form,
+.cx-drawer .cx-field-grid,
+.cx-drawer .cx-detail-grid {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+
+/*
+ * On desktop, ordinary edit forms should not become one
+ * enormous 1700px-long text line. Give form fields a readable
+ * working width while still using the full page for layout.
+ */
+.cx-drawer .cx-field-grid {
+  display: grid !important;
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(280px, 1fr)
+    ) !important;
+
+  gap:
+    16px 24px !important;
+}
+
+
+/*
+ * Any field explicitly designed as full-width remains full.
+ */
+.cx-drawer
+.cx-field-grid
+.cx-field-wide,
+
+.cx-drawer
+.cx-field-grid
+textarea {
+  grid-column:
+    1 / -1;
+}
+
+
+/* ---------------------------------------------------------
+   ACTION AREA
+   --------------------------------------------------------- */
+
+.cx-drawer-actions {
+  display: flex !important;
+
+  gap: 10px !important;
+
+  justify-content: flex-end !important;
+
+  align-items: center !important;
+
+  margin-top: 28px !important;
+
+  padding-top: 18px !important;
+
+  border-top:
+    1px solid var(--line) !important;
+}
+
+
+/* ---------------------------------------------------------
+   EMPLOYEE / EXPERTISE / COMPLEX OPERATIONAL CONTENT
+   --------------------------------------------------------- */
+
+.cx-drawer table,
+.cx-drawer .cx-table {
+  width: 100% !important;
+}
+
+
+.cx-drawer .cx-card,
+.cx-drawer .cx-panel {
+  max-width: none !important;
+}
+
+
+/* ---------------------------------------------------------
+   IDENTITY-SPECIFIC OPERATIONAL DRAWER
+
+   Identity & Access has its own drawer class. It follows the
+   same Vridhi operational standard.
+   --------------------------------------------------------- */
+
+.cx-identity-drawer {
+  box-sizing: border-box !important;
+
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 55 !important;
+
+  width: 100% !important;
+  max-width: none !important;
+
+  min-height: 100vh !important;
+  height: 100vh !important;
+
+  padding: 24px 34px 48px !important;
+
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  background: #f6f8fb !important;
+
+  box-shadow: none !important;
+}
+
+
+.cx-identity-drawer-head {
+  position: sticky !important;
+  top: -24px !important;
+  z-index: 12 !important;
+
+  margin:
+    -24px
+    -34px
+    24px !important;
+
+  padding:
+    18px
+    34px !important;
+
+  background:
+    rgba(255, 255, 255, 0.98) !important;
+
+  border-bottom:
+    1px solid var(--line) !important;
+}
+
+
+/* ---------------------------------------------------------
+   EXISTING WORK WORKSPACE
+
+   Work was already converted and remains canonical.
+   No style regression from the generic drawer rule.
+   --------------------------------------------------------- */
+
+.cx-workspace-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+}
+
+.cx-workspace-page {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+
+/* ---------------------------------------------------------
+   RESPONSIVE
+   --------------------------------------------------------- */
+
+@media (max-width: 900px) {
+
+  .cx-drawer,
+  .cx-identity-drawer {
+    padding:
+      16px
+      16px
+      32px !important;
+  }
+
+
+  .cx-drawer > .cx-drawer-header {
+    margin:
+      -16px
+      -16px
+      18px !important;
+
+    padding:
+      14px
+      16px !important;
+  }
+
+
+  .cx-identity-drawer-head {
+    margin:
+      -16px
+      -16px
+      18px !important;
+
+    padding:
+      14px
+      16px !important;
+  }
+
+
+  .cx-drawer .cx-field-grid {
+    grid-template-columns:
+      1fr !important;
+  }
+
+}
+
+
+/* =========================================================
+   VRIDHI SERVICES ANALYST UX V1
+   ========================================================= */
+
+.cx-catalogue-browser,
+.cx-service-workspace {
+  width: 100%;
+}
+
+.cx-catalogue-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.cx-catalogue-intro h2,
+.cx-service-workspace-head h2 {
+  margin: 3px 0 5px;
+}
+
+.cx-catalogue-intro p {
+  margin: 0;
+  color: #66778a;
+}
+
+.cx-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #65758a;
+}
+
+.cx-catalogue-columns {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.cx-catalogue-column {
+  min-height: 420px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.cx-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.cx-section-head h3 {
+  margin: 2px 0;
+}
+
+.cx-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #edf4fb;
+  color: #17558f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cx-catalogue-choice-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cx-catalogue-choice {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.cx-catalogue-choice:hover {
+  background: #f7faff;
+  border-color: #bad1e7;
+}
+
+.cx-catalogue-choice.is-selected {
+  background: #eef6ff;
+  border-color: #5c91c4;
+  box-shadow:
+    inset 3px 0 0 #1f5f9b;
+}
+
+.cx-catalogue-choice-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cx-catalogue-choice-main span {
+  color: #718096;
+  font-size: 11px;
+}
+
+.cx-link-button {
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #17558f;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.cx-empty-state {
+  padding: 24px 16px;
+  display: grid;
+  gap: 5px;
+  border: 1px dashed #ccd7e3;
+  border-radius: 9px;
+  color: #66778a;
+  background: #fbfcfe;
+}
+
+.cx-service-workspace-head {
+  display: grid;
+  grid-template-columns:
+    auto minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.cx-service-tabs {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 18px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cx-service-summary-card,
+.cx-service-documents,
+.cx-service-qa {
+  padding: 20px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.cx-service-summary-card p {
+  max-width: 760px;
+  color: #607184;
+}
+
+.cx-service-facts {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.cx-service-facts > div {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fafcff;
+}
+
+.cx-service-facts dt {
+  margin-bottom: 4px;
+  color: #708196;
+  font-size: 11px;
+}
+
+.cx-service-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.cx-document-catalogue-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cx-document-catalogue-row {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 13px 14px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.cx-document-catalogue-row:hover {
+  background: #f8fbff;
+}
+
+.cx-document-catalogue-row > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.cx-document-catalogue-row small {
+  color: #718096;
+}
+
+.cx-document-catalogue-meta {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #586a7d;
+}
+
+.cx-internal-note {
+  margin-top: 14px;
+  color: #788797;
+  font-size: 11px;
+}
+
+@media (max-width: 1050px) {
+  .cx-catalogue-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .cx-catalogue-column {
+    min-height: auto;
+  }
+
+  .cx-service-facts {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .cx-service-workspace-head {
+    grid-template-columns: 1fr;
+  }
+
+  .cx-service-tabs {
+    overflow-x: auto;
+  }
+
+  .cx-service-facts {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1813,8 +1813,8 @@ export function DocumentsPanel({
       <div className="cx-subhead"><h4>Internal work documents</h4>{canUploadInternal ? (<label className="cx-btn subtle" style={{ cursor: 'pointer' }}>Upload files<input type="file" multiple style={{ display: 'none' }} onChange={(e) => uploadInternal(e.target.files)} /></label>) : (<span className="cx-readonly-note">Upload locked at this stage</span>)}</div>
       <AttachmentList rows={internalFiles.rows.filter((a) => !a.document_request_id)} />
       <section
-        className={`cx-readiness-card ${readinessTone}`}
-        aria-label="Document readiness"
+        className={`cx-readiness-card cx-operator-readiness ${readinessTone}`}
+        aria-label="Document progress"
       >
         <div className="cx-readiness-score">
           <div
@@ -1831,7 +1831,7 @@ export function DocumentsPanel({
 
           <div>
             <span className="cx-readiness-eyebrow">
-              Document readiness
+              Document progress
             </span>
             <strong>
               {readinessStateText(readiness.state)}
@@ -1852,7 +1852,7 @@ export function DocumentsPanel({
               {readiness.mandatorySatisfied}/
               {readiness.mandatoryTotal}
             </strong>
-            <span>Mandatory complete</span>
+            <span>Required complete</span>
           </div>
 
           <div>
@@ -1860,21 +1860,21 @@ export function DocumentsPanel({
               {readiness.satisfiedDocuments}/
               {readiness.totalDocuments}
             </strong>
-            <span>Overall complete</span>
+            <span>Complete</span>
           </div>
 
           <div>
             <strong>{readiness.mandatoryMissing}</strong>
-            <span>Blocking review</span>
+            <span>Still needed</span>
           </div>
         </div>
 
         {!readiness.ready && readiness.blockers.length > 0 ? (
           <div className="cx-readiness-blockers">
             <div className="cx-readiness-blockers-title">
-              <strong>Required before review</strong>
+              <strong>Still needed</strong>
               <span>
-                Resolve these items to unlock submission.
+                Complete these items before review.
               </span>
             </div>
 
@@ -1909,7 +1909,7 @@ export function DocumentsPanel({
         ) : null}
       </section>
 
-      <section className="cx-document-action-queue">
+      <section className="cx-document-action-queue cx-operator-duplicate">
         <div className="cx-document-action-head">
           <div>
             <span className="cx-readiness-eyebrow">
@@ -2034,9 +2034,9 @@ export function DocumentsPanel({
 
       <div className="cx-subhead" style={{ marginTop: 18 }}>
         <div>
-          <h4>Client document requests</h4>
+          <h4>Documents</h4>
           <span className="cx-muted">
-            Structured evidence required to complete this work
+            Documents needed to complete this work
           </span>
         </div>
 
@@ -2945,8 +2945,8 @@ export function WorkArea(): React.JSX.Element {
         />
       )}
       {editing && (
-        <div className="cx-drawer-backdrop" onClick={closeWorkDrawer}>
-          <div className="cx-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="cx-workspace-backdrop" onClick={closeWorkDrawer}>
+          <div className="cx-workspace-page" onClick={(e) => e.stopPropagation()}>
             <h3>{editing.id ? String(editing.title) : 'New Work Item'}</h3>
 
             {editing.id ? (

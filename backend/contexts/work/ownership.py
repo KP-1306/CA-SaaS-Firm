@@ -25,6 +25,11 @@ import uuid
 from contexts.identity.models import Employee
 
 from .models import WorkStatus
+from contexts.identity.models import (
+    MembershipStatus,
+    ProviderMembership,
+    ProviderRole,
+)
 
 # Controller labels exposed to the API/frontend.
 CONTROLLER_OWNER = "OWNER"
@@ -72,6 +77,68 @@ def _is_linked_employee(tenant_id, employee_user_id, principal) -> bool:
     ).exists()
 
 
+
+
+def is_operational_superuser(tenant_id, principal) -> bool:
+    """Return True only for an active Vridhi PLATFORM_ADMIN.
+
+    This is the emergency operational override for owner/reviewer
+    availability. It changes assignment authority only; existing
+    workflow-state, document-readiness and terminal-state rules
+    continue to apply in their existing helpers/endpoints.
+    """
+    if principal is None:
+        return False
+
+    principal_id = _as_uuid(
+        getattr(principal, "principal_id", None)
+    )
+
+    principal_tenant = _as_uuid(
+        getattr(principal, "tenant_id", None)
+    )
+
+    tenant_uuid = _as_uuid(tenant_id)
+
+    if (
+        principal_id is None
+        or tenant_uuid is None
+        or principal_tenant != tenant_uuid
+    ):
+        return False
+
+    memberships = ProviderMembership.objects.filter(
+        tenant_id=tenant_uuid,
+        role=ProviderRole.PLATFORM_ADMIN,
+        status=MembershipStatus.ACTIVE,
+    )
+
+    # Session representation: UserAccount id.
+    if memberships.filter(
+        user_account_id=principal_id
+    ).exists():
+        return True
+
+    # Session representation: linked Employee id.
+    if memberships.filter(
+        employee_id=principal_id
+    ).exists():
+        return True
+
+    # Canonical employee mapping:
+    # Employee.principal_id -> authenticated principal.
+    employee_ids = Employee.objects.filter(
+        tenant_id=tenant_uuid,
+        principal_id=principal_id,
+        is_active=True,
+    ).values_list(
+        "id",
+        flat=True,
+    )
+
+    return memberships.filter(
+        employee_id__in=employee_ids
+    ).exists()
 def is_owner(item, principal) -> bool:
     """True when the acting principal is the assigned owner of the item.
 
@@ -86,6 +153,9 @@ def is_owner(item, principal) -> bool:
     A non-empty ``owner_user_id`` that matches neither means the actor is not
     the owner (fail closed). An absent owner is not ownership either.
     """
+    if is_operational_superuser(item.tenant_id, principal):
+        return True
+
     if principal is None or not item.owner_user_id:
         return False
     owner_uuid = _as_uuid(item.owner_user_id)
@@ -97,6 +167,9 @@ def is_owner(item, principal) -> bool:
 
 def is_reviewer(item, principal) -> bool:
     """True when the principal is the assigned, active reviewer of the item."""
+    if is_operational_superuser(item.tenant_id, principal):
+        return True
+
     return _is_linked_employee(item.tenant_id, item.reviewer_user_id, principal)
 
 

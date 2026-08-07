@@ -24,6 +24,20 @@ PRINCIPAL = uuid.UUID(
 )
 
 
+EXPECTED = {
+    "MSY_LOAN": ("M.S.Y. Loan", 17),
+    "BRE_LOAN": ("B.R.E. Loan", 10),
+    "MUDRA_LOAN": ("Mudra Loan", 10),
+    "CAR_LOAN": ("Car Loan", 7),
+    "HOME_LOAN": ("Home Loan", 7),
+    "LAP_LOAN": ("Loan Against Property (LAP)", 7),
+    "MSME_LOAN": ("MSME Loan", 7),
+    "LOAN_TAKE_OVER": ("Loan Take Over", 7),
+    "OD_LIMIT": ("OD (Overdraft) Limit", 8),
+    "COMMERCIAL_LOAN": ("Commercial Loan", 8),
+}
+
+
 def _seed():
     call_command(
         "seed_vridhi_loans",
@@ -33,7 +47,7 @@ def _seed():
     )
 
 
-def _loan_domain():
+def _domain():
     loans = Vertical.objects.get(
         tenant_id=TENANT,
         code="LOANS",
@@ -47,13 +61,13 @@ def _loan_domain():
 
 
 @pytest.mark.django_db
-def test_complete_vridhi_loan_catalogue_is_created():
+def test_exact_company_approved_loan_catalogue():
     _seed()
 
-    domain = _loan_domain()
+    domain = _domain()
 
-    services = {
-        row.code: row
+    observed = {
+        row.code: row.name
         for row in Service.objects.filter(
             tenant_id=TENANT,
             domain_id=domain.id,
@@ -61,53 +75,37 @@ def test_complete_vridhi_loan_catalogue_is_created():
         )
     }
 
-    assert {
-        "HOME_LOAN",
-        "CAR_LOAN",
-        "MSME_LOAN",
-        "OTHER_LOAN",
-    }.issubset(set(services))
+    expected = {
+        code: name
+        for code, (name, _count)
+        in EXPECTED.items()
+    }
 
-    assert services["HOME_LOAN"].name == "Home Loan"
-    assert services["CAR_LOAN"].name == "Car Loan"
-    assert services["MSME_LOAN"].name == "MSME Loan"
-    assert services["OTHER_LOAN"].name == "Other Loan"
+    assert observed == expected
 
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    (
-        "service_code",
-        "expected_fields",
-        "expected_documents",
-    ),
-    (
-        ("HOME_LOAN", 7, 8),
-        ("CAR_LOAN", 8, 8),
-        ("MSME_LOAN", 8, 9),
-        ("OTHER_LOAN", 6, 6),
-    ),
+    ("service_code", "document_count"),
+    [
+        (code, count)
+        for code, (_name, count)
+        in EXPECTED.items()
+    ],
 )
-def test_each_loan_service_has_its_operational_configuration(
+def test_company_document_requirements(
     service_code,
-    expected_fields,
-    expected_documents,
+    document_count,
 ):
     _seed()
 
-    domain = _loan_domain()
+    domain = _domain()
 
     service = Service.objects.get(
         tenant_id=TENANT,
         domain_id=domain.id,
         code=service_code,
     )
-
-    assert ServiceOperationalField.objects.filter(
-        tenant_id=TENANT,
-        service_id=service.id,
-        is_active=True,
-    ).count() == expected_fields
 
     requirement_set = (
         ServiceDocumentRequirementSet.objects.get(
@@ -119,101 +117,177 @@ def test_each_loan_service_has_its_operational_configuration(
 
     assert requirement_set.status == "ACTIVE"
 
-    assert ServiceDocumentRequirement.objects.filter(
-        tenant_id=TENANT,
-        service_id=service.id,
-        requirement_set_id=requirement_set.id,
-        is_active=True,
-    ).count() == expected_documents
-
-
-@pytest.mark.django_db
-def test_msme_optional_documents_remain_optional():
-    _seed()
-
-    domain = _loan_domain()
-
-    service = Service.objects.get(
-        tenant_id=TENANT,
-        domain_id=domain.id,
-        code="MSME_LOAN",
-    )
-
-    requirement_set = (
-        ServiceDocumentRequirementSet.objects.get(
-            tenant_id=TENANT,
-            service_id=service.id,
-            version_number=1,
-        )
-    )
-
-    optional_codes = set(
+    assert (
         ServiceDocumentRequirement.objects.filter(
             tenant_id=TENANT,
+            service_id=service.id,
             requirement_set_id=requirement_set.id,
-            mandatory=False,
             is_active=True,
-        ).values_list(
-            "code",
-            flat=True,
-        )
+        ).count()
+        == document_count
     )
-
-    assert optional_codes == {
-        "GST_REGISTRATION",
-        "UDYAM_REGISTRATION",
-        "EXISTING_LOAN_STATEMENTS",
-    }
 
 
 @pytest.mark.django_db
-def test_complete_vridhi_loan_seed_is_idempotent():
-    _seed()
+def test_company_conditional_requirements_are_optional():
     _seed()
 
-    domain = _loan_domain()
+    domain = _domain()
+
+    expected_optional = {
+        "MSY_LOAN": {
+            "BS79_RENTED_SHOP",
+            "OWNER_ELECTRICITY_BILL",
+            "RENT_AGREEMENT",
+            "CC_STOCK_STATEMENT",
+        },
+        "BRE_LOAN": {
+            "RENT_AGREEMENT_ELECTRICITY",
+        },
+        "CAR_LOAN": {
+            "SALARY_SLIPS_3_MONTHS",
+        },
+        "HOME_LOAN": {
+            "SALARY_SLIPS_3_MONTHS",
+            "UDYAM_GST_BUSINESS",
+        },
+        "LAP_LOAN": {
+            "CERTIFICATE_143",
+        },
+    }
+
+    for service_code, expected_codes in expected_optional.items():
+
+        service = Service.objects.get(
+            tenant_id=TENANT,
+            domain_id=domain.id,
+            code=service_code,
+        )
+
+        observed = set(
+            ServiceDocumentRequirement.objects.filter(
+                tenant_id=TENANT,
+                service_id=service.id,
+                is_active=True,
+                mandatory=False,
+            ).values_list(
+                "code",
+                flat=True,
+            )
+        )
+
+        assert observed == expected_codes
+
+
+@pytest.mark.django_db
+def test_existing_operational_configuration_is_preserved():
+    _seed()
+
+    domain = _domain()
+
+    expected_fields = {
+        "HOME_LOAN": 7,
+        "CAR_LOAN": 8,
+        "MSME_LOAN": 8,
+    }
+
+    for code, count in expected_fields.items():
+
+        service = Service.objects.get(
+            tenant_id=TENANT,
+            domain_id=domain.id,
+            code=code,
+        )
+
+        assert (
+            ServiceOperationalField.objects.filter(
+                tenant_id=TENANT,
+                service_id=service.id,
+                is_active=True,
+            ).count()
+            == count
+        )
+
+
+@pytest.mark.django_db
+def test_unprovided_operational_fields_are_not_invented():
+    _seed()
+
+    domain = _domain()
+
+    codes = {
+        "MSY_LOAN",
+        "BRE_LOAN",
+        "MUDRA_LOAN",
+        "LAP_LOAN",
+        "LOAN_TAKE_OVER",
+        "OD_LIMIT",
+        "COMMERCIAL_LOAN",
+    }
 
     services = Service.objects.filter(
         tenant_id=TENANT,
         domain_id=domain.id,
-        code__in=[
-            "HOME_LOAN",
-            "CAR_LOAN",
-            "MSME_LOAN",
-            "OTHER_LOAN",
-        ],
+        code__in=codes,
     )
 
-    assert services.count() == 4
+    assert services.count() == len(codes)
 
-    expected = {
-        "HOME_LOAN": (7, 8),
-        "CAR_LOAN": (8, 8),
-        "MSME_LOAN": (8, 9),
-        "OTHER_LOAN": (6, 6),
-    }
+    for service in services:
 
-    for code, (field_count, doc_count) in expected.items():
-        service = services.get(code=code)
+        assert not (
+            ServiceOperationalField.objects.filter(
+                tenant_id=TENANT,
+                service_id=service.id,
+                is_active=True,
+            ).exists()
+        )
 
-        assert ServiceOperationalField.objects.filter(
-            tenant_id=TENANT,
-            service_id=service.id,
-            is_active=True,
-        ).count() == field_count
 
-        sets = ServiceDocumentRequirementSet.objects.filter(
-            tenant_id=TENANT,
-            service_id=service.id,
-            version_number=1,
+@pytest.mark.django_db
+def test_obsolete_generic_other_loan_is_inactive():
+    _seed()
+
+    domain = _domain()
+
+    assert not Service.objects.filter(
+        tenant_id=TENANT,
+        domain_id=domain.id,
+        code="OTHER_LOAN",
+        status="ACTIVE",
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_company_seed_is_idempotent():
+    _seed()
+    _seed()
+
+    domain = _domain()
+
+    active = Service.objects.filter(
+        tenant_id=TENANT,
+        domain_id=domain.id,
+        status="ACTIVE",
+    )
+
+    assert active.count() == 10
+
+    assert set(
+        active.values_list(
+            "code",
+            flat=True,
+        )
+    ) == set(EXPECTED)
+
+    for service in active:
+
+        sets = (
+            ServiceDocumentRequirementSet.objects.filter(
+                tenant_id=TENANT,
+                service_id=service.id,
+                version_number=1,
+            )
         )
 
         assert sets.count() == 1
-
-        requirement_set = sets.get()
-
-        assert ServiceDocumentRequirement.objects.filter(
-            tenant_id=TENANT,
-            requirement_set_id=requirement_set.id,
-            is_active=True,
-        ).count() == doc_count

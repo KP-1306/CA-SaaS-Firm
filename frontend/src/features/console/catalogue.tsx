@@ -1,27 +1,34 @@
 import type * as React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
-import { list, save } from './api';
+import {
+  list,
+  save,
+} from './api';
+
 import {
   DOCUMENT_CATEGORIES,
-  label,
 } from './types';
-import type { Row } from './types';
+
+import type {
+  Row,
+} from './types';
+
 import {
   Chip,
-  DataTable,
   Drawer,
   ErrorBar,
   Loading,
 } from './ui';
-import { QACataloguePanel } from './qa';
 
-type Level =
-  | 'verticals'
-  | 'domains'
-  | 'services'
-  | 'requirement-sets'
-  | 'document-requirements';
+import {
+  QACataloguePanel,
+} from './qa';
+
 
 interface ListState {
   rows: Row[];
@@ -29,6 +36,13 @@ interface ListState {
   loading: boolean;
   reload: () => void;
 }
+
+
+type ServiceTab =
+  | 'overview'
+  | 'documents'
+  | 'qa';
+
 
 function useList(
   resource: string,
@@ -70,23 +84,75 @@ function useList(
   };
 }
 
-function valueName(
-  rows: Row[],
-  id: unknown,
-  fallback = '',
-): string {
-  const row = rows.find(
-    (candidate) => String(candidate.id) === String(id),
-  );
 
+function rowName(
+  row: Row | null | undefined,
+  fallback = '—',
+): string {
   return String(row?.name ?? fallback);
 }
 
-export function CatalogueArea(): React.JSX.Element {
-  const [level, setLevel] = useState<Level>('verticals');
-  const [editing, setEditing] = useState<Row | null>(null);
-  const [saveError, setSaveError] = useState('');
 
+function isActive(row: Row): boolean {
+  return row.status === 'ACTIVE';
+}
+
+
+function sameId(
+  left: unknown,
+  right: unknown,
+): boolean {
+  return String(left ?? '') === String(right ?? '');
+}
+
+
+function CatalogueButton({
+  title,
+  detail,
+  selected,
+  status,
+  onClick,
+}: {
+  title: string;
+  detail?: string | undefined;
+  selected: boolean;
+  status?: unknown;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className={`cx-catalogue-choice ${
+        selected
+          ? 'is-selected'
+          : ''
+      }`}
+      onClick={onClick}
+    >
+      <span className="cx-catalogue-choice-main">
+        <strong>{title}</strong>
+
+        {detail ? (
+          <span>{detail}</span>
+        ) : null}
+      </span>
+
+      {status ? (
+        <Chip
+          value={String(status)}
+          tone={
+            status === 'ACTIVE'
+              ? 'ok'
+              : 'danger'
+          }
+        />
+      ) : null}
+    </button>
+  );
+}
+
+
+export function CatalogueArea(): React.JSX.Element {
   const verticals = useList('verticals');
   const domains = useList('domains');
   const services = useList('services');
@@ -99,161 +165,246 @@ export function CatalogueArea(): React.JSX.Element {
     'service-document-requirements',
   );
 
+  const [verticalId, setVerticalId] =
+    useState('');
+
+  const [domainId, setDomainId] =
+    useState('');
+
+  const [serviceId, setServiceId] =
+    useState('');
+
+  const [serviceTab, setServiceTab] =
+    useState<ServiceTab>('overview');
+
+  const [editingCatalogue, setEditingCatalogue] =
+    useState<{
+      kind: 'vertical' | 'domain' | 'service';
+      row: Row;
+    } | null>(null);
+
+  const [editingDocument, setEditingDocument] =
+    useState<Row | null>(null);
+
+  const [saveError, setSaveError] =
+    useState('');
+
+
   const activeVerticals = useMemo(
     () =>
-      verticals.rows.filter(
-        (row) => row.status === 'ACTIVE',
-      ),
+      verticals.rows.filter(isActive),
     [verticals.rows],
   );
 
-  const activeDomains = useMemo(
+
+  const visibleDomains = useMemo(
     () =>
       domains.rows.filter(
-        (row) => row.status === 'ACTIVE',
+        (row) =>
+          sameId(
+            row.vertical_id,
+            verticalId,
+          ),
       ),
-    [domains.rows],
+    [
+      domains.rows,
+      verticalId,
+    ],
   );
 
-  const activeServices = useMemo(
+
+  const visibleServices = useMemo(
     () =>
       services.rows.filter(
-        (row) => row.status === 'ACTIVE',
+        (row) =>
+          sameId(
+            row.domain_id,
+            domainId,
+          ),
       ),
-    [services.rows],
+    [
+      services.rows,
+      domainId,
+    ],
   );
 
-  const availableSets = useMemo(
+
+  const selectedVertical =
+    verticals.rows.find(
+      (row) =>
+        sameId(
+          row.id,
+          verticalId,
+        ),
+    ) ?? null;
+
+
+  const selectedDomain =
+    domains.rows.find(
+      (row) =>
+        sameId(
+          row.id,
+          domainId,
+        ),
+    ) ?? null;
+
+
+  const selectedService =
+    services.rows.find(
+      (row) =>
+        sameId(
+          row.id,
+          serviceId,
+        ),
+    ) ?? null;
+
+
+  const serviceSets = useMemo(
     () =>
-      requirementSets.rows.filter(
-        (row) => row.status !== 'RETIRED',
-      ),
-    [requirementSets.rows],
+      requirementSets.rows
+        .filter(
+          (row) =>
+            sameId(
+              row.service_id,
+              serviceId,
+            ),
+        )
+        .sort(
+          (left, right) =>
+            Number(
+              right.version_number ?? 0,
+            ) -
+            Number(
+              left.version_number ?? 0,
+            ),
+        ),
+    [
+      requirementSets.rows,
+      serviceId,
+    ],
   );
 
-  const verticalName = (id: unknown): string =>
-    valueName(verticals.rows, id);
 
-  const domainName = (id: unknown): string =>
-    valueName(domains.rows, id);
+  const currentRequirementSet =
+    serviceSets.find(
+      (row) =>
+        row.status === 'ACTIVE',
+    ) ??
+    serviceSets[0] ??
+    null;
 
-  const serviceName = (id: unknown): string =>
-    valueName(services.rows, id);
 
-  const setName = (id: unknown): string => {
-    const row = requirementSets.rows.find(
-      (candidate) =>
-        String(candidate.id) === String(id),
-    );
+  const serviceDocuments = useMemo(
+    () =>
+      requirements.rows
+        .filter(
+          (row) =>
+            sameId(
+              row.service_id,
+              serviceId,
+            ) &&
+            (
+              !currentRequirementSet ||
+              sameId(
+                row.requirement_set_id,
+                currentRequirementSet.id,
+              )
+            )
+        )
+        .sort(
+          (left, right) =>
+            Number(
+              left.display_order ?? 0,
+            ) -
+            Number(
+              right.display_order ?? 0,
+            ),
+        ),
+    [
+      requirements.rows,
+      serviceId,
+      currentRequirementSet,
+    ],
+  );
 
-    if (!row) return '';
 
-    return `${String(row.name)} · V${String(
-      row.version_number ?? 1,
-    )}`;
+  const allLoading =
+    verticals.loading ||
+    domains.loading ||
+    services.loading;
+
+
+  const allError =
+    verticals.error ||
+    domains.error ||
+    services.error;
+
+
+  const clearService = (): void => {
+    setServiceId('');
+    setServiceTab('overview');
+    setEditingDocument(null);
+    setSaveError('');
   };
 
-  const current: ListState =
-    level === 'verticals'
-      ? verticals
-      : level === 'domains'
-        ? domains
-        : level === 'services'
-          ? services
-          : level === 'requirement-sets'
-            ? requirementSets
-            : requirements;
 
-  const blank = (): Row => {
-    if (level === 'verticals') {
-      return {
-        name: '',
-        code: '',
-        description: '',
-        status: 'ACTIVE',
-      };
-    }
-
-    if (level === 'domains') {
-      return {
-        name: '',
-        code: '',
-        vertical_id: '',
-        description: '',
-        status: 'ACTIVE',
-      };
-    }
-
-    if (level === 'services') {
-      return {
-        name: '',
-        code: '',
-        domain_id: '',
-        description: '',
-        default_due_days: '',
-        status: 'ACTIVE',
-      };
-    }
-
-    if (level === 'requirement-sets') {
-      return {
-        service_id: '',
-        name: '',
-        version_number: 1,
-        effective_from: '',
-        effective_until: '',
-        status: 'DRAFT',
-        description: '',
-      };
-    }
-
-    return {
-      service_id: '',
-      requirement_set_id: '',
-      name: '',
-      code: '',
-      category: 'OTHER',
-      mandatory: true,
-      display_order: 10,
-      financial_year_required: false,
-      assessment_year_required: false,
-      filing_period_required: false,
-      expiry_applicable: false,
-      expiry_reminder_days: '',
-      requires_review: true,
-      allow_multiple_versions: true,
-      allow_multiple_files: false,
-      allowed_extensions: 'pdf,xlsx,xls,csv',
-      maximum_file_size_mb: 15,
-      is_active: true,
-      description: '',
-    };
+  const selectVertical = (
+    row: Row,
+  ): void => {
+    setVerticalId(String(row.id));
+    setDomainId('');
+    clearService();
   };
 
-  const submit = (): void => {
-    if (!editing) return;
 
-    const clean: Row = {};
+  const selectDomain = (
+    row: Row,
+  ): void => {
+    setDomainId(String(row.id));
+    clearService();
+  };
 
-    for (const [key, value] of Object.entries(editing)) {
-      if (value !== '') clean[key] = value;
-    }
+
+  const openService = (
+    row: Row,
+  ): void => {
+    setServiceId(String(row.id));
+    setServiceTab('overview');
+    setEditingDocument(null);
+    setSaveError('');
+  };
+
+
+  const saveCatalogue = (): void => {
+    if (!editingCatalogue) return;
+
+    const {
+      kind,
+      row,
+    } = editingCatalogue;
 
     const resource =
-      level === 'requirement-sets'
-        ? 'service-document-requirement-sets'
-        : level === 'document-requirements'
-          ? 'service-document-requirements'
-          : level;
+      kind === 'vertical'
+        ? 'verticals'
+        : kind === 'domain'
+          ? 'domains'
+          : 'services';
 
-    save(resource, clean)
+    save(resource, row)
       .then(() => {
-        setEditing(null);
+        setEditingCatalogue(null);
         setSaveError('');
-        current.reload();
 
-        if (level === 'document-requirements') {
-          requirementSets.reload();
+        if (kind === 'vertical') {
+          verticals.reload();
+        }
+
+        if (kind === 'domain') {
+          domains.reload();
+        }
+
+        if (kind === 'service') {
+          services.reload();
         }
       })
       .catch((value: unknown) => {
@@ -267,445 +418,791 @@ export function CatalogueArea(): React.JSX.Element {
       });
   };
 
-  const columns =
-    level === 'verticals'
-      ? [
-          {
-            key: 'name',
-            header: 'Vertical',
-          },
-          {
-            key: 'code',
-            header: 'Code',
-          },
-          {
-            key: 'status',
-            header: 'Status',
-            render: (row: Row) => (
-              <Chip
-                value={String(row.status)}
-                tone={
-                  row.status === 'ACTIVE'
-                    ? 'ok'
-                    : 'danger'
+
+  const saveDocument = (): void => {
+    if (!editingDocument) return;
+
+    save(
+      'service-document-requirements',
+      editingDocument,
+    )
+      .then(() => {
+        setEditingDocument(null);
+        setSaveError('');
+        requirements.reload();
+      })
+      .catch((value: unknown) => {
+        setSaveError(
+          String(
+            value instanceof Error
+              ? value.message
+              : value,
+          ),
+        );
+      });
+  };
+
+
+  const addVertical = (): void => {
+    setEditingCatalogue({
+      kind: 'vertical',
+      row: {
+        name: '',
+        code: '',
+        description: '',
+        status: 'ACTIVE',
+      },
+    });
+  };
+
+
+  const addDomain = (): void => {
+    if (!selectedVertical) return;
+
+    setEditingCatalogue({
+      kind: 'domain',
+      row: {
+        name: '',
+        code: '',
+        vertical_id:
+          selectedVertical.id,
+        description: '',
+        status: 'ACTIVE',
+      },
+    });
+  };
+
+
+  const addService = (): void => {
+    if (!selectedDomain) return;
+
+    setEditingCatalogue({
+      kind: 'service',
+      row: {
+        name: '',
+        code: '',
+        domain_id:
+          selectedDomain.id,
+        description: '',
+        default_due_days: '',
+        status: 'ACTIVE',
+      },
+    });
+  };
+
+
+  const addDocument = (): void => {
+    if (
+      !selectedService ||
+      !currentRequirementSet
+    ) {
+      return;
+    }
+
+    setEditingDocument({
+      service_id:
+        selectedService.id,
+
+      requirement_set_id:
+        currentRequirementSet.id,
+
+      name: '',
+      code: '',
+      category: 'OTHER',
+      mandatory: true,
+      display_order:
+        (serviceDocuments.length + 1) * 10,
+      financial_year_required: false,
+      assessment_year_required: false,
+      filing_period_required: false,
+      expiry_applicable: false,
+      expiry_reminder_days: '',
+      requires_review: true,
+      description: '',
+    });
+  };
+
+
+  if (allLoading) {
+    return <Loading />;
+  }
+
+
+  if (selectedService) {
+    return (
+      <section className="cx-service-workspace">
+        <div className="cx-service-workspace-head">
+          <button
+            type="button"
+            className="cx-btn subtle"
+            onClick={clearService}
+          >
+            ← Back to Services
+          </button>
+
+          <div>
+            <div className="cx-eyebrow">
+              {rowName(selectedVertical)}
+              {'  /  '}
+              {rowName(selectedDomain)}
+            </div>
+
+            <h2>
+              {rowName(selectedService)}
+            </h2>
+          </div>
+
+          <Chip
+            value={String(
+              selectedService.status ??
+              'ACTIVE',
+            )}
+            tone={
+              selectedService.status ===
+              'ACTIVE'
+                ? 'ok'
+                : 'danger'
+            }
+          />
+        </div>
+
+        <div className="cx-service-tabs">
+          {(
+            [
+              ['overview', 'Overview'],
+              ['documents', 'Documents'],
+              ['qa', 'QA Checklist'],
+            ] as [
+              ServiceTab,
+              string,
+            ][]
+          ).map(([key, title]) => (
+            <button
+              key={key}
+              type="button"
+              className={`cx-btn ${
+                serviceTab === key
+                  ? ''
+                  : 'subtle'
+              }`}
+              onClick={() =>
+                setServiceTab(key)
+              }
+            >
+              {title}
+            </button>
+          ))}
+        </div>
+
+        {serviceTab === 'overview' ? (
+          <div className="cx-service-overview">
+            <div className="cx-service-summary-card">
+              <div className="cx-eyebrow">
+                SERVICE
+              </div>
+
+              <h3>
+                {rowName(selectedService)}
+              </h3>
+
+              <p>
+                {String(
+                  selectedService.description ??
+                  'No description provided.',
+                )}
+              </p>
+
+              <dl className="cx-service-facts">
+                <div>
+                  <dt>Vertical</dt>
+                  <dd>
+                    {rowName(selectedVertical)}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>Domain</dt>
+                  <dd>
+                    {rowName(selectedDomain)}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>Code</dt>
+                  <dd>
+                    {String(
+                      selectedService.code ??
+                      '—',
+                    )}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>Default due</dt>
+                  <dd>
+                    {selectedService.default_due_days
+                      ? `${String(
+                          selectedService.default_due_days,
+                        )} days`
+                      : 'Not configured'}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>Documents</dt>
+                  <dd>
+                    {serviceDocuments.length}
+                  </dd>
+                </div>
+
+                <div>
+                  <dt>Checklist version</dt>
+                  <dd>
+                    {currentRequirementSet
+                      ? `V${String(
+                          currentRequirementSet.version_number ??
+                          1,
+                        )}`
+                      : 'Not configured'}
+                  </dd>
+                </div>
+              </dl>
+
+              <button
+                type="button"
+                className="cx-btn"
+                onClick={() =>
+                  setEditingCatalogue({
+                    kind: 'service',
+                    row: {
+                      ...selectedService,
+                    },
+                  })
                 }
-              />
-            ),
-          },
-        ]
-      : level === 'domains'
-        ? [
-            {
-              key: 'name',
-              header: 'Domain',
-            },
-            {
-              key: 'vertical_id',
-              header: 'Vertical',
-              render: (row: Row) =>
-                verticalName(row.vertical_id),
-            },
-            {
-              key: 'status',
-              header: 'Status',
-              render: (row: Row) => (
-                <Chip
-                  value={String(row.status)}
-                  tone={
-                    row.status === 'ACTIVE'
-                      ? 'ok'
-                      : 'danger'
+              >
+                Edit service
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+
+        {serviceTab === 'documents' ? (
+          <div className="cx-service-documents">
+            <div className="cx-section-head">
+              <div>
+                <h3>
+                  Required Documents
+                </h3>
+
+                <p className="cx-muted">
+                  Documents Vridhi should request
+                  for this service.
+                </p>
+              </div>
+
+              {currentRequirementSet ? (
+                <button
+                  type="button"
+                  className="cx-btn"
+                  onClick={addDocument}
+                >
+                  Add document
+                </button>
+              ) : null}
+            </div>
+
+            <ErrorBar
+              error={
+                requirementSets.error ||
+                requirements.error
+              }
+            />
+
+            {!currentRequirementSet ? (
+              <div className="cx-empty-state">
+                <strong>
+                  Document checklist is not configured.
+                </strong>
+
+                <span>
+                  No versioned requirement set exists
+                  for this service yet.
+                </span>
+              </div>
+            ) : serviceDocuments.length === 0 ? (
+              <div className="cx-empty-state">
+                No required documents yet.
+              </div>
+            ) : (
+              <div className="cx-document-catalogue-list">
+                {serviceDocuments.map(
+                  (document) => (
+                    <button
+                      key={String(document.id)}
+                      type="button"
+                      className="cx-document-catalogue-row"
+                      onClick={() => {
+                        setEditingDocument({
+                          ...document,
+                        });
+                        setSaveError('');
+                      }}
+                    >
+                      <span>
+                        <strong>
+                          {String(document.name)}
+                        </strong>
+
+                        <small>
+                          {String(
+                            document.category ??
+                            'OTHER',
+                          )}
+                        </small>
+                      </span>
+
+                      <span className="cx-document-catalogue-meta">
+                        {document.mandatory
+                          ? 'Required'
+                          : 'Conditional'}
+                      </span>
+                    </button>
+                  ),
+                )}
+              </div>
+            )}
+
+            {currentRequirementSet ? (
+              <div className="cx-internal-note">
+                Checklist version{' '}
+                V{String(
+                  currentRequirementSet.version_number ??
+                  1,
+                )}
+                {' • '}
+                managed automatically for
+                history and audit.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+
+        {serviceTab === 'qa' ? (
+          <div className="cx-service-qa">
+            <QACataloguePanel
+              services={[selectedService]}
+            />
+          </div>
+        ) : null}
+
+
+        {editingCatalogue ? (
+          <Drawer
+            title="Edit service"
+            value={editingCatalogue.row}
+            onChange={(row) =>
+              setEditingCatalogue({
+                ...editingCatalogue,
+                row,
+              })
+            }
+            onClose={() => {
+              setEditingCatalogue(null);
+              setSaveError('');
+            }}
+            onSave={saveCatalogue}
+            extra={
+              <ErrorBar error={saveError} />
+            }
+            fields={[
+              { name: 'name' },
+              { name: 'code' },
+              {
+                name: 'domain_id',
+                kind: 'select',
+                options:
+                  domains.rows.map(
+                    (row) =>
+                      String(row.id),
+                  ),
+                labels: (id: unknown) =>
+                  rowName(
+                    domains.rows.find(
+                      (row) =>
+                        sameId(
+                          row.id,
+                          id,
+                        ),
+                    ),
+                  ),
+              },
+              {
+                name: 'default_due_days',
+              },
+              {
+                name: 'description',
+                kind: 'textarea',
+              },
+              {
+                name: 'status',
+                kind: 'select',
+                options: [
+                  'ACTIVE',
+                  'INACTIVE',
+                ],
+              },
+            ]}
+          />
+        ) : null}
+
+
+        {editingDocument ? (
+          <Drawer
+            title={
+              editingDocument.id
+                ? 'Edit document'
+                : 'Add document'
+            }
+            value={editingDocument}
+            onChange={setEditingDocument}
+            onClose={() => {
+              setEditingDocument(null);
+              setSaveError('');
+            }}
+            onSave={saveDocument}
+            extra={
+              <ErrorBar error={saveError} />
+            }
+            fields={[
+              { name: 'name' },
+              { name: 'code' },
+              {
+                name: 'category',
+                kind: 'select',
+                options:
+                  DOCUMENT_CATEGORIES,
+              },
+              {
+                name: 'display_order',
+              },
+              {
+                name: 'mandatory',
+                kind: 'checkbox',
+              },
+              {
+                name: 'requires_review',
+                kind: 'checkbox',
+              },
+              {
+                name: 'expiry_applicable',
+                kind: 'checkbox',
+              },
+              {
+                name: 'description',
+                kind: 'textarea',
+              },
+            ]}
+          />
+        ) : null}
+      </section>
+    );
+  }
+
+
+  return (
+    <section className="cx-catalogue-browser">
+      <div className="cx-catalogue-intro">
+        <div>
+          <div className="cx-eyebrow">
+            SERVICE CATALOGUE
+          </div>
+
+          <h2>
+            Services
+          </h2>
+
+          <p>
+            Choose a Vertical, then a Domain,
+            then the Service you want to configure.
+          </p>
+        </div>
+      </div>
+
+      <ErrorBar error={allError} />
+
+      <div className="cx-catalogue-columns">
+
+        <section className="cx-catalogue-column">
+          <div className="cx-section-head">
+            <div>
+              <div className="cx-step-number">
+                1
+              </div>
+
+              <h3>Vertical</h3>
+            </div>
+
+            <button
+              type="button"
+              className="cx-btn subtle"
+              onClick={addVertical}
+            >
+              + Add
+            </button>
+          </div>
+
+          <div className="cx-catalogue-choice-list">
+            {verticals.rows.map(
+              (row) => (
+                <CatalogueButton
+                  key={String(row.id)}
+                  title={rowName(row)}
+                  detail={String(
+                    row.code ?? '',
+                  )}
+                  selected={sameId(
+                    row.id,
+                    verticalId,
+                  )}
+                  status={row.status}
+                  onClick={() =>
+                    selectVertical(row)
                   }
                 />
               ),
-            },
-          ]
-        : level === 'services'
-          ? [
-              {
-                key: 'name',
-                header: 'Service',
-              },
-              {
-                key: 'domain_id',
-                header: 'Domain',
-                render: (row: Row) =>
-                  domainName(row.domain_id),
-              },
-              {
-                key: 'default_due_days',
-                header: 'Default due days',
-              },
-              {
-                key: 'status',
-                header: 'Status',
-                render: (row: Row) => (
-                  <Chip
-                    value={String(row.status)}
-                    tone={
-                      row.status === 'ACTIVE'
-                        ? 'ok'
-                        : 'danger'
+            )}
+          </div>
+
+          {selectedVertical ? (
+            <button
+              type="button"
+              className="cx-link-button"
+              onClick={() =>
+                setEditingCatalogue({
+                  kind: 'vertical',
+                  row: {
+                    ...selectedVertical,
+                  },
+                })
+              }
+            >
+              Edit selected vertical
+            </button>
+          ) : null}
+        </section>
+
+
+        <section className="cx-catalogue-column">
+          <div className="cx-section-head">
+            <div>
+              <div className="cx-step-number">
+                2
+              </div>
+
+              <h3>Domain</h3>
+            </div>
+
+            {selectedVertical ? (
+              <button
+                type="button"
+                className="cx-btn subtle"
+                onClick={addDomain}
+              >
+                + Add
+              </button>
+            ) : null}
+          </div>
+
+          {!selectedVertical ? (
+            <div className="cx-empty-state">
+              Select a Vertical first.
+            </div>
+          ) : visibleDomains.length === 0 ? (
+            <div className="cx-empty-state">
+              No Domains under this Vertical.
+            </div>
+          ) : (
+            <div className="cx-catalogue-choice-list">
+              {visibleDomains.map(
+                (row) => (
+                  <CatalogueButton
+                    key={String(row.id)}
+                    title={rowName(row)}
+                    detail={String(
+                      row.code ?? '',
+                    )}
+                    selected={sameId(
+                      row.id,
+                      domainId,
+                    )}
+                    status={row.status}
+                    onClick={() =>
+                      selectDomain(row)
                     }
                   />
                 ),
-              },
-            ]
-          : level === 'requirement-sets'
-            ? [
-                {
-                  key: 'name',
-                  header: 'Requirement set',
-                },
-                {
-                  key: 'service_id',
-                  header: 'Service',
-                  render: (row: Row) =>
-                    serviceName(row.service_id),
-                },
-                {
-                  key: 'version_number',
-                  header: 'Version',
-                  render: (row: Row) =>
-                    `V${String(
-                      row.version_number ?? 1,
-                    )}`,
-                },
-                {
-                  key: 'effective_from',
-                  header: 'Effective from',
-                },
-                {
-                  key: 'requirement_count',
-                  header: 'Documents',
-                },
-                {
-                  key: 'mandatory_count',
-                  header: 'Mandatory',
-                },
-                {
-                  key: 'status',
-                  header: 'Status',
-                  render: (row: Row) => (
-                    <Chip
-                      value={String(row.status)}
-                      tone={
-                        row.status === 'ACTIVE'
-                          ? 'ok'
-                          : row.status === 'DRAFT'
-                            ? 'warn'
-                            : 'muted'
-                      }
-                    />
-                  ),
-                },
-              ]
-            : [
-                {
-                  key: 'name',
-                  header: 'Document',
-                },
-                {
-                  key: 'service_id',
-                  header: 'Service',
-                  render: (row: Row) =>
-                    serviceName(row.service_id),
-                },
-                {
-                  key: 'requirement_set_id',
-                  header: 'Requirement set',
-                  render: (row: Row) =>
-                    setName(row.requirement_set_id),
-                },
-                {
-                  key: 'category',
-                  header: 'Category',
-                  render: (row: Row) => (
-                    <Chip
-                      value={String(row.category)}
-                      tone="muted"
-                    />
-                  ),
-                },
-                {
-                  key: 'mandatory',
-                  header: 'Requirement',
-                  render: (row: Row) => (
-                    <Chip
-                      value={
-                        row.mandatory === true
-                          ? 'MANDATORY'
-                          : 'OPTIONAL'
-                      }
-                      tone={
-                        row.mandatory === true
-                          ? 'warn'
-                          : 'muted'
-                      }
-                    />
-                  ),
-                },
-                {
-                  key: 'allowed_extensions',
-                  header: 'Allowed files',
-                },
-                {
-                  key: 'is_active',
-                  header: 'Status',
-                  render: (row: Row) => (
-                    <Chip
-                      value={
-                        row.is_active === true
-                          ? 'ACTIVE'
-                          : 'INACTIVE'
-                      }
-                      tone={
-                        row.is_active === true
-                          ? 'ok'
-                          : 'danger'
-                      }
-                    />
-                  ),
-                },
-              ];
+              )}
+            </div>
+          )}
 
-  const levelLabel =
-    level === 'requirement-sets'
-      ? 'Requirement sets'
-      : level === 'document-requirements'
-        ? 'Document requirements'
-        : label(level);
+          {selectedDomain ? (
+            <button
+              type="button"
+              className="cx-link-button"
+              onClick={() =>
+                setEditingCatalogue({
+                  kind: 'domain',
+                  row: {
+                    ...selectedDomain,
+                  },
+                })
+              }
+            >
+              Edit selected domain
+            </button>
+          ) : null}
+        </section>
 
-  const addLabel =
-    level === 'requirement-sets'
-      ? 'Add requirement set'
-      : level === 'document-requirements'
-        ? 'Add document requirement'
-        : `Add ${label(level).replace(/s$/, '')}`;
 
-  return (
-    <>
-      <div className="cx-toolbar">
-        {(
-          [
-            'verticals',
-            'domains',
-            'services',
-            'requirement-sets',
-            'document-requirements',
-          ] as Level[]
-        ).map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={`cx-btn ${
-              item === level ? '' : 'subtle'
-            }`}
-            onClick={() => {
-              setLevel(item);
-              setEditing(null);
-              setSaveError('');
-            }}
-          >
-            {item === 'requirement-sets'
-              ? 'Requirement sets'
-              : item === 'document-requirements'
-                ? 'Document catalogue'
-                : label(item)}
-          </button>
-        ))}
+        <section className="cx-catalogue-column">
+          <div className="cx-section-head">
+            <div>
+              <div className="cx-step-number">
+                3
+              </div>
 
-        <div className="cx-spacer" />
+              <h3>Service</h3>
+            </div>
 
-        <button
-          type="button"
-          className="cx-btn"
-          onClick={() => {
-            setEditing(blank());
-            setSaveError('');
-          }}
-        >
-          {addLabel}
-        </button>
+            {selectedDomain ? (
+              <button
+                type="button"
+                className="cx-btn subtle"
+                onClick={addService}
+              >
+                + Add
+              </button>
+            ) : null}
+          </div>
+
+          {!selectedDomain ? (
+            <div className="cx-empty-state">
+              Select a Domain first.
+            </div>
+          ) : visibleServices.length === 0 ? (
+            <div className="cx-empty-state">
+              No Services under this Domain.
+            </div>
+          ) : (
+            <div className="cx-catalogue-choice-list">
+              {visibleServices.map(
+                (row) => (
+                  <CatalogueButton
+                    key={String(row.id)}
+                    title={rowName(row)}
+                    detail={
+                      row.default_due_days
+                        ? `${String(
+                            row.default_due_days,
+                          )} day default`
+                        : undefined
+                    }
+                    selected={false}
+                    status={row.status}
+                    onClick={() =>
+                      openService(row)
+                    }
+                  />
+                ),
+              )}
+            </div>
+          )}
+        </section>
       </div>
 
-      {level === 'requirement-sets' ? (
-        <div className="cx-muted">
-          Versioned checklists preserve historical document
-          requirements when statutory rules change.
-        </div>
-      ) : null}
 
-      {level === 'document-requirements' ? (
-        <div className="cx-muted">
-          Configure the documents VRIDHI should request for each
-          CA service.
-        </div>
-      ) : null}
-
-      <ErrorBar error={current.error} />
-
-      {current.loading ? (
-        <Loading />
-      ) : (
-        <DataTable
-          columns={columns}
-          rows={current.rows}
-          onRow={(row) => {
-            setEditing({ ...row });
-            setSaveError('');
-          }}
-          empty={`No ${levelLabel.toLowerCase()} yet.`}
-        />
-      )}
-
-      {editing ? (
+      {editingCatalogue ? (
         <Drawer
           title={
-            editing.id
-              ? `Edit ${levelLabel.replace(/s$/, '')}`
-              : addLabel
+            editingCatalogue.row.id
+              ? `Edit ${editingCatalogue.kind}`
+              : `Add ${editingCatalogue.kind}`
           }
-          value={editing}
-          onChange={setEditing}
-          onClose={() => setEditing(null)}
-          onSave={submit}
-          extra={<ErrorBar error={saveError} />}
+          value={editingCatalogue.row}
+          onChange={(row) =>
+            setEditingCatalogue({
+              ...editingCatalogue,
+              row,
+            })
+          }
+          onClose={() => {
+            setEditingCatalogue(null);
+            setSaveError('');
+          }}
+          onSave={saveCatalogue}
+          extra={
+            <ErrorBar error={saveError} />
+          }
           fields={[
-            ...(level === 'verticals'
-              ? [
-                  { name: 'name' },
-                  { name: 'code' },
-                ]
-              : []),
+            { name: 'name' },
+            { name: 'code' },
 
-            ...(level === 'domains'
+            ...(editingCatalogue.kind ===
+            'domain'
               ? [
-                  { name: 'name' },
-                  { name: 'code' },
                   {
                     name: 'vertical_id',
                     kind: 'select' as const,
-                    options: activeVerticals.map(
-                      (row) => String(row.id),
-                    ),
-                    labels: verticalName,
+                    options:
+                      activeVerticals.map(
+                        (row) =>
+                          String(row.id),
+                      ),
+                    labels: (
+                      id: unknown,
+                    ) =>
+                      rowName(
+                        verticals.rows.find(
+                          (row) =>
+                            sameId(
+                              row.id,
+                              id,
+                            ),
+                        ),
+                      ),
                   },
                 ]
               : []),
 
-            ...(level === 'services'
+            ...(editingCatalogue.kind ===
+            'service'
               ? [
-                  { name: 'name' },
-                  { name: 'code' },
                   {
                     name: 'domain_id',
                     kind: 'select' as const,
-                    options: activeDomains.map(
-                      (row) => String(row.id),
-                    ),
-                    labels: domainName,
-                  },
-                  { name: 'default_due_days' },
-                ]
-              : []),
-
-            ...(level === 'requirement-sets'
-              ? [
-                  {
-                    name: 'service_id',
-                    kind: 'select' as const,
-                    options: activeServices.map(
-                      (row) => String(row.id),
-                    ),
-                    labels: serviceName,
-                  },
-                  { name: 'name' },
-                  { name: 'version_number' },
-                  {
-                    name: 'effective_from',
-                    kind: 'date' as const,
+                    options:
+                      domains.rows.map(
+                        (row) =>
+                          String(row.id),
+                      ),
+                    labels: (
+                      id: unknown,
+                    ) =>
+                      rowName(
+                        domains.rows.find(
+                          (row) =>
+                            sameId(
+                              row.id,
+                              id,
+                            ),
+                        ),
+                      ),
                   },
                   {
-                    name: 'effective_until',
-                    kind: 'date' as const,
-                  },
-                  {
-                    name: 'status',
-                    kind: 'select' as const,
-                    options: [
-                      'DRAFT',
-                      'ACTIVE',
-                      'RETIRED',
-                    ],
-                  },
-                ]
-              : []),
-
-            ...(level === 'document-requirements'
-              ? [
-                  {
-                    name: 'service_id',
-                    kind: 'select' as const,
-                    options: activeServices.map(
-                      (row) => String(row.id),
-                    ),
-                    labels: serviceName,
-                  },
-                  {
-                    name: 'requirement_set_id',
-                    kind: 'select' as const,
-                    options: availableSets.map(
-                      (row) => String(row.id),
-                    ),
-                    labels: setName,
-                  },
-                  { name: 'name' },
-                  { name: 'code' },
-                  {
-                    name: 'category',
-                    kind: 'select' as const,
-                    options: DOCUMENT_CATEGORIES,
-                  },
-                  { name: 'display_order' },
-                  {
-                    name: 'mandatory',
-                    kind: 'checkbox' as const,
-                  },
-                  {
-                    name: 'financial_year_required',
-                    kind: 'checkbox' as const,
-                  },
-                  {
-                    name: 'assessment_year_required',
-                    kind: 'checkbox' as const,
-                  },
-                  {
-                    name: 'filing_period_required',
-                    kind: 'checkbox' as const,
-                  },
-                  {
-                    name: 'expiry_applicable',
-                    kind: 'checkbox' as const,
-                  },
-                  { name: 'expiry_reminder_days' },
-                  {
-                    name: 'requires_review',
-                    kind: 'checkbox' as const,
-                  },
-                  {
-                    name: 'allow_multiple_versions',
-                    kind: 'checkbox' as const,
-                  },
-                  {
-                    name: 'allow_multiple_files',
-                    kind: 'checkbox' as const,
-                  },
-                  { name: 'allowed_extensions' },
-                  { name: 'maximum_file_size_mb' },
-                  {
-                    name: 'is_active',
-                    kind: 'checkbox' as const,
+                    name:
+                      'default_due_days',
                   },
                 ]
               : []),
@@ -714,22 +1211,17 @@ export function CatalogueArea(): React.JSX.Element {
               name: 'description',
               kind: 'textarea',
             },
-
-            ...(level === 'verticals' ||
-            level === 'domains' ||
-            level === 'services'
-              ? [
-                  {
-                    name: 'status',
-                    kind: 'select' as const,
-                    options: ['ACTIVE', 'INACTIVE'],
-                  },
-                ]
-              : []),
+            {
+              name: 'status',
+              kind: 'select',
+              options: [
+                'ACTIVE',
+                'INACTIVE',
+              ],
+            },
           ]}
         />
       ) : null}
-      <QACataloguePanel services={activeServices} />
-    </>
+    </section>
   );
 }
