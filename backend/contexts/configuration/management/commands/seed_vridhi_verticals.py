@@ -51,6 +51,14 @@ class Command(BaseCommand):
             required=True,
             help="Tenant UUID for Vridhi Consultants.",
         )
+        parser.add_argument(
+            "--principal-id",
+            required=True,
+            help=(
+                "Principal UUID recorded in catalogue "
+                "audit ownership fields."
+            ),
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -61,6 +69,13 @@ class Command(BaseCommand):
                 "tenant-id must be a valid UUID."
             ) from exc
 
+        try:
+            principal_id = UUID(options["principal_id"])
+        except (TypeError, ValueError) as exc:
+            raise CommandError(
+                "principal-id must be a valid UUID."
+            ) from exc
+
         created_count = 0
         existing_count = 0
 
@@ -69,6 +84,8 @@ class Command(BaseCommand):
                 tenant_id=tenant_id,
                 code=code,
                 defaults={
+                    "created_by": principal_id,
+                    "updated_by": principal_id,
                     "name": name,
                     "description": description,
                     "status": CatalogueStatus.ACTIVE,
@@ -101,11 +118,14 @@ class Command(BaseCommand):
                 changed = True
 
             if changed:
+                vertical.updated_by = principal_id
+
                 vertical.save(
                     update_fields=[
                         "name",
                         "description",
                         "status",
+                        "updated_by",
                         "updated_at",
                     ]
                 )
