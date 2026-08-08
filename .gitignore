@@ -140,3 +140,4 @@ backend/config/settings/development_postgres.py
 *.signout-backup
 *.page-help-backup
 *.phase2-backup
+*.backup
