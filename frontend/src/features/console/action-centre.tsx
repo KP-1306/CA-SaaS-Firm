@@ -1,4 +1,4 @@
-﻿import type * as React from 'react';
+import type * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { getObject } from './api';
@@ -7,6 +7,7 @@ import { ErrorBar, Loading } from './ui';
 
 import './action-centre.css';
 
+import Help from '../../components/help/Help';
 type Dict = Record<string, unknown>;
 
 type ActionFilter =
@@ -211,7 +212,10 @@ export function ActionCentre({
           <span className="cx-panel-kicker">
             Operational inbox
           </span>
-          <h1>Action Centre</h1>
+          <div className="cx-guided-heading">
+  <h1>Action Centre</h1>
+  <Help topic="page.action-centre" />
+</div>
           <p>Only work that needs attention now.</p>
         </div>
 

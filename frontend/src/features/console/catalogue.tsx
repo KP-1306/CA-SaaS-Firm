@@ -30,6 +30,7 @@ import {
 } from './qa';
 
 
+import Help from '../../components/help/Help';
 interface ListState {
   rows: Row[];
   error: string;
@@ -87,7 +88,7 @@ function useList(
 
 function rowName(
   row: Row | null | undefined,
-  fallback = '—',
+  fallback = 'â€”',
 ): string {
   return String(row?.name ?? fallback);
 }
@@ -537,7 +538,7 @@ export function CatalogueArea(): React.JSX.Element {
             className="cx-btn subtle"
             onClick={clearService}
           >
-            ← Back to Services
+            â† Back to Services
           </button>
 
           <div>
@@ -632,7 +633,7 @@ export function CatalogueArea(): React.JSX.Element {
                   <dd>
                     {String(
                       selectedService.code ??
-                      '—',
+                      'â€”',
                     )}
                   </dd>
                 </div>
@@ -780,7 +781,7 @@ export function CatalogueArea(): React.JSX.Element {
                   currentRequirementSet.version_number ??
                   1,
                 )}
-                {' • '}
+                {' â€¢ '}
                 managed automatically for
                 history and audit.
               </div>
@@ -919,9 +920,10 @@ export function CatalogueArea(): React.JSX.Element {
             SERVICE CATALOGUE
           </div>
 
-          <h2>
-            Services
-          </h2>
+          <div className="cx-guided-heading">
+  <h2>Services</h2>
+  <Help topic="page.services" />
+</div>
 
           <p>
             Choose a Vertical, then a Domain,

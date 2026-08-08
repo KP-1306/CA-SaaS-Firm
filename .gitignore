@@ -105,3 +105,30 @@ Claude_C4_1_Package.zip
 research_outputs/
 *.bak
 *.before_*
+
+# -----------------------------
+# AI / Local
+# -----------------------------
+_patch_backups/
+_diagnostics/
+cafirm_patch_backups/
+
+# -----------------------------
+# Local backend
+# -----------------------------
+backend/.venv_copied_old_machine/
+backend/*.DISABLED_*
+backend/**/*.DISABLED_*
+backend/db.sqlite3*
+
+# -----------------------------
+# Local tools
+# -----------------------------
+tools/*.backup_*
+tools/*inventory*.txt
+
+# -----------------------------
+# Temporary notes
+# -----------------------------
+phase_3b_remaining_completion_contract.txt
+
