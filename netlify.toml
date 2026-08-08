@@ -4,6 +4,24 @@ publish = "dist"
 command = "npm run build"
 
 [[redirects]]
+from = "/api/*"
+to = "https://ca-saas-firm.onrender.com/api/:splat"
+status = 200
+force = true
+
+[[redirects]]
+from = "/portal/api/*"
+to = "https://ca-saas-firm.onrender.com/portal/api/:splat"
+status = 200
+force = true
+
+[[redirects]]
+from = "/platform/api/*"
+to = "https://ca-saas-firm.onrender.com/platform/api/:splat"
+status = 200
+force = true
+
+[[redirects]]
 from = "/*"
 to = "/internal.html"
 status = 200
