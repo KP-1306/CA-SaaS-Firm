@@ -132,3 +132,11 @@ tools/*inventory*.txt
 # -----------------------------
 phase_3b_remaining_completion_contract.txt
 
+# Local database / migration-development artifacts
+backend/cafirm_existing_data.json
+backend/config/settings/development_postgres.py
+# Temporary source backups created during controlled patches
+*.pre_recurrence_v2
+*.signout-backup
+*.page-help-backup
+*.phase2-backup
