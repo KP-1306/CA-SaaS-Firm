@@ -1,4 +1,4 @@
-﻿import type * as React from 'react';
+import type * as React from 'react';
 import { useEffect, useState } from 'react';
 import { getObject, list, save } from './api';
 import { CatalogueArea } from './catalogue';
@@ -10,6 +10,7 @@ import { useBrand } from './branding';
 import { EmployeeDashboard, ExecutiveDashboard } from './dashboards';
 import { ExpertisePanel } from './expertise';
 import { AuditViewer } from './audit';
+import { ActionCentre } from './action-centre';
 import { GlobalSearch } from './GlobalSearch';
 import {
   QuickCreateMenu,
@@ -30,10 +31,11 @@ import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Column, Field } from './ui';
 import './console.css';
 
-type Area = 'dashboard' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'servicing' | 'employee-ops' | 'team' | 'services' | 'reports' | 'audit' | 'identity' | 'settings';
+type Area = 'dashboard' | 'action-centre' | 'my-dashboard' | 'firm-overview' | 'clients' | 'work' | 'servicing' | 'employee-ops' | 'team' | 'services' | 'reports' | 'audit' | 'identity' | 'settings';
 
 const NAV: { key: Area; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
+  { key: 'action-centre', label: 'Action Centre' },
   { key: 'my-dashboard', label: 'My Dashboard' },
   { key: 'firm-overview', label: 'Firm Overview' },
   { key: 'clients', label: 'Clients' },
@@ -1280,7 +1282,14 @@ function OperationalConsole(): React.JSX.Element {
             onOpenWork={openWorkItem}
           />
         );
-      case 'my-dashboard':
+
+      case 'action-centre':
+        return (
+          <ActionCentre
+            onOpenWork={openWorkItem}
+          />
+        );
+case 'my-dashboard':
         return <EmployeeDashboard onDrill={(f) => { setArea('work'); void f; }} />;
       case 'firm-overview':
         return <ExecutiveDashboard onDrill={(f) => { setArea('work'); void f; }} />;
@@ -1478,7 +1487,37 @@ function OperationalConsole(): React.JSX.Element {
       <div className="cx-main">
         <header className="cx-top">
           <h2>{NAV.find((n) => n.key === area)?.label}</h2>
-          <GlobalSearch onNavigate={setArea} />
+          <GlobalSearch
+            onNavigate={(target, id, workItemId) => {
+              if (target === 'clients' && id) {
+                openClient(id);
+                return;
+              }
+
+              if (target === 'work' && id) {
+                openWorkItem(id);
+                return;
+              }
+
+              if (target === 'documents') {
+                if (workItemId) {
+                  openWorkItem(workItemId);
+                  return;
+                }
+
+                setWorkQuickAction('documents');
+                setArea('work');
+                return;
+              }
+
+              if (
+                target === 'team'
+                || target === 'services'
+              ) {
+                setArea(target);
+              }
+            }}
+          />
           <QuickCreateMenu
             canAssign={
               brand.capabilities?.is_executive === true
