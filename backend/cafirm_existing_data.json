@@ -1,0 +1,2562 @@
+[
+{
+  "model": "ctx_identity.employee",
+  "pk": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T07:48:58.498Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T07:48:58.498Z",
+    "updated_by": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "row_version": 2,
+    "name": "kapil bisht",
+    "email": "kbisht786@gmail.com",
+    "mobile": "+91-8892384995",
+    "employee_code": "234",
+    "role": "ADMIN",
+    "branch_id": null,
+    "team_id": null,
+    "expertise": [],
+    "is_active": true,
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "department_id": null,
+    "designation_id": null,
+    "manager_id": null,
+    "employment_type": "",
+    "employment_status": "",
+    "joining_date": null,
+    "confirmation_date": null,
+    "exit_date": null,
+    "timezone": "",
+    "notes": ""
+  }
+},
+{
+  "model": "ctx_identity.employee",
+  "pk": "019fac05-021b-756f-a567-ff4097e76618",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T03:57:17.211Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T03:57:17.211Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "name": "Naveen Durgapal",
+    "email": "Naveen@gmail.com",
+    "mobile": "9837458649",
+    "employee_code": "28",
+    "role": "PARTNER",
+    "branch_id": null,
+    "team_id": null,
+    "expertise": [],
+    "is_active": true,
+    "principal_id": null,
+    "department_id": null,
+    "designation_id": null,
+    "manager_id": null,
+    "employment_type": "",
+    "employment_status": "",
+    "joining_date": null,
+    "confirmation_date": null,
+    "exit_date": null,
+    "timezone": "",
+    "notes": ""
+  }
+},
+{
+  "model": "ctx_identity.employee",
+  "pk": "019fb3bd-ae6b-7fd6-920b-6018f766fc2a",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T15:56:20.459Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T15:56:24.656Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 2,
+    "name": "Deepak",
+    "email": "D@gmail.com",
+    "mobile": "535345345",
+    "employee_code": "454545",
+    "role": "STAFF",
+    "branch_id": null,
+    "team_id": null,
+    "expertise": [],
+    "is_active": false,
+    "principal_id": null,
+    "department_id": null,
+    "designation_id": null,
+    "manager_id": null,
+    "employment_type": "",
+    "employment_status": "",
+    "joining_date": null,
+    "confirmation_date": null,
+    "exit_date": null,
+    "timezone": "",
+    "notes": ""
+  }
+},
+{
+  "model": "ctx_identity.useraccount",
+  "pk": "019fdb7a-a96e-771f-b836-d312ef745d74",
+  "fields": {
+    "email": "kbisht786@gmail.com",
+    "display_name": "Vridhi Administrator",
+    "password_hash": "pbkdf2_sha256$1000000$BuRGgML3qsu2WHOl2AZbuD$O8YKbHnQOX4Ag5r7wMJa1POOap7j5m/pjs9npTTXoiM=",
+    "status": "ACTIVE",
+    "email_verified_at": "2026-08-07T09:07:56.910Z",
+    "failed_login_count": 0,
+    "locked_until": null,
+    "last_login_at": "2026-08-07T09:08:22.808Z",
+    "password_changed_at": "2026-08-07T09:07:58.132Z",
+    "must_change_password": false,
+    "invitation_sent_at": null,
+    "invited_by_principal_id": null,
+    "activated_at": null,
+    "created_at": "2026-08-07T09:07:58.132Z",
+    "updated_at": "2026-08-07T09:08:24.075Z"
+  }
+},
+{
+  "model": "ctx_identity.providermembership",
+  "pk": "019fdb7a-ae5a-738d-8a95-29b59807b47d",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-08-07T09:07:58.170Z",
+    "created_by": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "updated_at": "2026-08-07T09:17:24.930Z",
+    "updated_by": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "row_version": 2,
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "employee_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "role": "PLATFORM_ADMIN",
+    "status": "ACTIVE",
+    "effective_from": "2026-08-07T09:07:58.170Z",
+    "effective_to": null
+  }
+},
+{
+  "model": "ctx_identity.authsession",
+  "pk": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+  "fields": {
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "membership_id": "019fdb7a-ae5a-738d-8a95-29b59807b47d",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "token_hash": "e86fa40dd1a408cd5bfef5725c04af967551cc4406807f184df6be0851fd9aa3",
+    "created_at": "2026-08-07T09:08:24.077Z",
+    "last_seen_at": "2026-08-07T12:47:51.476Z",
+    "expires_at": "2026-08-07T21:08:24.076Z",
+    "revoked_at": null,
+    "ip_address": "127.0.0.1",
+    "user_agent_hash": "6235d36597d64fc0e0c3883911a8fb2f9451d0254ab3379d980f5a3426585d87"
+  }
+},
+{
+  "model": "ctx_identity.authenticationevent",
+  "pk": "019fdb7b-13c3-7b8f-a193-d0e0b26dc42f",
+  "fields": {
+    "occurred_at": "2026-08-07T09:08:24.132Z",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "session_id": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+    "event_type": "SESSION_CREATED",
+    "outcome": "SUCCESS",
+    "email": "kbisht786@gmail.com",
+    "reason": "",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "metadata": {}
+  }
+},
+{
+  "model": "ctx_identity.authenticationevent",
+  "pk": "019fdb7b-13ca-7ab6-a5f9-c577ca2a7311",
+  "fields": {
+    "occurred_at": "2026-08-07T09:08:24.140Z",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "session_id": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+    "event_type": "LOGIN_SUCCEEDED",
+    "outcome": "SUCCESS",
+    "email": "kbisht786@gmail.com",
+    "reason": "",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "metadata": {}
+  }
+},
+{
+  "model": "ctx_identity.authenticationevent",
+  "pk": "019fdb7b-1527-7615-9fea-2e40136a8caf",
+  "fields": {
+    "occurred_at": "2026-08-07T09:08:24.493Z",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "session_id": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+    "event_type": "ACCESS_DENIED",
+    "outcome": "DENIED",
+    "email": "kbisht786@gmail.com",
+    "reason": "RBAC_ACCESS_DENIED",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "metadata": {
+      "required_access": "work.view",
+      "request_method": "GET",
+      "request_path": "/api/v1/work-items/"
+    }
+  }
+},
+{
+  "model": "ctx_identity.authenticationevent",
+  "pk": "019fdb7b-152f-765a-9923-c40aa1ca5d00",
+  "fields": {
+    "occurred_at": "2026-08-07T09:08:24.528Z",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "session_id": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+    "event_type": "ACCESS_DENIED",
+    "outcome": "DENIED",
+    "email": "kbisht786@gmail.com",
+    "reason": "RBAC_ACCESS_DENIED",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "metadata": {
+      "required_access": "clients.view",
+      "request_method": "GET",
+      "request_path": "/api/v1/clients/"
+    }
+  }
+},
+{
+  "model": "ctx_identity.authenticationevent",
+  "pk": "019fdb7b-15a9-70ef-bcd5-706279387c66",
+  "fields": {
+    "occurred_at": "2026-08-07T09:08:24.618Z",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "session_id": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+    "event_type": "ACCESS_DENIED",
+    "outcome": "DENIED",
+    "email": "kbisht786@gmail.com",
+    "reason": "RBAC_ACCESS_DENIED",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "metadata": {
+      "required_access": "documents.view",
+      "request_method": "GET",
+      "request_path": "/api/v1/document-requests/"
+    }
+  }
+},
+{
+  "model": "ctx_identity.authenticationevent",
+  "pk": "019fdb7b-1681-7529-87f5-7492ac213c2c",
+  "fields": {
+    "occurred_at": "2026-08-07T09:08:24.834Z",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "session_id": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+    "event_type": "ACCESS_DENIED",
+    "outcome": "DENIED",
+    "email": "kbisht786@gmail.com",
+    "reason": "RBAC_ACCESS_DENIED",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "metadata": {
+      "required_access": "documents.view",
+      "request_method": "GET",
+      "request_path": "/api/v1/document-requests/"
+    }
+  }
+},
+{
+  "model": "ctx_identity.authenticationevent",
+  "pk": "019fdb7b-1800-7760-a407-1e2df8464b33",
+  "fields": {
+    "occurred_at": "2026-08-07T09:08:25.323Z",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "session_id": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+    "event_type": "ACCESS_DENIED",
+    "outcome": "DENIED",
+    "email": "kbisht786@gmail.com",
+    "reason": "RBAC_ACCESS_DENIED",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "metadata": {
+      "required_access": "work.view",
+      "request_method": "GET",
+      "request_path": "/api/v1/work-items/"
+    }
+  }
+},
+{
+  "model": "ctx_identity.authenticationevent",
+  "pk": "019fdb7b-1850-72aa-aea3-5e9eddfa9081",
+  "fields": {
+    "occurred_at": "2026-08-07T09:08:25.296Z",
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "principal_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "session_id": "019fdb7b-138d-7fc5-8e7c-3d7e5f221ef2",
+    "event_type": "ACCESS_DENIED",
+    "outcome": "DENIED",
+    "email": "kbisht786@gmail.com",
+    "reason": "RBAC_ACCESS_DENIED",
+    "ip_address": "127.0.0.1",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
+    "metadata": {
+      "required_access": "clients.view",
+      "request_method": "GET",
+      "request_path": "/api/v1/clients/"
+    }
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 1,
+  "fields": {
+    "tenant_id": null,
+    "code": "PARTNER",
+    "name": "Partner",
+    "description": "Firm-wide leadership and approval access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.818Z",
+    "updated_at": "2026-08-07T09:17:24.818Z"
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 2,
+  "fields": {
+    "tenant_id": null,
+    "code": "MANAGER",
+    "name": "Manager",
+    "description": "Team management, review and work-allocation access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.851Z",
+    "updated_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 3,
+  "fields": {
+    "tenant_id": null,
+    "code": "SENIOR_CONSULTANT",
+    "name": "Senior Consultant",
+    "description": "Senior delivery and limited review access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.873Z",
+    "updated_at": "2026-08-07T09:17:24.873Z"
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 4,
+  "fields": {
+    "tenant_id": null,
+    "code": "CONSULTANT",
+    "name": "Consultant",
+    "description": "Standard client and work execution access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.883Z",
+    "updated_at": "2026-08-07T09:17:24.883Z"
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 5,
+  "fields": {
+    "tenant_id": null,
+    "code": "ARTICLE_ASSISTANT",
+    "name": "Article Assistant",
+    "description": "Supervised work execution access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.892Z",
+    "updated_at": "2026-08-07T09:17:24.892Z"
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 6,
+  "fields": {
+    "tenant_id": null,
+    "code": "ACCOUNTS",
+    "name": "Accounts",
+    "description": "Billing and financial administration access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.899Z",
+    "updated_at": "2026-08-07T09:17:24.899Z"
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 7,
+  "fields": {
+    "tenant_id": null,
+    "code": "HR",
+    "name": "HR",
+    "description": "Employee administration access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.905Z",
+    "updated_at": "2026-08-07T09:17:24.906Z"
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 8,
+  "fields": {
+    "tenant_id": null,
+    "code": "RECEPTION",
+    "name": "Reception",
+    "description": "Basic client coordination access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.911Z",
+    "updated_at": "2026-08-07T09:17:24.911Z"
+  }
+},
+{
+  "model": "ctx_authorization.roletemplate",
+  "pk": 9,
+  "fields": {
+    "tenant_id": null,
+    "code": "READ_ONLY",
+    "name": "Read Only",
+    "description": "View-only access.",
+    "is_system": true,
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.912Z",
+    "updated_at": "2026-08-07T09:17:24.912Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 1,
+  "fields": {
+    "module": "Client Management",
+    "code": "clients.view",
+    "name": "View Clients",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.731Z",
+    "updated_at": "2026-08-07T09:17:24.731Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 2,
+  "fields": {
+    "module": "Client Management",
+    "code": "clients.create",
+    "name": "Create Clients",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.793Z",
+    "updated_at": "2026-08-07T09:17:24.793Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 3,
+  "fields": {
+    "module": "Client Management",
+    "code": "clients.edit",
+    "name": "Edit Clients",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.793Z",
+    "updated_at": "2026-08-07T09:17:24.793Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 4,
+  "fields": {
+    "module": "Client Management",
+    "code": "clients.delete",
+    "name": "Delete Clients",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.793Z",
+    "updated_at": "2026-08-07T09:17:24.793Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 5,
+  "fields": {
+    "module": "Employee Management",
+    "code": "employees.view",
+    "name": "View Employees",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.793Z",
+    "updated_at": "2026-08-07T09:17:24.793Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 6,
+  "fields": {
+    "module": "Employee Management",
+    "code": "employees.manage",
+    "name": "Manage Employees",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.793Z",
+    "updated_at": "2026-08-07T09:17:24.793Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 7,
+  "fields": {
+    "module": "Workflow",
+    "code": "work.view",
+    "name": "View Work",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.793Z",
+    "updated_at": "2026-08-07T09:17:24.793Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 8,
+  "fields": {
+    "module": "Workflow",
+    "code": "work.create",
+    "name": "Create Work",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.793Z",
+    "updated_at": "2026-08-07T09:17:24.793Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 9,
+  "fields": {
+    "module": "Workflow",
+    "code": "work.assign",
+    "name": "Assign Work",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.799Z",
+    "updated_at": "2026-08-07T09:17:24.799Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 10,
+  "fields": {
+    "module": "Workflow",
+    "code": "work.reassign",
+    "name": "Reassign Work",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.802Z",
+    "updated_at": "2026-08-07T09:17:24.802Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 11,
+  "fields": {
+    "module": "Workflow",
+    "code": "work.submit",
+    "name": "Submit Work for Review",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.803Z",
+    "updated_at": "2026-08-07T09:17:24.803Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 12,
+  "fields": {
+    "module": "Workflow",
+    "code": "work.approve",
+    "name": "Approve Work",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.804Z",
+    "updated_at": "2026-08-07T09:17:24.804Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 13,
+  "fields": {
+    "module": "Workflow",
+    "code": "work.close",
+    "name": "Close Work",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.805Z",
+    "updated_at": "2026-08-07T09:17:24.805Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 14,
+  "fields": {
+    "module": "Documents",
+    "code": "documents.view",
+    "name": "View Documents",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.806Z",
+    "updated_at": "2026-08-07T09:17:24.806Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 15,
+  "fields": {
+    "module": "Documents",
+    "code": "documents.upload",
+    "name": "Upload Documents",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.807Z",
+    "updated_at": "2026-08-07T09:17:24.807Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 16,
+  "fields": {
+    "module": "Documents",
+    "code": "documents.review",
+    "name": "Review Documents",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.808Z",
+    "updated_at": "2026-08-07T09:17:24.808Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 17,
+  "fields": {
+    "module": "Documents",
+    "code": "documents.approve",
+    "name": "Approve Documents",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.809Z",
+    "updated_at": "2026-08-07T09:17:24.809Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 18,
+  "fields": {
+    "module": "Quality",
+    "code": "quality.review",
+    "name": "Perform QA Review",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.810Z",
+    "updated_at": "2026-08-07T09:17:24.810Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 19,
+  "fields": {
+    "module": "Quality",
+    "code": "quality.manage",
+    "name": "Manage QA Configuration",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.810Z",
+    "updated_at": "2026-08-07T09:17:24.811Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 20,
+  "fields": {
+    "module": "Reports",
+    "code": "reports.view",
+    "name": "View Reports",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.811Z",
+    "updated_at": "2026-08-07T09:17:24.811Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 21,
+  "fields": {
+    "module": "Reports",
+    "code": "reports.export",
+    "name": "Export Reports",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.812Z",
+    "updated_at": "2026-08-07T09:17:24.812Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 22,
+  "fields": {
+    "module": "Administration",
+    "code": "firm.manage",
+    "name": "Manage Firm",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.813Z",
+    "updated_at": "2026-08-07T09:17:24.813Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 23,
+  "fields": {
+    "module": "Administration",
+    "code": "services.manage",
+    "name": "Manage Services",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.814Z",
+    "updated_at": "2026-08-07T09:17:24.814Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 24,
+  "fields": {
+    "module": "Administration",
+    "code": "access.manage",
+    "name": "Manage Employee Access",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.815Z",
+    "updated_at": "2026-08-07T09:17:24.815Z"
+  }
+},
+{
+  "model": "ctx_authorization.access",
+  "pk": 25,
+  "fields": {
+    "module": "Administration",
+    "code": "audit.view",
+    "name": "View Audit History",
+    "description": "",
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.816Z",
+    "updated_at": "2026-08-07T09:17:24.816Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 1,
+  "fields": {
+    "role": 1,
+    "access": 14,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 2,
+  "fields": {
+    "role": 1,
+    "access": 6,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 3,
+  "fields": {
+    "role": 1,
+    "access": 22,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 4,
+  "fields": {
+    "role": 1,
+    "access": 8,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 5,
+  "fields": {
+    "role": 1,
+    "access": 20,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 6,
+  "fields": {
+    "role": 1,
+    "access": 2,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 7,
+  "fields": {
+    "role": 1,
+    "access": 11,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 8,
+  "fields": {
+    "role": 1,
+    "access": 12,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 9,
+  "fields": {
+    "role": 1,
+    "access": 24,
+    "created_at": "2026-08-07T09:17:24.822Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 10,
+  "fields": {
+    "role": 1,
+    "access": 9,
+    "created_at": "2026-08-07T09:17:24.835Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 11,
+  "fields": {
+    "role": 1,
+    "access": 5,
+    "created_at": "2026-08-07T09:17:24.835Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 12,
+  "fields": {
+    "role": 1,
+    "access": 15,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 13,
+  "fields": {
+    "role": 1,
+    "access": 3,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 14,
+  "fields": {
+    "role": 1,
+    "access": 19,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 15,
+  "fields": {
+    "role": 1,
+    "access": 21,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 16,
+  "fields": {
+    "role": 1,
+    "access": 1,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 17,
+  "fields": {
+    "role": 1,
+    "access": 16,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 18,
+  "fields": {
+    "role": 1,
+    "access": 25,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 19,
+  "fields": {
+    "role": 1,
+    "access": 13,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 20,
+  "fields": {
+    "role": 1,
+    "access": 10,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 21,
+  "fields": {
+    "role": 1,
+    "access": 4,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 22,
+  "fields": {
+    "role": 1,
+    "access": 23,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 23,
+  "fields": {
+    "role": 1,
+    "access": 18,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 24,
+  "fields": {
+    "role": 1,
+    "access": 17,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 25,
+  "fields": {
+    "role": 1,
+    "access": 7,
+    "created_at": "2026-08-07T09:17:24.838Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 26,
+  "fields": {
+    "role": 2,
+    "access": 14,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 27,
+  "fields": {
+    "role": 2,
+    "access": 8,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 28,
+  "fields": {
+    "role": 2,
+    "access": 20,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 29,
+  "fields": {
+    "role": 2,
+    "access": 2,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 30,
+  "fields": {
+    "role": 2,
+    "access": 11,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 31,
+  "fields": {
+    "role": 2,
+    "access": 12,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 32,
+  "fields": {
+    "role": 2,
+    "access": 9,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 33,
+  "fields": {
+    "role": 2,
+    "access": 5,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 34,
+  "fields": {
+    "role": 2,
+    "access": 15,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 35,
+  "fields": {
+    "role": 2,
+    "access": 3,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 36,
+  "fields": {
+    "role": 2,
+    "access": 21,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 37,
+  "fields": {
+    "role": 2,
+    "access": 1,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 38,
+  "fields": {
+    "role": 2,
+    "access": 25,
+    "created_at": "2026-08-07T09:17:24.851Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 39,
+  "fields": {
+    "role": 2,
+    "access": 16,
+    "created_at": "2026-08-07T09:17:24.867Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 40,
+  "fields": {
+    "role": 2,
+    "access": 13,
+    "created_at": "2026-08-07T09:17:24.868Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 41,
+  "fields": {
+    "role": 2,
+    "access": 10,
+    "created_at": "2026-08-07T09:17:24.869Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 42,
+  "fields": {
+    "role": 2,
+    "access": 18,
+    "created_at": "2026-08-07T09:17:24.870Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 43,
+  "fields": {
+    "role": 2,
+    "access": 17,
+    "created_at": "2026-08-07T09:17:24.871Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 44,
+  "fields": {
+    "role": 2,
+    "access": 7,
+    "created_at": "2026-08-07T09:17:24.872Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 45,
+  "fields": {
+    "role": 3,
+    "access": 14,
+    "created_at": "2026-08-07T09:17:24.875Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 46,
+  "fields": {
+    "role": 3,
+    "access": 8,
+    "created_at": "2026-08-07T09:17:24.876Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 47,
+  "fields": {
+    "role": 3,
+    "access": 20,
+    "created_at": "2026-08-07T09:17:24.877Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 48,
+  "fields": {
+    "role": 3,
+    "access": 11,
+    "created_at": "2026-08-07T09:17:24.878Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 49,
+  "fields": {
+    "role": 3,
+    "access": 1,
+    "created_at": "2026-08-07T09:17:24.879Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 50,
+  "fields": {
+    "role": 3,
+    "access": 15,
+    "created_at": "2026-08-07T09:17:24.880Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 51,
+  "fields": {
+    "role": 3,
+    "access": 7,
+    "created_at": "2026-08-07T09:17:24.880Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 52,
+  "fields": {
+    "role": 3,
+    "access": 16,
+    "created_at": "2026-08-07T09:17:24.882Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 53,
+  "fields": {
+    "role": 4,
+    "access": 14,
+    "created_at": "2026-08-07T09:17:24.886Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 54,
+  "fields": {
+    "role": 4,
+    "access": 8,
+    "created_at": "2026-08-07T09:17:24.887Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 55,
+  "fields": {
+    "role": 4,
+    "access": 11,
+    "created_at": "2026-08-07T09:17:24.888Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 56,
+  "fields": {
+    "role": 4,
+    "access": 1,
+    "created_at": "2026-08-07T09:17:24.889Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 57,
+  "fields": {
+    "role": 4,
+    "access": 15,
+    "created_at": "2026-08-07T09:17:24.890Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 58,
+  "fields": {
+    "role": 4,
+    "access": 7,
+    "created_at": "2026-08-07T09:17:24.891Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 59,
+  "fields": {
+    "role": 5,
+    "access": 1,
+    "created_at": "2026-08-07T09:17:24.894Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 60,
+  "fields": {
+    "role": 5,
+    "access": 14,
+    "created_at": "2026-08-07T09:17:24.895Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 61,
+  "fields": {
+    "role": 5,
+    "access": 15,
+    "created_at": "2026-08-07T09:17:24.896Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 62,
+  "fields": {
+    "role": 5,
+    "access": 7,
+    "created_at": "2026-08-07T09:17:24.897Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 63,
+  "fields": {
+    "role": 6,
+    "access": 21,
+    "created_at": "2026-08-07T09:17:24.902Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 64,
+  "fields": {
+    "role": 6,
+    "access": 1,
+    "created_at": "2026-08-07T09:17:24.903Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 65,
+  "fields": {
+    "role": 6,
+    "access": 20,
+    "created_at": "2026-08-07T09:17:24.904Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 66,
+  "fields": {
+    "role": 7,
+    "access": 5,
+    "created_at": "2026-08-07T09:17:24.909Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 67,
+  "fields": {
+    "role": 7,
+    "access": 6,
+    "created_at": "2026-08-07T09:17:24.910Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 68,
+  "fields": {
+    "role": 8,
+    "access": 1,
+    "created_at": "2026-08-07T09:17:24.912Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 69,
+  "fields": {
+    "role": 8,
+    "access": 3,
+    "created_at": "2026-08-07T09:17:24.912Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 70,
+  "fields": {
+    "role": 8,
+    "access": 2,
+    "created_at": "2026-08-07T09:17:24.912Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 71,
+  "fields": {
+    "role": 9,
+    "access": 14,
+    "created_at": "2026-08-07T09:17:24.921Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 72,
+  "fields": {
+    "role": 9,
+    "access": 20,
+    "created_at": "2026-08-07T09:17:24.922Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 73,
+  "fields": {
+    "role": 9,
+    "access": 1,
+    "created_at": "2026-08-07T09:17:24.923Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 74,
+  "fields": {
+    "role": 9,
+    "access": 7,
+    "created_at": "2026-08-07T09:17:24.924Z"
+  }
+},
+{
+  "model": "ctx_authorization.roleaccess",
+  "pk": 75,
+  "fields": {
+    "role": 9,
+    "access": 5,
+    "created_at": "2026-08-07T09:17:24.925Z"
+  }
+},
+{
+  "model": "ctx_authorization.accessprofile",
+  "pk": 1,
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "user_account_id": "019fdb7a-a96e-771f-b836-d312ef745d74",
+    "role": 1,
+    "department_ids": [],
+    "team_ids": [],
+    "service_ids": [],
+    "is_active": true,
+    "created_at": "2026-08-07T09:17:24.934Z",
+    "updated_at": "2026-08-07T09:17:24.986Z",
+    "additional_access": []
+  }
+},
+{
+  "model": "ctx_configuration.vertical",
+  "pk": "019fa7b6-8b81-74a0-b6f6-77bd1b1fe7fd",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T07:53:06.178Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T07:53:06.178Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "name": "Tax",
+    "code": "TAX",
+    "description": "Taxation services",
+    "owner_user_id": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.vertical",
+  "pk": "019fb3c2-7e1f-75e5-a6fc-9a7e1bf2feb2",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T16:01:35.776Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T16:01:35.776Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "name": "Accounts",
+    "code": "34",
+    "description": "",
+    "owner_user_id": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.vertical",
+  "pk": "019fb3cb-93df-7d6a-a769-86c8265f8da2",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T16:11:31.168Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T16:11:31.168Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "name": "Accounts Payable",
+    "code": "21",
+    "description": "",
+    "owner_user_id": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.domain",
+  "pk": "019fa7b6-b184-7a94-addf-f5df0ff943cc",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T07:53:15.910Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T07:53:15.910Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "vertical_id": "019fa7b6-8b81-74a0-b6f6-77bd1b1fe7fd",
+    "name": "Direct Tax",
+    "code": "DIRECT_TAX",
+    "description": "Income tax and related direct tax work",
+    "owner_user_id": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.domain",
+  "pk": "019fb3c3-79ff-7ac1-b375-6ddaf2760708",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T16:02:40.256Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T16:02:40.256Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "vertical_id": "019fb3c2-7e1f-75e5-a6fc-9a7e1bf2feb2",
+    "name": "Bank",
+    "code": "wew",
+    "description": "",
+    "owner_user_id": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.domain",
+  "pk": "019fb3cb-dbb8-7650-ae31-983fbe9faa5a",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T16:11:49.561Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T16:11:49.561Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "vertical_id": "019fb3cb-93df-7d6a-a769-86c8265f8da2",
+    "name": "Purchase invoics",
+    "code": "PI1",
+    "description": "",
+    "owner_user_id": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.domain",
+  "pk": "019fb3cc-51cf-72d8-b38e-0ada9e7348d6",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T16:12:19.792Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T16:12:19.792Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "vertical_id": "019fb3cb-93df-7d6a-a769-86c8265f8da2",
+    "name": "CR statement",
+    "code": "CR123",
+    "description": "",
+    "owner_user_id": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.domain",
+  "pk": "019fb3cd-288e-73a1-98c1-8308ebc2226c",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T16:13:14.767Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T16:13:14.767Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "vertical_id": "019fb3c2-7e1f-75e5-a6fc-9a7e1bf2feb2",
+    "name": "aCCOUNTS PAYABLE",
+    "code": "ap1234",
+    "description": "",
+    "owner_user_id": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.service",
+  "pk": "019fa7b6-c68d-7622-8659-9ba582551874",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T07:53:21.295Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T07:53:21.295Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "domain_id": "019fa7b6-b184-7a94-addf-f5df0ff943cc",
+    "name": "Income Tax Return",
+    "code": "ITR",
+    "description": "Preparation and filing of income tax returns",
+    "default_owner_user_id": null,
+    "default_due_days": null,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_configuration.service",
+  "pk": "019fb3c3-dc18-7324-93c9-9bd94440754b",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T16:03:05.369Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T16:03:05.369Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "domain_id": "019fb3c3-79ff-7ac1-b375-6ddaf2760708",
+    "name": "Bank statement",
+    "code": "4545",
+    "description": "",
+    "default_owner_user_id": null,
+    "default_due_days": 5454,
+    "status": "ACTIVE"
+  }
+},
+{
+  "model": "ctx_clients.client",
+  "pk": "019fa717-ad5f-72f5-9bba-e88be8bb6c31",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T04:59:34.623Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:19:45.716Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 2,
+    "legal_name": "ABC Traders Private Limited",
+    "trade_name": "ABC Traders",
+    "client_type": "PRIVATE_LIMITED",
+    "industry": "",
+    "pan": "ABCDE1234F",
+    "cin_or_llpin": "",
+    "registered_address": "",
+    "relationship_manager_id": null,
+    "engagement_status": "ACTIVE",
+    "notes": "",
+    "tan": "",
+    "lifecycle_status": "PROSPECT",
+    "primary_branch_id": null,
+    "primary_contact_id": null,
+    "onboarding_date": null,
+    "activation_date": null,
+    "suspension_date": null,
+    "suspension_reason": "",
+    "closure_date": null,
+    "closure_reason": "",
+    "archive_date": null
+  }
+},
+{
+  "model": "ctx_clients.client",
+  "pk": "019fa7b2-4ae7-7975-b0ac-b41ef472d786",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T07:48:27.497Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T05:28:08.225Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 2,
+    "legal_name": "HDFC",
+    "trade_name": "gst",
+    "client_type": "LLP",
+    "industry": "Banking",
+    "pan": "AUKHD9896J",
+    "cin_or_llpin": "5656",
+    "registered_address": "nAINITAL",
+    "relationship_manager_id": null,
+    "engagement_status": "ACTIVE",
+    "notes": "",
+    "tan": "",
+    "lifecycle_status": "PROSPECT",
+    "primary_branch_id": null,
+    "primary_contact_id": null,
+    "onboarding_date": null,
+    "activation_date": null,
+    "suspension_date": null,
+    "suspension_reason": "",
+    "closure_date": null,
+    "closure_reason": "",
+    "archive_date": null
+  }
+},
+{
+  "model": "ctx_clients.client",
+  "pk": "019fa9d1-eef9-703c-b592-0e0d6ab3da53",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:42:15.547Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T17:42:15.547Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "legal_name": "Workflow Smoke Test Private Limited",
+    "trade_name": "",
+    "client_type": "PRIVATE_LIMITED",
+    "industry": "",
+    "pan": "AAAAA0987A",
+    "cin_or_llpin": "",
+    "registered_address": "",
+    "relationship_manager_id": null,
+    "engagement_status": "ACTIVE",
+    "notes": "",
+    "tan": "",
+    "lifecycle_status": "PROSPECT",
+    "primary_branch_id": null,
+    "primary_contact_id": null,
+    "onboarding_date": null,
+    "activation_date": null,
+    "suspension_date": null,
+    "suspension_reason": "",
+    "closure_date": null,
+    "closure_reason": "",
+    "archive_date": null
+  }
+},
+{
+  "model": "ctx_clients.clientcontact",
+  "pk": "019fac58-2591-764a-9684-50ac88b9c73e",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T05:28:05.789Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T05:28:05.790Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "client_id": "019fa7b2-4ae7-7975-b0ac-b41ef472d786",
+    "name": "Mr X",
+    "designation": "Senior MANAGER",
+    "email": "sM@ABC.com",
+    "mobile": "45353535353",
+    "whatsapp_number": "32323232323",
+    "preferred_channel": "WHATSAPP",
+    "can_receive_document_requests": true,
+    "is_primary": true,
+    "is_active": true
+  }
+},
+{
+  "model": "ctx_clients.clientcontact",
+  "pk": "019fac87-6600-765e-b874-ce49fe83d275",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:19:42.465Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:19:42.465Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "client_id": "019fa717-ad5f-72f5-9bba-e88be8bb6c31",
+    "name": "POC 1",
+    "designation": "Associate",
+    "email": "",
+    "mobile": "",
+    "whatsapp_number": "",
+    "preferred_channel": "WHATSAPP",
+    "can_receive_document_requests": true,
+    "is_primary": true,
+    "is_active": true
+  }
+},
+{
+  "model": "ctx_work.workitem",
+  "pk": "019fa9d3-2372-7c6e-87e4-d88dc04b9331",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:43:34.515Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T17:45:06.190Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 10,
+    "title": "Workflow V3.3 Smoke Test",
+    "description": "",
+    "client_id": "019fa9d1-eef9-703c-b592-0e0d6ab3da53",
+    "service_id": "019fa7b6-c68d-7622-8659-9ba582551874",
+    "owner_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "reviewer_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "period": "",
+    "due_date": "2026-07-29",
+    "status": "COMPLETED",
+    "priority": "HIGH",
+    "review_comment": "",
+    "notes": "",
+    "submitted_for_review_at": "2026-07-28T17:44:36.601Z",
+    "completed_at": "2026-07-28T17:45:02.437Z",
+    "estimated_hours": null,
+    "operational_data": {}
+  }
+},
+{
+  "model": "ctx_work.workitem",
+  "pk": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:55:06.211Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:50:38.208Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 15,
+    "title": "Test 2",
+    "description": "",
+    "client_id": "019fa717-ad5f-72f5-9bba-e88be8bb6c31",
+    "service_id": "019fa7b6-c68d-7622-8659-9ba582551874",
+    "owner_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "reviewer_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "period": "3",
+    "due_date": "2026-07-30",
+    "status": "COMPLETED",
+    "priority": "HIGH",
+    "review_comment": "Rework",
+    "notes": "",
+    "submitted_for_review_at": "2026-07-28T18:50:58.835Z",
+    "completed_at": "2026-07-28T18:51:00.068Z",
+    "estimated_hours": null,
+    "operational_data": {}
+  }
+},
+{
+  "model": "ctx_work.workitem",
+  "pk": "019faa11-6577-78e4-850d-b71008ddadae",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:51:34.652Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:51:34.652Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 6,
+    "title": "test",
+    "description": "",
+    "client_id": "019fa7b2-4ae7-7975-b0ac-b41ef472d786",
+    "service_id": "019fa7b6-c68d-7622-8659-9ba582551874",
+    "owner_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "reviewer_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "period": "",
+    "due_date": "2026-07-31",
+    "status": "READY_FOR_REVIEW",
+    "priority": "NORMAL",
+    "review_comment": "dd",
+    "notes": "",
+    "submitted_for_review_at": "2026-07-28T18:53:51.867Z",
+    "completed_at": null,
+    "estimated_hours": null,
+    "operational_data": {}
+  }
+},
+{
+  "model": "ctx_work.workitem",
+  "pk": "019fac87-f3cf-7204-b055-7d2163c249ad",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:20:18.769Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:20:18.769Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 3,
+    "title": "GST",
+    "description": "",
+    "client_id": "019fa717-ad5f-72f5-9bba-e88be8bb6c31",
+    "service_id": "019fa7b6-c68d-7622-8659-9ba582551874",
+    "owner_user_id": "019fac05-021b-756f-a567-ff4097e76618",
+    "reviewer_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "period": "5",
+    "due_date": "2026-07-31",
+    "status": "READY_FOR_REVIEW",
+    "priority": "NORMAL",
+    "review_comment": "",
+    "notes": "",
+    "submitted_for_review_at": "2026-07-29T06:20:28.967Z",
+    "completed_at": null,
+    "estimated_hours": null,
+    "operational_data": {}
+  }
+},
+{
+  "model": "ctx_work.workitem",
+  "pk": "019fac88-8540-75bd-bcde-f20a8a93495a",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:20:56.003Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:20:56.003Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 2,
+    "title": "TEST",
+    "description": "",
+    "client_id": "019fa717-ad5f-72f5-9bba-e88be8bb6c31",
+    "service_id": "019fa7b6-c68d-7622-8659-9ba582551874",
+    "owner_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "reviewer_user_id": "019fac05-021b-756f-a567-ff4097e76618",
+    "period": "",
+    "due_date": "2026-07-31",
+    "status": "IN_PROGRESS",
+    "priority": "NORMAL",
+    "review_comment": "",
+    "notes": "",
+    "submitted_for_review_at": null,
+    "completed_at": null,
+    "estimated_hours": null,
+    "operational_data": {}
+  }
+},
+{
+  "model": "ctx_work.workitem",
+  "pk": "019facfd-8d63-74bc-8b2b-f8c55e5bc9c2",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T08:28:45.800Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T08:29:58.381Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 8,
+    "title": "Testing",
+    "description": "",
+    "client_id": "019fa9d1-eef9-703c-b592-0e0d6ab3da53",
+    "service_id": "019fa7b6-c68d-7622-8659-9ba582551874",
+    "owner_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "reviewer_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "period": "",
+    "due_date": "2026-07-31",
+    "status": "COMPLETED",
+    "priority": "NORMAL",
+    "review_comment": "",
+    "notes": "",
+    "submitted_for_review_at": "2026-07-29T08:29:24.342Z",
+    "completed_at": "2026-07-29T08:29:58.406Z",
+    "estimated_hours": null,
+    "operational_data": {}
+  }
+},
+{
+  "model": "ctx_work.workitem",
+  "pk": "019fb3a5-bfa1-731e-a49a-0935abc3c339",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T15:30:12.004Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T15:30:12.004Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "title": "Fire NOC",
+    "description": "",
+    "client_id": "019fa717-ad5f-72f5-9bba-e88be8bb6c31",
+    "service_id": "019fa7b6-c68d-7622-8659-9ba582551874",
+    "owner_user_id": "019fac05-021b-756f-a567-ff4097e76618",
+    "reviewer_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "period": "2",
+    "due_date": "2026-07-31",
+    "status": "NOT_STARTED",
+    "priority": "HIGH",
+    "review_comment": "",
+    "notes": "",
+    "submitted_for_review_at": null,
+    "completed_at": null,
+    "estimated_hours": null,
+    "operational_data": {}
+  }
+},
+{
+  "model": "ctx_work.workitem",
+  "pk": "019fb3a7-8842-7687-b56c-aa62a85bb266",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T15:32:08.899Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T15:32:44.923Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 5,
+    "title": "tEST12222",
+    "description": "wORK IN PROGRESS",
+    "client_id": "019fa7b2-4ae7-7975-b0ac-b41ef472d786",
+    "service_id": "019fa7b6-c68d-7622-8659-9ba582551874",
+    "owner_user_id": "019fa7b2-c401-7d8d-8d73-95d69993fb0b",
+    "reviewer_user_id": "019fac05-021b-756f-a567-ff4097e76618",
+    "period": "",
+    "due_date": "2026-08-06",
+    "status": "READY_FOR_REVIEW",
+    "priority": "HIGH",
+    "review_comment": "",
+    "notes": "",
+    "submitted_for_review_at": "2026-07-30T15:32:44.959Z",
+    "completed_at": null,
+    "estimated_hours": null,
+    "operational_data": {}
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fa9d3-e3f6-749a-a98e-d45193802dce",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:44:23.798Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T17:44:23.798Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9d3-2372-7c6e-87e4-d88dc04b9331",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "NOT_STARTED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fa9d4-15fb-78b0-9e5d-ed614c700779",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:44:36.603Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T17:44:36.603Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9d3-2372-7c6e-87e4-d88dc04b9331",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fa9d4-7ae6-701c-923c-3f89560d24d1",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:45:02.438Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T17:45:02.438Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9d3-2372-7c6e-87e4-d88dc04b9331",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Approved and completed.",
+    "from_status": "READY_FOR_REVIEW",
+    "to_status": "COMPLETED"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fa9dd-c3c2-77ff-b2a8-ccc825bbb707",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:55:10.914Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T17:55:10.914Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "NOT_STARTED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fa9dd-f9b5-7ae4-9df6-179d73d2bd78",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:55:24.726Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T17:55:24.726Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fa9de-2fa0-7480-8afe-88595da74b02",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T17:55:38.528Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T17:55:38.528Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Returned for rework: Issue",
+    "from_status": "READY_FOR_REVIEW",
+    "to_status": "REWORK_REQUIRED"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa10-705b-7dcb-b06a-2eaa2f8e16c5",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:50:31.901Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:50:31.902Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "REWORK_REQUIRED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa10-810c-758b-91c9-9d15a6c4f42f",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:50:36.172Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:50:36.172Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa10-c2b8-76c2-b3b6-b24bf5e9c715",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:50:52.984Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:50:52.984Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Returned for rework: Rework",
+    "from_status": "READY_FOR_REVIEW",
+    "to_status": "REWORK_REQUIRED"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa10-d60e-7216-9611-05848fe35ff3",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:50:57.935Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:50:57.935Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "REWORK_REQUIRED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa10-d994-719b-8baf-44b060092249",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:50:58.836Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:50:58.836Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa10-de64-74fe-a19b-418c9a50741d",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:51:00.068Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:51:00.068Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fa9dd-b162-72ac-8cfa-70ddceb22820",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Approved and completed.",
+    "from_status": "READY_FOR_REVIEW",
+    "to_status": "COMPLETED"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa11-ef7f-70a5-9924-b1cd6c75df83",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:52:09.984Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:52:09.984Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019faa11-6577-78e4-850d-b71008ddadae",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "NOT_STARTED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa12-5742-7d88-b727-a068d419d3f7",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:52:36.546Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:52:36.546Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019faa11-6577-78e4-850d-b71008ddadae",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa13-21d2-7c35-a01d-702124a63344",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:53:28.402Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:53:28.402Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019faa11-6577-78e4-850d-b71008ddadae",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Returned for rework: dd",
+    "from_status": "READY_FOR_REVIEW",
+    "to_status": "REWORK_REQUIRED"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa13-30e3-70b6-b9ee-e10282f90a8f",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:53:32.259Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:53:32.259Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019faa11-6577-78e4-850d-b71008ddadae",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "REWORK_REQUIRED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019faa13-7d7c-7baf-95d6-86ffb0280873",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T18:53:51.869Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T18:53:51.869Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019faa11-6577-78e4-850d-b71008ddadae",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fac86-22da-7fb2-9f0d-9c0dd9394b7f",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:18:19.739Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:18:19.739Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019faa11-6577-78e4-850d-b71008ddadae",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Uploaded 1 internal document(s).",
+    "from_status": "",
+    "to_status": ""
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fac88-1443-7ae7-af4c-fb2385e05114",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:20:27.075Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:20:27.075Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fac87-f3cf-7204-b055-7d2163c249ad",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "NOT_STARTED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fac88-1ba8-7a0c-9807-f58eca1bd2fd",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:20:28.968Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:20:28.968Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fac87-f3cf-7204-b055-7d2163c249ad",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fac89-5357-73f4-8fba-2c9923a51438",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:21:48.759Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:21:48.759Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fac88-8540-75bd-bcde-f20a8a93495a",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "NOT_STARTED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019facfd-eb85-7baf-a47b-b0c726b59627",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T08:29:09.893Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T08:29:09.893Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019facfd-8d63-74bc-8b2b-f8c55e5bc9c2",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "NOT_STARTED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019facfe-23f7-77d3-8a04-73fd6d749d2d",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T08:29:24.344Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T08:29:24.344Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019facfd-8d63-74bc-8b2b-f8c55e5bc9c2",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019facfe-a918-79f2-bc01-16593e0aed85",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T08:29:58.424Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T08:29:58.424Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019facfd-8d63-74bc-8b2b-f8c55e5bc9c2",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Approved and completed.",
+    "from_status": "READY_FOR_REVIEW",
+    "to_status": "COMPLETED"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fb3a7-e1d7-7847-be1d-d49fbc51b96c",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T15:32:31.831Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T15:32:31.831Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fb3a7-8842-7687-b56c-aa62a85bb266",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Status changed to IN_PROGRESS.",
+    "from_status": "NOT_STARTED",
+    "to_status": "IN_PROGRESS"
+  }
+},
+{
+  "model": "ctx_work.worknote",
+  "pk": "019fb3a8-1520-7745-b1fa-e1b88864cecc",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-30T15:32:44.960Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-30T15:32:44.960Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "work_item_id": "019fb3a7-8842-7687-b56c-aa62a85bb266",
+    "author_user_id": "22222222-2222-2222-2222-222222222222",
+    "entry": "Submitted for review.",
+    "from_status": "IN_PROGRESS",
+    "to_status": "READY_FOR_REVIEW"
+  }
+},
+{
+  "model": "ctx_work.documentrequest",
+  "pk": "019faa1f-0916-777f-b07c-4b68e72428f1",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-28T19:06:28.539Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-28T19:06:40.924Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 4,
+    "name": "Document 1",
+    "description": "",
+    "client_id": "019fa7b2-4ae7-7975-b0ac-b41ef472d786",
+    "work_item_id": "019faa11-6577-78e4-850d-b71008ddadae",
+    "source_requirement_set_id": null,
+    "source_requirement_id": null,
+    "auto_generated": false,
+    "category": "OTHER",
+    "financial_year": "",
+    "assessment_year": "",
+    "filing_period": "",
+    "valid_from": null,
+    "expires_on": null,
+    "requested_date": "2026-07-16",
+    "due_date": "2026-07-16",
+    "received_date": null,
+    "requested_from_contact_id": null,
+    "request_channel": "WHATSAPP",
+    "sent_at": null,
+    "verified_at": "2026-07-29T06:17:40.206Z",
+    "verified_by": "22222222-2222-2222-2222-222222222222",
+    "verification_comment": "",
+    "status": "ACCEPTED",
+    "mandatory": false,
+    "client_visible": true,
+    "remarks": "",
+    "notes": ""
+  }
+},
+{
+  "model": "ctx_work.documentrequest",
+  "pk": "019fac9d-ca09-7729-a5b4-83e1f2af1a50",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:44:09.865Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:44:09.865Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 3,
+    "name": "Test",
+    "description": "",
+    "client_id": "019fa717-ad5f-72f5-9bba-e88be8bb6c31",
+    "work_item_id": "019fac88-8540-75bd-bcde-f20a8a93495a",
+    "source_requirement_set_id": null,
+    "source_requirement_id": null,
+    "auto_generated": false,
+    "category": "OTHER",
+    "financial_year": "",
+    "assessment_year": "",
+    "filing_period": "",
+    "valid_from": null,
+    "expires_on": null,
+    "requested_date": "2026-07-29",
+    "due_date": null,
+    "received_date": null,
+    "requested_from_contact_id": "019fac87-6600-765e-b874-ce49fe83d275",
+    "request_channel": "WHATSAPP",
+    "sent_at": "2026-07-29T06:44:09.865Z",
+    "verified_at": "2026-07-29T06:46:39.588Z",
+    "verified_by": "22222222-2222-2222-2222-222222222222",
+    "verification_comment": "wsws",
+    "status": "REJECTED",
+    "mandatory": false,
+    "client_visible": true,
+    "remarks": "",
+    "notes": ""
+  }
+},
+{
+  "model": "ctx_work.documentattachment",
+  "pk": "019fac86-22be-792e-9235-45d5635771b3",
+  "fields": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "created_at": "2026-07-29T06:18:19.710Z",
+    "created_by": "22222222-2222-2222-2222-222222222222",
+    "updated_at": "2026-07-29T06:18:19.710Z",
+    "updated_by": "22222222-2222-2222-2222-222222222222",
+    "row_version": 1,
+    "document_request_id": null,
+    "work_item_id": "019faa11-6577-78e4-850d-b71008ddadae",
+    "source": "INTERNAL_TEAM",
+    "uploaded_by": "22222222-2222-2222-2222-222222222222",
+    "original_name": "EWP-000.1B-03A_repository_discovery.txt",
+    "content_type": "text/plain",
+    "size_bytes": 588,
+    "file": "attachments/11111111-1111-1111-1111-111111111111/019faa11-6577-78e4-850d-b71008ddadae/3b_lJB6Lxh.txt",
+    "sha256": "",
+    "version_number": 1,
+    "version_label": "",
+    "supersedes_attachment_id": null,
+    "duplicate_of_attachment_id": null,
+    "is_duplicate": false,
+    "duplicate_resolution": "NOT_APPLICABLE",
+    "is_canonical": false,
+    "review_status": "PENDING_REVIEW",
+    "reviewed_at": null,
+    "reviewed_by": null,
+    "review_comment": ""
+  }
+}
+]

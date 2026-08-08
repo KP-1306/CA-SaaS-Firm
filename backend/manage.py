@@ -11,7 +11,7 @@ def main() -> None:
     """Run an administrative task."""
     # Development is the default so that a bare `python manage.py ...` never
     # accidentally runs against production settings.
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development_postgres")
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:  # pragma: no cover - import guard

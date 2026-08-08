@@ -1,63 +1,308 @@
-"""Deterministic, idempotent work generation for recurring profiles.
+"""Deterministic, idempotent recurring-work generation.
 
-This is a FOUNDATION, not a scheduler. It exposes pure helpers plus one atomic
-generator that creates at most one WorkItem per (profile, period) and records it
-in ``GeneratedWorkLedger``. Re-invoking for the same period is a no-op (the
-ledger's unique constraint makes it idempotent even under a race).
-
-No background jobs, no billing, no external effects. All references are UUIDs;
-all writes are tenant-scoped and carry the audit columns.
+The engine remains explicitly invoked: there is no scheduler and no unattended
+generation.  It supports preview -> human approval -> generation while keeping
+the existing GeneratedWorkLedger as the duplicate/idempotency authority.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
 from dataclasses import dataclass
+from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 
 from contexts.work.models import WorkItem, WorkStatus
-from .models import GeneratedWorkLedger, RecurrenceFrequency
+
+from .models import (
+    ClientServiceSubscription,
+    GeneratedWorkLedger,
+    RecurrenceFrequency,
+    SubscriptionStatus,
+    TaskTemplate,
+)
 
 
-def period_key_for(frequency: str, on_date: _dt.date) -> str:
-    """Return a stable period key for a date under a recurrence frequency.
-
-    Deterministic and dependency-free so tests can assert exact keys:
-      MONTHLY      -> "YYYY-MM"
-      QUARTERLY    -> "YYYY-Q{1..4}"
-      HALF_YEARLY  -> "YYYY-H{1,2}"
-      YEARLY       -> "YYYY"
-      NONE/other   -> "YYYY-MM-DD" (a single concrete day; still idempotent)
-    """
+def period_key_for(
+    frequency: str,
+    on_date: _dt.date,
+) -> str:
     y = on_date.year
     m = on_date.month
+
     if frequency == RecurrenceFrequency.MONTHLY:
         return f"{y:04d}-{m:02d}"
+
     if frequency == RecurrenceFrequency.QUARTERLY:
         return f"{y:04d}-Q{((m - 1) // 3) + 1}"
+
     if frequency == RecurrenceFrequency.HALF_YEARLY:
         return f"{y:04d}-H{1 if m <= 6 else 2}"
+
     if frequency == RecurrenceFrequency.YEARLY:
         return f"{y:04d}"
+
     return on_date.isoformat()
 
 
 @dataclass
 class GenerationResult:
-    """Outcome of a single generation attempt."""
-
     created: bool
     period_key: str
     work_item_id: object | None
     already_generated: bool
 
 
-def _due_date_for(profile, on_date: _dt.date) -> _dt.date | None:
-    default_due_days = getattr(profile, "default_due_days", None)
-    if default_due_days:
-        return on_date + _dt.timedelta(days=int(default_due_days))
-    return None
+@dataclass
+class GenerationPreview:
+    profile_id: str
+    period_key: str
+    eligible: bool
+    already_generated: bool
+    reason: str
+    work_item_id: str | None
+    client_id: str
+    service_id: str
+    title: str
+    due_date: str | None
+    owner_user_id: str | None
+    reviewer_user_id: str | None
+    priority: str
+    estimated_hours: str | None
+
+
+def _template_for(profile):
+    template_id = getattr(
+        profile,
+        "task_template_id",
+        None,
+    )
+
+    if not template_id:
+        return None
+
+    return TaskTemplate.objects.filter(
+        tenant_id=profile.tenant_id,
+        id=template_id,
+        is_active=True,
+    ).first()
+
+
+def _subscription_for(profile):
+    return ClientServiceSubscription.objects.filter(
+        tenant_id=profile.tenant_id,
+        id=profile.subscription_id,
+    ).first()
+
+
+def _resolved_values(
+    profile,
+    *,
+    on_date: _dt.date,
+    title: str | None = None,
+) -> dict:
+    template = _template_for(profile)
+    subscription = _subscription_for(profile)
+
+    resolved_title = (
+        title
+        or (
+            template.default_title
+            if template and template.default_title
+            else ""
+        )
+        or (
+            template.name
+            if template
+            else ""
+        )
+        or f"Recurring work {period_key_for(profile.frequency, on_date)}"
+    )
+
+    due_date = None
+
+    if (
+        template
+        and template.default_due_days is not None
+    ):
+        due_date = on_date + _dt.timedelta(
+            days=int(template.default_due_days),
+        )
+
+    owner_user_id = (
+        profile.default_owner_user_id
+        or (
+            template.default_owner_user_id
+            if template
+            else None
+        )
+        or (
+            subscription.default_owner_user_id
+            if subscription
+            else None
+        )
+    )
+
+    reviewer_user_id = (
+        profile.default_reviewer_user_id
+        or (
+            template.default_reviewer_user_id
+            if template
+            else None
+        )
+        or (
+            subscription.default_reviewer_user_id
+            if subscription
+            else None
+        )
+    )
+
+    priority = (
+        template.default_priority
+        if template and template.default_priority
+        else "NORMAL"
+    )
+
+    estimated_hours: Decimal | None = (
+        template.default_estimated_hours
+        if template
+        else None
+    )
+
+    description = (
+        template.description
+        if template
+        else ""
+    )
+
+    return {
+        "template": template,
+        "subscription": subscription,
+        "title": resolved_title,
+        "description": description,
+        "due_date": due_date,
+        "owner_user_id": owner_user_id,
+        "reviewer_user_id": reviewer_user_id,
+        "priority": priority,
+        "estimated_hours": estimated_hours,
+    }
+
+
+def _eligibility(
+    profile,
+    *,
+    on_date: _dt.date,
+) -> tuple[bool, str]:
+    if not profile.is_active:
+        return False, "Recurring profile is inactive."
+
+    subscription = _subscription_for(profile)
+
+    if subscription is None:
+        return False, "Client service subscription was not found."
+
+    if subscription.status != SubscriptionStatus.ACTIVE:
+        return (
+            False,
+            "Client service subscription is not active.",
+        )
+
+    if (
+        subscription.start_date
+        and on_date < subscription.start_date
+    ):
+        return (
+            False,
+            "Subscription has not started yet.",
+        )
+
+    if (
+        subscription.end_date
+        and on_date > subscription.end_date
+    ):
+        return (
+            False,
+            "Subscription has ended.",
+        )
+
+    if profile.frequency == RecurrenceFrequency.NONE:
+        return (
+            False,
+            "Recurring profile frequency is NONE.",
+        )
+
+    return True, ""
+
+
+def preview_for_profile(
+    profile,
+    *,
+    on_date: _dt.date,
+    title: str | None = None,
+) -> GenerationPreview:
+    period_key = period_key_for(
+        profile.frequency,
+        on_date,
+    )
+
+    existing = GeneratedWorkLedger.objects.filter(
+        tenant_id=profile.tenant_id,
+        recurring_profile_id=profile.id,
+        period_key=period_key,
+    ).first()
+
+    resolved = _resolved_values(
+        profile,
+        on_date=on_date,
+        title=title,
+    )
+
+    eligible, reason = _eligibility(
+        profile,
+        on_date=on_date,
+    )
+
+    if existing is not None:
+        eligible = False
+        reason = "Work has already been generated for this period."
+
+    return GenerationPreview(
+        profile_id=str(profile.id),
+        period_key=period_key,
+        eligible=eligible,
+        already_generated=existing is not None,
+        reason=reason,
+        work_item_id=(
+            str(existing.work_item_id)
+            if existing
+            else None
+        ),
+        client_id=str(profile.client_id),
+        service_id=str(profile.service_id),
+        title=resolved["title"],
+        due_date=(
+            resolved["due_date"].isoformat()
+            if resolved["due_date"]
+            else None
+        ),
+        owner_user_id=(
+            str(resolved["owner_user_id"])
+            if resolved["owner_user_id"]
+            else None
+        ),
+        reviewer_user_id=(
+            str(resolved["reviewer_user_id"])
+            if resolved["reviewer_user_id"]
+            else None
+        ),
+        priority=resolved["priority"],
+        estimated_hours=(
+            str(resolved["estimated_hours"])
+            if resolved["estimated_hours"] is not None
+            else None
+        ),
+    )
 
 
 @transaction.atomic
@@ -67,84 +312,93 @@ def generate_for_profile(
     on_date: _dt.date,
     principal_id,
     title: str | None = None,
+    enforce_eligibility: bool = False,
 ) -> GenerationResult:
-    """Create at most one WorkItem for ``profile`` in the period of ``on_date``.
+    preview = preview_for_profile(
+        profile,
+        on_date=on_date,
+        title=title,
+    )
 
-    Idempotent: if a ledger row already exists for (profile, period_key), no new
-    work item is created. The WorkItem and ledger row are created together in one
-    atomic transaction; a unique-violation race collapses to "already generated".
-    """
-    period_key = period_key_for(profile.frequency, on_date)
+    if preview.already_generated:
+        existing = GeneratedWorkLedger.objects.filter(
+            tenant_id=profile.tenant_id,
+            recurring_profile_id=profile.id,
+            period_key=preview.period_key,
+        ).first()
 
-    existing = GeneratedWorkLedger.objects.filter(
-        tenant_id=profile.tenant_id,
-        recurring_profile_id=profile.id,
-        period_key=period_key,
-    ).first()
-    if existing is not None:
         return GenerationResult(
             created=False,
-            period_key=period_key,
-            work_item_id=existing.work_item_id,
+            period_key=preview.period_key,
+            work_item_id=(
+                existing.work_item_id
+                if existing
+                else None
+            ),
             already_generated=True,
         )
 
-    resolved_title = title or f"Recurring work {period_key}"
-    # Employee Operations V1: generated work inherits the template's default
-    # estimated hours (authoritative WorkItem.estimated_hours), when present.
-    estimated_hours = None
-    template_id = getattr(profile, "task_template_id", None)
-    if template_id:
-        from .models import TaskTemplate
+    if enforce_eligibility and not preview.eligible:
+        raise ValueError(preview.reason)
 
-        template = TaskTemplate.objects.filter(
-            tenant_id=profile.tenant_id, id=template_id
-        ).only("default_estimated_hours").first()
-        if template is not None:
-            estimated_hours = template.default_estimated_hours
+    resolved = _resolved_values(
+        profile,
+        on_date=on_date,
+        title=title,
+    )
+
     try:
         with transaction.atomic():
             work_item = WorkItem.objects.create(
                 tenant_id=profile.tenant_id,
                 created_by=principal_id,
                 updated_by=principal_id,
-                title=resolved_title,
+                title=resolved["title"],
+                description=resolved["description"],
                 client_id=profile.client_id,
                 service_id=profile.service_id,
-                owner_user_id=profile.default_owner_user_id,
-                reviewer_user_id=profile.default_reviewer_user_id,
-                period=period_key,
-                due_date=_due_date_for(profile, on_date),
+                owner_user_id=resolved["owner_user_id"],
+                reviewer_user_id=resolved["reviewer_user_id"],
+                period=preview.period_key,
+                due_date=resolved["due_date"],
                 status=WorkStatus.NOT_STARTED,
-                estimated_hours=estimated_hours,
+                priority=resolved["priority"],
+                estimated_hours=resolved[
+                    "estimated_hours"
+                ],
             )
+
             ledger = GeneratedWorkLedger.objects.create(
                 tenant_id=profile.tenant_id,
                 created_by=principal_id,
                 updated_by=principal_id,
                 recurring_profile_id=profile.id,
-                period_key=period_key,
+                period_key=preview.period_key,
                 work_item_id=work_item.id,
                 generated_on=on_date,
             )
+
     except IntegrityError:
-        # A concurrent call won the unique (profile, period_key) race. Idempotent
-        # outcome: report the already-generated row.
         existing = GeneratedWorkLedger.objects.filter(
             tenant_id=profile.tenant_id,
             recurring_profile_id=profile.id,
-            period_key=period_key,
+            period_key=preview.period_key,
         ).first()
+
         return GenerationResult(
             created=False,
-            period_key=period_key,
-            work_item_id=existing.work_item_id if existing else None,
+            period_key=preview.period_key,
+            work_item_id=(
+                existing.work_item_id
+                if existing
+                else None
+            ),
             already_generated=True,
         )
 
     return GenerationResult(
         created=True,
-        period_key=period_key,
+        period_key=preview.period_key,
         work_item_id=ledger.work_item_id,
         already_generated=False,
     )

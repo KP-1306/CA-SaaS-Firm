@@ -185,7 +185,7 @@ export function Dashboard({
     capabilities.can_view_firm_operations === true;
 
   // ----------------------------------------------------------
-  // Row 1 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ALWAYS PERSONAL
+  // Row 1 Ã¢â‚¬â€ ALWAYS PERSONAL
   // ----------------------------------------------------------
 
   const myWork = asMissionDict(employeeData.my_work);
@@ -319,7 +319,7 @@ export function Dashboard({
       </section>
 
       {/* ====================================================
-          ROW 1 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â MY WORK TODAY
+          ROW 1 Ã¢â‚¬â€ MY WORK TODAY
          ==================================================== */}
 
       <section className="cx-mission-panel cx-mission-today">
@@ -364,7 +364,7 @@ export function Dashboard({
       </section>
 
       {/* ====================================================
-          ROW 2 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â IMMEDIATE ACTIONS
+          ROW 2 Ã¢â‚¬â€ IMMEDIATE ACTIONS
          ==================================================== */}
 
       <section className="cx-mission-panel cx-mission-actions-panel">
@@ -475,7 +475,7 @@ export function Dashboard({
       </section>
 
       {/* ====================================================
-          ROW 3 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â OPERATIONAL HEALTH
+          ROW 3 Ã¢â‚¬â€ OPERATIONAL HEALTH
          ==================================================== */}
 
       <section className="cx-mission-grid">
@@ -564,7 +564,7 @@ export function Dashboard({
       </section>
 
       {/* ====================================================
-          ROW 4 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â TEAM SNAPSHOT
+          ROW 4 Ã¢â‚¬â€ TEAM SNAPSHOT
          ==================================================== */}
 
       {canViewFirmOperations ? (
@@ -626,7 +626,7 @@ export function Dashboard({
       ) : null}
 
       {/* ====================================================
-          ROW 5 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â CLIENT ACTIVITY
+          ROW 5 Ã¢â‚¬â€ CLIENT ACTIVITY
          ==================================================== */}
 
       {canViewFirmOperations ? (
@@ -688,7 +688,7 @@ export function Dashboard({
 
                   <small>
                     {String(activity.title ?? 'Work item')}
-                    {' ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· '}
+                    {' Ã‚Â· '}
                     {missionTime(activity.created_at)}
                   </small>
                 </article>
@@ -699,7 +699,7 @@ export function Dashboard({
       ) : null}
 
       {/* ====================================================
-          ROW 6 + UPCOMING ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â TIMELINE / DEADLINES
+          ROW 6 + UPCOMING Ã¢â‚¬â€ TIMELINE / DEADLINES
          ==================================================== */}
 
       <section className="cx-mission-grid cx-mission-bottom-grid">
@@ -838,7 +838,7 @@ export function Dashboard({
       ) ? (
         <p className="cx-mission-footnote">
           {missionCount(actionCentre.unassigned)} unassigned
-          {' ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· '}
+          {' Ã‚Â· '}
           {missionCount(actionCentre.review_backlog)} review backlog
         </p>
       ) : null}

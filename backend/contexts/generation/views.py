@@ -19,7 +19,10 @@ from core.api.viewsets import TenantModelViewSet
 from contexts.audit.models import AuditAction
 from contexts.audit.recording import record_event
 
-from .generation import generate_for_profile
+from .generation import (
+    generate_for_profile,
+    preview_for_profile,
+)
 from .models import (
     ClientServiceSubscription,
     GeneratedWorkLedger,
@@ -102,6 +105,252 @@ class RecurringWorkProfileViewSet(TenantModelViewSet):
                 qs = qs.filter(**{field: value})
         return qs
 
+    def _requested_date(self, request):
+        raw_date = request.data.get("on_date")
+
+        if not raw_date:
+            return _dt.date.today()
+
+        try:
+            return _dt.date.fromisoformat(
+                str(raw_date),
+            )
+        except ValueError:
+            return None
+
+    def _selected_profiles(self, request):
+        profile_ids = request.data.get(
+            "profile_ids",
+            [],
+        )
+
+        qs = self.get_queryset().filter(
+            is_active=True,
+        )
+
+        if profile_ids:
+            qs = qs.filter(id__in=profile_ids)
+
+        return list(qs)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="preview-batch",
+    )
+    def preview_batch(self, request):
+        on_date = self._requested_date(request)
+
+        if on_date is None:
+            return Response(
+                {
+                    "detail": (
+                        "on_date must be an ISO date "
+                        "(YYYY-MM-DD)."
+                    )
+                },
+                status=400,
+            )
+
+        profiles = self._selected_profiles(request)
+
+        previews = [
+            preview_for_profile(
+                profile,
+                on_date=on_date,
+            ).__dict__
+            for profile in profiles
+        ]
+
+        return Response(
+            {
+                "on_date": on_date.isoformat(),
+                "total": len(previews),
+                "ready": sum(
+                    1
+                    for item in previews
+                    if item["eligible"]
+                ),
+                "already_generated": sum(
+                    1
+                    for item in previews
+                    if item[
+                        "already_generated"
+                    ]
+                ),
+                "blocked": sum(
+                    1
+                    for item in previews
+                    if (
+                        not item["eligible"]
+                        and not item[
+                            "already_generated"
+                        ]
+                    )
+                ),
+                "items": previews,
+            }
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="generate-batch",
+    )
+    def generate_batch(self, request):
+        if request.data.get("approved") is not True:
+            return Response(
+                {
+                    "detail": (
+                        "Explicit human approval is "
+                        "required before generation."
+                    )
+                },
+                status=400,
+            )
+
+        on_date = self._requested_date(request)
+
+        if on_date is None:
+            return Response(
+                {
+                    "detail": (
+                        "on_date must be an ISO date "
+                        "(YYYY-MM-DD)."
+                    )
+                },
+                status=400,
+            )
+
+        principal = self.principal()
+        profiles = self._selected_profiles(request)
+
+        results = []
+
+        for profile in profiles:
+            preview = preview_for_profile(
+                profile,
+                on_date=on_date,
+            )
+
+            if preview.already_generated:
+                results.append(
+                    {
+                        "profile_id": str(
+                            profile.id
+                        ),
+                        "status": (
+                            "ALREADY_GENERATED"
+                        ),
+                        "period_key": (
+                            preview.period_key
+                        ),
+                        "work_item_id": (
+                            preview.work_item_id
+                        ),
+                    }
+                )
+                continue
+
+            if not preview.eligible:
+                results.append(
+                    {
+                        "profile_id": str(
+                            profile.id
+                        ),
+                        "status": "BLOCKED",
+                        "period_key": (
+                            preview.period_key
+                        ),
+                        "reason": preview.reason,
+                    }
+                )
+                continue
+
+            with transaction.atomic():
+                result = generate_for_profile(
+                    profile,
+                    on_date=on_date,
+                    principal_id=(
+                        principal.principal_id
+                    ),
+                    enforce_eligibility=True,
+                )
+
+                if result.created:
+                    record_event(
+                        tenant_id=profile.tenant_id,
+                        principal_id=(
+                            principal.principal_id
+                        ),
+                        action=AuditAction.CREATE,
+                        entity_type="WorkItem",
+                        entity_id=result.work_item_id,
+                        summary=(
+                            "Generated recurring work "
+                            f"for period "
+                            f"{result.period_key}"
+                        ),
+                        new={
+                            "period": (
+                                result.period_key
+                            ),
+                            "recurring_profile_id": (
+                                str(profile.id)
+                            ),
+                            "generation_mode": (
+                                "APPROVED_BATCH"
+                            ),
+                        },
+                        request=self.request,
+                    )
+
+            results.append(
+                {
+                    "profile_id": str(
+                        profile.id
+                    ),
+                    "status": (
+                        "CREATED"
+                        if result.created
+                        else "ALREADY_GENERATED"
+                    ),
+                    "period_key": (
+                        result.period_key
+                    ),
+                    "work_item_id": (
+                        str(result.work_item_id)
+                        if result.work_item_id
+                        else None
+                    ),
+                }
+            )
+
+        return Response(
+            {
+                "on_date": on_date.isoformat(),
+                "total": len(results),
+                "created": sum(
+                    1
+                    for item in results
+                    if item["status"]
+                    == "CREATED"
+                ),
+                "already_generated": sum(
+                    1
+                    for item in results
+                    if item["status"]
+                    == "ALREADY_GENERATED"
+                ),
+                "blocked": sum(
+                    1
+                    for item in results
+                    if item["status"]
+                    == "BLOCKED"
+                ),
+                "items": results,
+            }
+        )
     @action(detail=True, methods=["post"])
     def generate(self, request, pk=None):
         """Idempotently generate the work item for a given (or today's) period.
@@ -128,6 +377,7 @@ class RecurringWorkProfileViewSet(TenantModelViewSet):
                     on_date=on_date,
                     principal_id=principal.principal_id,
                     title=request.data.get("title"),
+                    enforce_eligibility=True,
                 )
                 if result.created:
                     record_event(

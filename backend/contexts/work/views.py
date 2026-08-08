@@ -49,6 +49,10 @@ from . import ownership
 from .document_intelligence import calculate_document_readiness
 from .work_health import calculate_work_health
 from contexts.audit.recording import record_event
+from contexts.notifications.services import (
+    notify_work_assigned,
+    notify_work_transition,
+)
 from contexts.audit.models import AuditAction
 
 from .models import (
@@ -691,6 +695,14 @@ class WorkItemViewSet(TenantModelViewSet):
             # rolls back the business mutation before DRF renders the controlled
             # 503 response, so mandatory audit persistence remains fail-closed.
             raise MandatoryAuditPersistenceError() from exc
+
+        notify_work_transition(
+            item=item,
+            previous_status=previous,
+            target_status=target,
+            actor_principal_id=self.principal().principal_id,
+        )
+
         return previous
 
     # -- generic guarded transition (cannot complete review-required) --
@@ -1135,6 +1147,16 @@ class WorkItemViewSet(TenantModelViewSet):
                     )
             except Exception as exc:  # noqa: BLE001
                 raise MandatoryAuditPersistenceError() from exc
+        if (
+            "owner_user_id" in update_fields
+            and previous["owner_user_id"]
+            != str(item.owner_user_id or "")
+        ):
+            notify_work_assigned(
+                item=item,
+                actor_principal_id=principal.principal_id,
+            )
+
         return Response(self.get_serializer(item).data)
 
     @action(detail=True, methods=["post"])

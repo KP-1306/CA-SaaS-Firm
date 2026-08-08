@@ -47,6 +47,7 @@ from contexts.organisation.views import (
     TeamViewSet,
 )
 from contexts.audit.views import AuditEventViewSet
+from contexts.notifications.views import NotificationViewSet
 from contexts.generation.views import (
     ClientServiceSubscriptionViewSet,
     GeneratedWorkLedgerViewSet,
@@ -119,6 +120,7 @@ router.register("work-notes", WorkNoteViewSet, basename="work-note")
 router.register("document-requests", DocumentRequestViewSet, basename="document-request")
 router.register("document-attachments", DocumentAttachmentViewSet, basename="document-attachment")
 router.register("audit-events", AuditEventViewSet, basename="audit-event")
+router.register("notifications", NotificationViewSet, basename="notification")
 router.register("client-service-subscriptions", ClientServiceSubscriptionViewSet, basename="client-service-subscription")
 router.register("task-templates", TaskTemplateViewSet, basename="task-template")
 router.register("recurring-work-profiles", RecurringWorkProfileViewSet, basename="recurring-work-profile")

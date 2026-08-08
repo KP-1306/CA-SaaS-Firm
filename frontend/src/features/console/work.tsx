@@ -20,6 +20,7 @@ import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Field } from './ui';
 import { QAOperationalQueue, QAWorkspace } from './qa';
+import { AssignmentWorkspace } from './AssignmentWorkspace';
 import './work-timeline.css';
 export type WorkHealthSnapshot = {
   contract_version: number;
@@ -178,7 +179,7 @@ export function WorkHealthCard({
           Work health
         </span>
         <strong>
-          Calculating operational health…
+          Calculating operational healthâ€¦
         </strong>
       </section>
     );
@@ -250,7 +251,7 @@ export function WorkHealthCard({
             <strong>
               {label(health.health)}
             </strong>
-            <span>·</span>
+            <span>Â·</span>
             <span>
               {label(health.risk)} risk
             </span>
@@ -353,7 +354,7 @@ export function WorkHealthCard({
             {
               health.documents
                 .missing
-            } missing ·{' '}
+            } missing Â·{' '}
             {
               health.documents
                 .pending_review
@@ -603,9 +604,9 @@ function AttachmentList({
 
               <div className="cx-muted">
                 {label(String(attachment.source))}
-                {' Â· '}
+                {' Ã‚Â· '}
                 {formatBytes(attachment.size_bytes)}
-                {' Â· '}
+                {' Ã‚Â· '}
                 {String(attachment.created_at ?? '').slice(0, 16).replace('T', ' ')}
               </div>
 
@@ -743,9 +744,9 @@ function documentDependencyReason(row: Row): string {
 
   switch (String(row.status)) {
     case 'REJECTED':
-      return 'Rejected â€” upload a corrected document';
+      return 'Rejected Ã¢â‚¬â€ upload a corrected document';
     case 'RECEIVED':
-      return 'Received â€” waiting for acceptance';
+      return 'Received Ã¢â‚¬â€ waiting for acceptance';
     case 'PARTIALLY_RECEIVED':
       return 'Partially received';
     case 'REQUESTED':
@@ -938,7 +939,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'EXPIRED',
-        message: 'Expired â€” obtain a valid replacement',
+        message: 'Expired Ã¢â‚¬â€ obtain a valid replacement',
         priority: 10,
         document: row,
       });
@@ -973,7 +974,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'REJECTED',
-        message: 'Rejected â€” corrected document required',
+        message: 'Rejected Ã¢â‚¬â€ corrected document required',
         priority: 15,
         document: row,
       });
@@ -987,7 +988,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'PENDING_REVIEW',
-        message: 'Uploaded â€” review and accept or reject',
+        message: 'Uploaded Ã¢â‚¬â€ review and accept or reject',
         priority: 30,
         document: row,
       });
@@ -1149,7 +1150,7 @@ export function checklistVisualState(
   ) {
     return {
       key: 'PENDING_REVIEW',
-      label: 'Uploaded â€” pending review',
+      label: 'Uploaded Ã¢â‚¬â€ pending review',
       tone: 'pending',
     };
   }
@@ -1208,7 +1209,7 @@ export function OperationalFieldsPanel({
           <div>
             <h4>Operational details</h4>
             <p>
-              Loading fields for the selected serviceâ€¦
+              Loading fields for the selected serviceÃ¢â‚¬Â¦
             </p>
           </div>
         </div>
@@ -1770,7 +1771,7 @@ export function DocumentsPanel({
                     duplicateUpload.existingAttachment
                       .original_name ||
                       'Earlier upload',
-                  )} Â· ${String(
+                  )} Ã‚Â· ${String(
                     duplicateUpload.existingAttachment
                       .version_label ||
                       `V${String(
@@ -2090,7 +2091,7 @@ export function DocumentsPanel({
       </div>
       {eligibleContacts.length === 0 ? (
         <p className="cx-warning">
-          No eligible document contact exists for this client. Add or enable one under Client â†’ Contacts.
+          No eligible document contact exists for this client. Add or enable one under Client Ã¢â€ â€™ Contacts.
         </p>
       ) : null}
       {docs.loading ? <Loading /> : docs.rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>No documents requested yet.</p> : docs.rows.map((d) => (
@@ -2154,13 +2155,13 @@ export function DocumentsPanel({
                     aria-hidden="true"
                   >
                     {visualState.key === 'RECEIVED'
-                      ? 'âœ“'
+                      ? 'Ã¢Å“â€œ'
                       : visualState.key === 'REJECTED'
                         ? '!'
                         : visualState.key ===
                             'PENDING_REVIEW'
-                          ? 'â€¦'
-                          : 'â—‹'}
+                          ? 'Ã¢â‚¬Â¦'
+                          : 'Ã¢â€”â€¹'}
                   </span>
 
                   <span>
@@ -2466,7 +2467,7 @@ export function TimelinePanel({
               {fromStatus && toStatus ? (
                 <small>
                   {label(fromStatus)}
-                  {' → '}
+                  {' â†’ '}
                   {label(toStatus)}
                 </small>
               ) : null}
@@ -2884,7 +2885,7 @@ export function WorkArea({
   };
 
   const [err, setErr] = useState('');
-  const [tab, setTab] = useState<'details' | 'documents' | 'qa' | 'history'>('details');
+  const [tab, setTab] = useState<'details' | 'assignment' | 'documents' | 'qa' | 'history'>('details');
   const [pendingAction, setPendingAction] = useState<PendingWorkAction | null>(null);
 
   const [
@@ -3213,7 +3214,7 @@ export function WorkArea({
 
             {editing.id ? (
               <div className="cx-toolbar" style={{ marginBottom: 12 }}>
-                {(['details', 'documents', 'qa', 'history'] as const).map((t) => (
+                {(['details', 'assignment', 'documents', 'qa', 'history'] as const).map((t) => (
                   <button
                     key={t}
                     className={`cx-btn ${t === tab ? '' : 'subtle'}`}
@@ -3358,6 +3359,29 @@ export function WorkArea({
                 </div>
               </>
             )}
+            {tab === 'assignment' && editing.id ? (
+              <AssignmentWorkspace
+                workItem={editing}
+                employees={employees.rows}
+                onAssigned={(result) => {
+                  setEditing((current) =>
+                    current
+                      ? {
+                          ...current,
+                          owner_user_id:
+                            result.owner_user_id ||
+                            current.owner_user_id,
+                          reviewer_user_id:
+                            result.reviewer_user_id ||
+                            current.reviewer_user_id,
+                        }
+                      : current,
+                  );
+                  setErr('');
+                  work.reload();
+                }}
+              />
+            ) : null}
             {tab === 'documents' && editing.id ? (
               <DocumentsPanel
                 workItemId={String(editing.id)}

@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from core.api.viewsets import TenantModelViewSet
 from contexts.audit.models import AuditAction
 from contexts.audit.recording import record_event
+from contexts.notifications.services import notify_work_assigned
 from contexts.identity.access import caller_role, is_executive
 
 from . import recommendation as recommendation_service
@@ -182,6 +183,8 @@ class AssignmentRecommendationViewSet(TenantModelViewSet):
         if was_override and not override_reason:
             return Response({"detail": "override_reason is required when overriding a recommendation."}, status=400)
 
+        previous_owner_user_id = item.owner_user_id
+
         with transaction.atomic():
             update_fields = {"updated_by"}
             if owner is not None:
@@ -249,6 +252,16 @@ class AssignmentRecommendationViewSet(TenantModelViewSet):
                     )
             except Exception as exc:  # noqa: BLE001
                 raise MandatoryAuditPersistenceError() from exc
+
+        if (
+            owner is not None
+            and str(previous_owner_user_id or "")
+            != str(item.owner_user_id or "")
+        ):
+            notify_work_assigned(
+                item=item,
+                actor_principal_id=principal.principal_id,
+            )
 
         return Response(
             {
