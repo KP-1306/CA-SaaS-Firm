@@ -20,6 +20,7 @@ import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Field } from './ui';
 import { QAOperationalQueue, QAWorkspace } from './qa';
+import './work-timeline.css';
 export type WorkHealthSnapshot = {
   contract_version: number;
   work_item_id: string;
@@ -2323,23 +2324,163 @@ export function DocumentsPanel({
   );
 }
 
-function HistoryPanel({ workItemId }: { workItemId: string }): React.JSX.Element {
-  const notes = useList('work-notes', { work_item_id: workItemId });
-  if (notes.loading) return <Loading />;
-  if (notes.rows.length === 0) return <p style={{ color: '#64748b', fontSize: 13 }}>No history yet.</p>;
+export function TimelinePanel({
+  workItemId,
+}: {
+  workItemId: string;
+}): React.JSX.Element {
+  const [events, setEvents] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    setLoading(true);
+    setError('');
+
+    void list(
+      `work-items/${workItemId}/history`,
+    )
+      .then((rows) => {
+        if (!active) return;
+        setEvents(rows);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+
+        setError(
+          String(
+            reason instanceof Error
+              ? reason.message
+              : reason,
+          ),
+        );
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    workItemId,
+  ]);
+
+  if (loading) {
+    return <Loading />;
+  }
+
+  if (error) {
+    return <ErrorBar error={error} />;
+  }
+
+  if (events.length === 0) {
+    return (
+      <p className="cx-timeline-empty">
+        No timeline events yet.
+      </p>
+    );
+  }
+
   return (
-    <table className="cx-table">
-      <thead><tr><th>When</th><th>Change</th><th>Note</th></tr></thead>
-      <tbody>
-        {notes.rows.map((n) => (
-          <tr key={String(n.id)}>
-            <td>{String(n.created_at ?? '').slice(0, 16).replace('T', ' ')}</td>
-            <td>{n.from_status ? `${label(String(n.from_status))} -> ${label(String(n.to_status))}` : '-'}</td>
-            <td>{String(n.entry)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <section
+      className="cx-work-timeline"
+      aria-label="Work Timeline"
+    >
+      {events.map((event) => {
+        const when = String(
+          event.created_at ?? '',
+        )
+          .slice(0, 16)
+          .replace('T', ' ');
+
+        const actor = String(
+          event.actor_name ?? '',
+        );
+
+        const entry = String(
+          event.entry ?? '',
+        );
+
+        const detail = String(
+          event.detail ?? '',
+        );
+
+        const fromStatus = String(
+          event.from_status ?? '',
+        );
+
+        const toStatus = String(
+          event.to_status ?? '',
+        );
+
+        return (
+          <article
+            className="cx-work-timeline-event"
+            key={String(event.id)}
+          >
+            <div
+              className="cx-work-timeline-marker"
+              aria-hidden="true"
+            />
+
+            <div className="cx-work-timeline-time">
+              {when}
+            </div>
+
+            <div className="cx-work-timeline-content">
+              <div className="cx-work-timeline-title">
+                <strong>
+                  {String(
+                    event.title
+                    || label(
+                      String(
+                        event.event_type
+                        || 'EVENT',
+                      ),
+                    ),
+                  )}
+                </strong>
+
+                {event.event_type ? (
+                  <span>
+                    {label(
+                      String(event.event_type),
+                    )}
+                  </span>
+                ) : null}
+              </div>
+
+              {entry ? (
+                <p>{entry}</p>
+              ) : null}
+
+              {detail ? (
+                <small>{detail}</small>
+              ) : null}
+
+              {fromStatus && toStatus ? (
+                <small>
+                  {label(fromStatus)}
+                  {' → '}
+                  {label(toStatus)}
+                </small>
+              ) : null}
+
+              {actor ? (
+                <small>
+                  By {actor}
+                </small>
+              ) : null}
+            </div>
+          </article>
+        );
+      })}
+    </section>
   );
 }
 
@@ -2602,7 +2743,20 @@ export function WorkCatalogueCascade({
 }
 
 
-export function WorkArea(): React.JSX.Element {
+export function WorkArea({
+  initialWorkItemId,
+  onInitialWorkOpened,
+  initialQuickAction,
+  onInitialQuickActionHandled,
+}: {
+  initialWorkItemId?: string | undefined;
+  onInitialWorkOpened?: () => void;
+  initialQuickAction?:
+    | 'create'
+    | 'documents'
+    | undefined;
+  onInitialQuickActionHandled?: () => void;
+} = {}): React.JSX.Element {
   const clients = useList('clients');
   const verticals = useList('verticals');
   const domains = useList('domains');
@@ -2732,6 +2886,82 @@ export function WorkArea(): React.JSX.Element {
   const [err, setErr] = useState('');
   const [tab, setTab] = useState<'details' | 'documents' | 'qa' | 'history'>('details');
   const [pendingAction, setPendingAction] = useState<PendingWorkAction | null>(null);
+
+  const [
+    documentSelectionMode,
+    setDocumentSelectionMode,
+  ] = useState(false);
+
+  useEffect(() => {
+    if (!initialQuickAction) return;
+
+    setPendingAction(null);
+    setErr('');
+
+    if (initialQuickAction === 'create') {
+      // Same state as the existing Add Work Item button.
+      setDocumentSelectionMode(false);
+      setEditing({
+        title: '',
+        priority: 'NORMAL',
+        status: 'NOT_STARTED',
+      });
+      setTab('details');
+    } else {
+      // Documents remain contextual to Work. Select existing Work first,
+      // then enter its certified Documents workspace.
+      setDocumentSelectionMode(true);
+      setEditing(null);
+      setTab('details');
+    }
+
+    onInitialQuickActionHandled?.();
+  }, [
+    initialQuickAction,
+  ]);
+
+  useEffect(() => {
+    if (!initialWorkItemId) return;
+
+    let active = true;
+
+    setErr('');
+
+    void getObject(
+      `work-items/${initialWorkItemId}`,
+    )
+      .then((row) => {
+        if (!active) return;
+
+        // Reuse the same workspace state as opening a Work table row.
+        setDocumentSelectionMode(false);
+        setEditing({ ...row });
+        setPendingAction(null);
+        setTab('details');
+        setErr('');
+
+        onInitialWorkOpened?.();
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+
+        setErr(
+          String(
+            error instanceof Error
+              ? error.message
+              : error,
+          ),
+        );
+
+        onInitialWorkOpened?.();
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    initialWorkItemId,
+  ]);
 
   const loadWorkHealth = (): void => {
     const workItemId =
@@ -2888,10 +3118,20 @@ export function WorkArea(): React.JSX.Element {
           {WORK_STATUS.map((s) => <option key={s} value={s}>{label(s)}</option>)}
         </select>
         <div className="cx-spacer" />
-        <button className="cx-btn" onClick={() => { setEditing({ title: '', priority: 'NORMAL', status: 'NOT_STARTED' }); setPendingAction(null); setTab('details'); setErr(''); }}>Add Work Item</button>
+        <button className="cx-btn" onClick={() => { setDocumentSelectionMode(false); setEditing({ title: '', priority: 'NORMAL', status: 'NOT_STARTED' }); setPendingAction(null); setTab('details'); setErr(''); }}>Add Work Item</button>
       </div>
       <ErrorBar error={work.error} />
-      {!work.loading ? (
+
+      {documentSelectionMode ? (
+        <div
+          className="cx-notice"
+          role="status"
+        >
+          Select a Work Item to upload a client document.
+        </div>
+      ) : null}
+
+      {!work.loading && !documentSelectionMode ? (
         <QAOperationalQueue
           workRows={work.rows}
           onOpen={(row) => {
@@ -2906,7 +3146,17 @@ export function WorkArea(): React.JSX.Element {
       ) : (
         <DataTable
           empty="No work items yet. Create one to start tracking client work."
-          onRow={(r) => { setEditing({ ...r }); setPendingAction(null); setTab('details'); setErr(''); }}
+          onRow={(r) => {
+            setEditing({ ...r });
+            setPendingAction(null);
+            setTab(
+              documentSelectionMode
+                ? 'documents'
+                : 'details',
+            );
+            setDocumentSelectionMode(false);
+            setErr('');
+          }}
           columns={[
             { key: 'title', header: 'Title' },
             { key: 'client_name', header: 'Client', render: (r) => String(r.client_name || '""') },
@@ -2964,7 +3214,13 @@ export function WorkArea(): React.JSX.Element {
             {editing.id ? (
               <div className="cx-toolbar" style={{ marginBottom: 12 }}>
                 {(['details', 'documents', 'qa', 'history'] as const).map((t) => (
-                  <button key={t} className={`cx-btn ${t === tab ? '' : 'subtle'}`} onClick={() => setTab(t)}>{label(t)}</button>
+                  <button
+                    key={t}
+                    className={`cx-btn ${t === tab ? '' : 'subtle'}`}
+                    onClick={() => setTab(t)}
+                  >
+                    {t === 'history' ? 'Timeline' : label(t)}
+                  </button>
                 ))}
               </div>
             ) : null}
@@ -3120,7 +3376,11 @@ export function WorkArea(): React.JSX.Element {
                 }}
               />
             ) : null}
-            {tab === 'history' && editing.id ? <HistoryPanel workItemId={String(editing.id)} /> : null}
+            {tab === 'history' && editing.id ? (
+              <TimelinePanel
+                workItemId={String(editing.id)}
+              />
+            ) : null}
           </div>
         </div>
       )}

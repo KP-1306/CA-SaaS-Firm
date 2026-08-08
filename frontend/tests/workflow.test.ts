@@ -26,6 +26,51 @@ describe('console api client', () => {
     expect(headers['X-Tenant-ID']).toBe('11111111-1111-1111-1111-111111111111');
     expect(headers['X-Principal-ID']).toBe('22222222-2222-2222-2222-222222222222');
   });
+  it('repairs stale development identity values before API requests', async () => {
+    localStorage.setItem(
+      'tenantId',
+      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    );
+
+    localStorage.setItem(
+      'principalId',
+      'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    );
+
+    const fn = mockFetch();
+
+    await list('work-items');
+
+    const init =
+      fn.mock.calls[0]?.[1] as RequestInit;
+
+    const headers =
+      init.headers as Record<string, string>;
+
+    expect(
+      headers['X-Tenant-ID'],
+    ).toBe(
+      '11111111-1111-1111-1111-111111111111',
+    );
+
+    expect(
+      headers['X-Principal-ID'],
+    ).toBe(
+      '22222222-2222-2222-2222-222222222222',
+    );
+
+    expect(
+      localStorage.getItem('tenantId'),
+    ).toBe(
+      '11111111-1111-1111-1111-111111111111',
+    );
+
+    expect(
+      localStorage.getItem('principalId'),
+    ).toBe(
+      '22222222-2222-2222-2222-222222222222',
+    );
+  });
 
   it('Start Work posts status IN_PROGRESS to set_status', async () => {
     const fn = mockFetch();
@@ -297,7 +342,7 @@ describe('save-gated attachment review', () => {
 });
 
 describe('client contact management', () => {
-  it('exposes canonical contact management from the client page', async () => {
+  it('keeps canonical contact management in the existing client editor', async () => {
     const client = {
       id: 'client-1',
       legal_name: 'Example Private Limited',
@@ -322,11 +367,13 @@ describe('client contact management', () => {
     const fn = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       const body =
-        url.includes('/api/v1/clients/')
-          ? [client]
-          : url.includes('/api/v1/client-contacts/')
-            ? [contact]
-            : [];
+        url.includes('/api/v1/clients/client-1/')
+          ? client
+          : url.includes('/api/v1/clients/')
+            ? [client]
+            : url.includes('/api/v1/client-contacts/')
+              ? [contact]
+              : [];
       return new Response(JSON.stringify(body), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -342,10 +389,54 @@ describe('client contact management', () => {
     await screen.findByText('Example');
     fireEvent.click(screen.getByText('Example'));
 
-    expect(await screen.findByRole('heading', { name: 'Contacts' })).toBeInTheDocument();
-    expect(await screen.findByText('Finance Head')).toBeInTheDocument();
-    expect(screen.getByText('Chief Financial Officer')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add contact' })).toBeInTheDocument();
+    // Phase 5.2 Option A:
+    // Client Workspace is the operational 360-degree view.
+    // Contact CRUD remains canonical in the existing Client editor.
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: 'Example' },
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole(
+        'heading',
+        { name: 'Contacts' },
+      ),
+    ).toBeInTheDocument();
+
+    expect(
+      await screen.findByText('Finance Head'),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText('Chief Financial Officer'),
+    ).toBeInTheDocument();
+
+    // No parallel contact editor is introduced in Client Workspace.
+    expect(
+      screen.queryByRole(
+        'button',
+        { name: 'Add contact' },
+      ),
+    ).not.toBeInTheDocument();
+
+    // Editing returns to the existing certified Client editor,
+    // where canonical ClientContactsPanel remains responsible for CRUD.
+    fireEvent.click(
+      screen.getByRole(
+        'button',
+        { name: 'Edit Client' },
+      ),
+    );
+
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: 'Add contact' },
+      ),
+    ).toBeInTheDocument();
 
     await waitFor(() => {
       expect(fn).toHaveBeenCalledWith(

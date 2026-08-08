@@ -11,7 +11,13 @@ from __future__ import annotations
 
 import uuid
 
-from .models import Employee, FirmRole
+from .models import (
+    Employee,
+    FirmRole,
+    MembershipStatus,
+    ProviderMembership,
+    ProviderRole,
+)
 
 # Firm-wide sensitive surfaces (executive dashboard, audit viewer).
 EXECUTIVE_ROLES = frozenset({FirmRole.ADMIN, FirmRole.PARTNER})
@@ -50,6 +56,73 @@ def caller_role(tenant_id, principal) -> str | None:
 def is_executive(tenant_id, principal) -> bool:
     """True when the caller is firm leadership (ADMIN or PARTNER)."""
     return caller_role(tenant_id, principal) in EXECUTIVE_ROLES
+
+
+def is_platform_admin(tenant_id, principal) -> bool:
+    """Return True only for active tenant-local PLATFORM_ADMIN authority.
+
+    Provider authority is independent of Employee/FirmRole leadership.
+    """
+    if principal is None:
+        return False
+
+    tenant_uuid = _as_uuid(tenant_id)
+    principal_tenant = _as_uuid(
+        getattr(principal, "tenant_id", None)
+    )
+    principal_id = _as_uuid(
+        getattr(principal, "principal_id", None)
+    )
+
+    if (
+        tenant_uuid is None
+        or principal_tenant != tenant_uuid
+        or principal_id is None
+    ):
+        return False
+
+    memberships = ProviderMembership.objects.filter(
+        tenant_id=tenant_uuid,
+        role=ProviderRole.PLATFORM_ADMIN,
+        status=MembershipStatus.ACTIVE,
+    )
+
+    # Unlinked consultant session:
+    # AuthSession.principal_id == UserAccount.id.
+    if memberships.filter(
+        user_account_id=principal_id,
+    ).exists():
+        return True
+
+    # Linked consultant session:
+    # AuthSession.principal_id == ProviderMembership.employee_id.
+    if memberships.filter(
+        employee_id=principal_id,
+    ).exists():
+        return True
+
+    # Preserve the canonical Employee.principal_id representation used
+    # throughout the internal plane.
+    employee_ids = Employee.objects.filter(
+        tenant_id=tenant_uuid,
+        principal_id=principal_id,
+        is_active=True,
+    ).values_list(
+        "id",
+        flat=True,
+    )
+
+    return memberships.filter(
+        employee_id__in=employee_ids,
+    ).exists()
+
+
+def can_view_firm_operations(tenant_id, principal) -> bool:
+    """Read-only firm operational visibility for Mission Control."""
+    return (
+        is_executive(tenant_id, principal)
+        or is_platform_admin(tenant_id, principal)
+    )
 
 
 def caller_identity_ids(tenant_id, principal):

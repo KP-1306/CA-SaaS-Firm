@@ -76,6 +76,7 @@ from contexts.quality.views import (
     ServiceQAChecklistSetViewSet,
 )
 from contexts.insight.views import (
+    ClientWorkspaceView,
     BrandingView,
     EmployeeDashboardView,
     ExecutiveDashboardView,
@@ -170,6 +171,11 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("identity/consultants/<uuid:account_id>/audit/", ConsultantAuditView.as_view(), name="consultant-auth-audit"),
     path("", bootstrap, name="bootstrap"),
     path("branding/", BrandingView.as_view(), name="branding"),
+    path(
+        "client-workspace/",
+        ClientWorkspaceView.as_view(),
+        name="client-workspace",
+    ),
     path("dashboard/employee/", EmployeeDashboardView.as_view(), name="dashboard-employee"),
     path("dashboard/executive/", ExecutiveDashboardView.as_view(), name="dashboard-executive"),
     path("dashboard/manager/", ManagerDashboardView.as_view(), name="dashboard-manager"),

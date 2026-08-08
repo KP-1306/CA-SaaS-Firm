@@ -189,6 +189,22 @@ def employee_dashboard(tenant_id, identity_ids, period="month", employee_id=None
         "my_work": my_work,
         "document_centre": document_centre,
         "workload": workload,
+
+        # Mission Control is presentation/orchestration only.
+        # Reuse the certified Work Health aggregation for this user's open work.
+        "work_health": _executive_work_health(open_items),
+
+        # Read-only operational projections over existing data.
+        "recent_activity": _mission_recent_activity(
+            tenant_id,
+            items,
+            limit=8,
+        ),
+        "upcoming_deadlines": _mission_upcoming_deadlines(
+            tenant_id,
+            open_items,
+            limit=8,
+        ),
     }
 
 
@@ -331,7 +347,174 @@ def _executive_work_health(open_items):
     }
 
 
+# ---------------------------------------------------------------- mission control projections
+def _mission_recent_activity(tenant_id, items, limit=10):
+    """Read-only activity projection over existing append-only WorkNote history."""
+    item_map = {item.id: item for item in items}
+
+    if not item_map:
+        return []
+
+    client_names = _client_names(tenant_id)
+
+    notes = (
+        WorkNote.objects
+        .filter(
+            tenant_id=tenant_id,
+            work_item_id__in=item_map.keys(),
+        )
+        .order_by("-created_at")[:limit]
+    )
+
+    rows = []
+
+    for note in notes:
+        item = item_map.get(note.work_item_id)
+
+        if item is None:
+            continue
+
+        rows.append({
+            "id": str(note.id),
+            "work_item_id": str(item.id),
+            "title": item.title,
+            "client_id": str(item.client_id) if item.client_id else None,
+            "client_name": client_names.get(item.client_id, ""),
+            "entry": note.entry,
+            "from_status": note.from_status,
+            "to_status": note.to_status,
+            "created_at": note.created_at.isoformat(),
+        })
+
+    return rows
+
+
+def _mission_upcoming_deadlines(tenant_id, open_items, limit=10):
+    """Nearest dated open work enriched exclusively by canonical Work Health."""
+    today = _today()
+    client_names = _client_names(tenant_id)
+
+    dated = sorted(
+        [
+            item
+            for item in open_items
+            if item.due_date is not None
+            and item.due_date >= today
+        ],
+        key=lambda item: (item.due_date, str(item.id)),
+    )[:limit]
+
+    rows = []
+
+    for item in dated:
+        health = calculate_work_health(item)
+        next_action = health.get("next_action") or {}
+
+        rows.append({
+            "work_item_id": str(item.id),
+            "title": item.title,
+            "client_id": str(item.client_id) if item.client_id else None,
+            "client_name": client_names.get(item.client_id, ""),
+            "due_date": item.due_date.isoformat(),
+            "due_state": health.get("due_state"),
+            "days_to_due": health.get("days_to_due"),
+            "health": health.get("health"),
+            "risk": health.get("risk"),
+            "next_action_code": next_action.get("code"),
+            "next_action": next_action.get("label"),
+        })
+
+    return rows
+
+
+def _mission_client_activity(activity_rows, limit=6):
+    """Latest real work-history movement for distinct clients."""
+    seen = set()
+    rows = []
+
+    for row in activity_rows:
+        client_id = row.get("client_id")
+
+        if not client_id or client_id in seen:
+            continue
+
+        seen.add(client_id)
+        rows.append(row)
+
+        if len(rows) >= limit:
+            break
+
+    return rows
+
+
 # ---------------------------------------------------------------- executive view
+
+# ---------------------------------------------------------------- client workspace
+def client_workspace(tenant_id, client_id):
+    """Read-only 360-degree operational projection for one tenant client.
+
+    No workflow, health, document or prioritisation rules are defined here.
+    Existing Insight projections and canonical Work Health remain authoritative.
+    """
+    client = (
+        Client.objects
+        .filter(
+            tenant_id=tenant_id,
+            id=client_id,
+        )
+        .first()
+    )
+
+    if client is None:
+        return None
+
+    items = list(
+        _work_qs(tenant_id).filter(
+            client_id=client.id,
+        )
+    )
+
+    open_items = _open_items(items)
+
+    note_count = WorkNote.objects.filter(
+        tenant_id=tenant_id,
+        work_item_id__in=[
+            item.id
+            for item in items
+        ],
+    ).count()
+
+    return {
+        "client_id": str(client.id),
+
+        # Canonical Work Health; no client-specific health algorithm.
+        "work_health": _executive_work_health(
+            open_items,
+        ),
+
+        # Same append-only WorkNote projection used by Mission Control.
+        "recent_activity": _mission_recent_activity(
+            tenant_id,
+            items,
+            limit=10,
+        ),
+
+        # Full current WorkNote history for this client's Work Items,
+        # projected through the exact same activity mapper.
+        "history": _mission_recent_activity(
+            tenant_id,
+            items,
+            limit=note_count,
+        ),
+
+        # Same due intelligence used by Mission Control.
+        "upcoming_deadlines": _mission_upcoming_deadlines(
+            tenant_id,
+            open_items,
+            limit=10,
+        ),
+    }
+
 def executive_dashboard(tenant_id, period="month"):
     start, end = _period_bounds(period)
     items = list(_work_qs(tenant_id))
@@ -428,6 +611,26 @@ def executive_dashboard(tenant_id, period="month"):
         "heatmap_priority_status": status_by_priority,
         "action_centre": action_centre,
         "work_health": _executive_work_health(open_items),
+
+        # Phase 5.1 Mission Control projections.
+        "recent_activity": _mission_recent_activity(
+            tenant_id,
+            items,
+            limit=10,
+        ),
+        "client_activity": _mission_client_activity(
+            _mission_recent_activity(
+                tenant_id,
+                items,
+                limit=30,
+            ),
+            limit=6,
+        ),
+        "upcoming_deadlines": _mission_upcoming_deadlines(
+            tenant_id,
+            open_items,
+            limit=10,
+        ),
     }
 
 

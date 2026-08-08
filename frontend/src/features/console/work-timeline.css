@@ -1,0 +1,110 @@
+/* Vridhi Phase 5.3 - Work Timeline */
+
+.cx-work-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 960px;
+  padding: 4px 0 8px 8px;
+}
+
+.cx-work-timeline::before {
+  position: absolute;
+  top: 10px;
+  bottom: 18px;
+  left: 16px;
+  width: 2px;
+  background: #e2e8f0;
+  content: "";
+}
+
+.cx-work-timeline-event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px 145px minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 0;
+}
+
+.cx-work-timeline-marker {
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #475569;
+  box-shadow: 0 0 0 1px #cbd5e1;
+}
+
+.cx-work-timeline-time {
+  padding-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cx-work-timeline-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.cx-work-timeline-event:last-child .cx-work-timeline-content {
+  border-bottom: 0;
+}
+
+.cx-work-timeline-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cx-work-timeline-title strong {
+  font-size: 14px;
+}
+
+.cx-work-timeline-title span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.cx-work-timeline-content p,
+.cx-work-timeline-content small {
+  margin: 0;
+}
+
+.cx-work-timeline-content p {
+  font-size: 13px;
+}
+
+.cx-work-timeline-content small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.cx-timeline-empty {
+  color: #64748b;
+  font-size: 13px;
+}
+
+@media (max-width: 800px) {
+  .cx-work-timeline-event {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .cx-work-timeline-time {
+    grid-column: 2;
+  }
+
+  .cx-work-timeline-content {
+    grid-column: 2;
+  }
+}

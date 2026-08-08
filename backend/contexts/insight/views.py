@@ -19,8 +19,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from contexts.authorization.permissions import (
+    ClientAccessPermission,
+    DocumentRequestAccessPermission,
+    WorkItemAccessPermission,
+)
+
 from contexts.identity.access import (
     caller_identity_ids,
+    can_view_firm_operations,
     employee_for_principal,
     identity_ids_for_employee,
     is_executive,
@@ -47,11 +54,70 @@ class BrandingView(_InsightView):
         # The frontend must not invent authorization; it only reflects these.
         emp = employee_for_principal(principal.tenant_id, principal)
         data["capabilities"] = {
-            "is_executive": is_executive(principal.tenant_id, principal),
+            # Firm leadership remains ADMIN/PARTNER only.
+            "is_executive": is_executive(
+                principal.tenant_id,
+                principal,
+            ),
+
+            # Separate read-only operational scope consumed by Mission Control.
+            "can_view_firm_operations": can_view_firm_operations(
+                principal.tenant_id,
+                principal,
+            ),
+
             "role": emp.role if emp else None,
         }
         return Response(data)
 
+
+
+class ClientWorkspaceView(_InsightView):
+    """Read-only Client Workspace projection.
+
+    Uses the existing Client, Work and Document read permissions rather than
+    inventing a Client Workspace permission model.
+    """
+
+    # ActionAccessPermission classes consume this APIView action exactly as
+    # their retrieve actions on the existing domain ViewSets.
+    action = "retrieve"
+
+    permission_classes = [
+        IsAuthenticated,
+        ClientAccessPermission,
+        WorkItemAccessPermission,
+        DocumentRequestAccessPermission,
+    ]
+
+    def get(self, request):
+        principal = self.principal()
+        tenant_id = principal.tenant_id
+        client_id = request.query_params.get("client_id")
+
+        if not client_id:
+            return Response(
+                {
+                    "detail": "client_id is required.",
+                },
+                status=400,
+            )
+
+        data = queries.client_workspace(
+            tenant_id,
+            client_id,
+        )
+
+        if data is None:
+            # Do not reveal a client from another tenant.
+            return Response(
+                {
+                    "detail": "Client was not found.",
+                },
+                status=404,
+            )
+
+        return Response(data)
 
 class EmployeeDashboardView(_InsightView):
     def get(self, request):
@@ -88,8 +154,13 @@ class ExecutiveDashboardView(_InsightView):
     def get(self, request):
         principal = self.principal()
         tenant_id = principal.tenant_id
-        if not is_executive(tenant_id, principal):
-            raise PermissionDenied("Executive dashboard access is restricted to firm leadership.")
+        if not can_view_firm_operations(
+            tenant_id,
+            principal,
+        ):
+            raise PermissionDenied(
+                "Firm operational dashboard access is restricted."
+            )
         period = request.query_params.get("period", "month")
         data = queries.executive_dashboard(tenant_id, period)
         return Response(data)

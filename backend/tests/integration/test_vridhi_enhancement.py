@@ -356,3 +356,589 @@ def test_executive_dashboard_exposes_certified_work_health():
     assert "waiting_on_reviewer" in health
     assert "longest_waiting_days" in health
     assert "immediate_actions" in health
+
+
+
+# ---------------- Mission Control Phase 5.1 ----------------
+
+@pytest.mark.django_db
+def test_employee_dashboard_mission_control_reuses_work_health():
+    from datetime import timedelta
+    from django.utils import timezone
+    from contexts.work.models import WorkItem, WorkNote
+
+    employee = _employee(STAFF_A, "Mission Employee", "STAFF")
+    client_id = uuid.uuid4()
+
+    work = WorkItem.objects.create(
+        tenant_id=TENANT_A,
+        created_by=STAFF_A,
+        updated_by=STAFF_A,
+        title="Mission Employee Work",
+        client_id=client_id,
+        owner_user_id=employee.id,
+        priority="HIGH",
+        status="IN_PROGRESS",
+        due_date=timezone.now().date() + timedelta(days=1),
+    )
+
+    WorkNote.objects.create(
+        tenant_id=TENANT_A,
+        created_by=STAFF_A,
+        updated_by=STAFF_A,
+        work_item_id=work.id,
+        author_user_id=STAFF_A,
+        entry="Mission activity",
+        from_status="NOT_STARTED",
+        to_status="IN_PROGRESS",
+    )
+
+    response = HttpClient().get(
+        "/api/v1/dashboard/employee/",
+        **_h(principal=STAFF_A),
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert "work_health" in data
+    assert "immediate_actions" in data["work_health"]
+    assert "recent_activity" in data
+    assert "upcoming_deadlines" in data
+
+    assert any(
+        row["work_item_id"] == str(work.id)
+        for row in data["recent_activity"]
+    )
+
+    deadline = next(
+        row
+        for row in data["upcoming_deadlines"]
+        if row["work_item_id"] == str(work.id)
+    )
+
+    assert deadline["due_state"] == "DUE_SOON"
+    assert deadline["next_action"]
+
+
+@pytest.mark.django_db
+def test_executive_dashboard_mission_control_is_tenant_scoped():
+    from contexts.work.models import WorkItem, WorkNote
+
+    _employee(PARTNER, "Mission Partner", "PARTNER")
+
+    local_work = WorkItem.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        title="Tenant A Mission Activity",
+        client_id=uuid.uuid4(),
+        owner_user_id=PARTNER,
+        priority="NORMAL",
+        status="IN_PROGRESS",
+    )
+
+    other_work = WorkItem.objects.create(
+        tenant_id=TENANT_B,
+        created_by=STAFF_B,
+        updated_by=STAFF_B,
+        title="Tenant B Must Stay Hidden",
+        client_id=uuid.uuid4(),
+        owner_user_id=STAFF_B,
+        priority="NORMAL",
+        status="IN_PROGRESS",
+    )
+
+    WorkNote.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        work_item_id=local_work.id,
+        author_user_id=PARTNER,
+        entry="Visible activity",
+    )
+
+    WorkNote.objects.create(
+        tenant_id=TENANT_B,
+        created_by=STAFF_B,
+        updated_by=STAFF_B,
+        work_item_id=other_work.id,
+        author_user_id=STAFF_B,
+        entry="Hidden activity",
+    )
+
+    response = HttpClient().get(
+        "/api/v1/dashboard/executive/",
+        **_h(principal=PARTNER),
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert "recent_activity" in data
+    assert "client_activity" in data
+    assert "upcoming_deadlines" in data
+
+    titles = {
+        row["title"]
+        for row in data["recent_activity"]
+    }
+
+    assert "Tenant A Mission Activity" in titles
+    assert "Tenant B Must Stay Hidden" not in titles
+
+
+
+# --- Phase 5.1 PLATFORM_ADMIN firm operational scope ---
+
+@pytest.mark.django_db
+def test_platform_admin_firm_operation_capability_is_not_firm_leadership():
+    from types import SimpleNamespace
+
+    from contexts.identity.access import (
+        can_view_firm_operations,
+        is_executive,
+        is_platform_admin,
+    )
+    from contexts.identity.models import (
+        MembershipStatus,
+        ProviderMembership,
+        ProviderRole,
+    )
+
+    principal_id = uuid.uuid4()
+
+    ProviderMembership.objects.create(
+        tenant_id=TENANT_A,
+        created_by=principal_id,
+        updated_by=principal_id,
+        user_account_id=principal_id,
+        role=ProviderRole.PLATFORM_ADMIN,
+        status=MembershipStatus.ACTIVE,
+    )
+
+    principal = SimpleNamespace(
+        principal_id=principal_id,
+        tenant_id=uuid.UUID(TENANT_A),
+    )
+
+    assert is_platform_admin(
+        uuid.UUID(TENANT_A),
+        principal,
+    )
+
+    assert can_view_firm_operations(
+        uuid.UUID(TENANT_A),
+        principal,
+    )
+
+    # Critical boundary: operational visibility != firm leadership.
+    assert not is_executive(
+        uuid.UUID(TENANT_A),
+        principal,
+    )
+
+
+@pytest.mark.django_db
+def test_operations_admin_does_not_inherit_platform_operational_scope():
+    from types import SimpleNamespace
+
+    from contexts.identity.access import (
+        can_view_firm_operations,
+        is_platform_admin,
+    )
+    from contexts.identity.models import (
+        MembershipStatus,
+        ProviderMembership,
+        ProviderRole,
+    )
+
+    principal_id = uuid.uuid4()
+
+    ProviderMembership.objects.create(
+        tenant_id=TENANT_A,
+        created_by=principal_id,
+        updated_by=principal_id,
+        user_account_id=principal_id,
+        role=ProviderRole.OPERATIONS_ADMIN,
+        status=MembershipStatus.ACTIVE,
+    )
+
+    principal = SimpleNamespace(
+        principal_id=principal_id,
+        tenant_id=uuid.UUID(TENANT_A),
+    )
+
+    assert not is_platform_admin(
+        uuid.UUID(TENANT_A),
+        principal,
+    )
+
+    assert not can_view_firm_operations(
+        uuid.UUID(TENANT_A),
+        principal,
+    )
+
+
+@pytest.mark.django_db
+def test_platform_admin_firm_operational_scope_is_tenant_local():
+    from types import SimpleNamespace
+
+    from contexts.identity.access import (
+        can_view_firm_operations,
+    )
+    from contexts.identity.models import (
+        MembershipStatus,
+        ProviderMembership,
+        ProviderRole,
+    )
+
+    principal_id = uuid.uuid4()
+
+    ProviderMembership.objects.create(
+        tenant_id=TENANT_A,
+        created_by=principal_id,
+        updated_by=principal_id,
+        user_account_id=principal_id,
+        role=ProviderRole.PLATFORM_ADMIN,
+        status=MembershipStatus.ACTIVE,
+    )
+
+    foreign_principal = SimpleNamespace(
+        principal_id=principal_id,
+        tenant_id=uuid.UUID(TENANT_B),
+    )
+
+    assert not can_view_firm_operations(
+        uuid.UUID(TENANT_B),
+        foreign_principal,
+    )
+
+
+@pytest.mark.django_db
+def test_platform_admin_can_read_existing_firm_operational_dashboard():
+    from contexts.identity.models import (
+        MembershipStatus,
+        ProviderMembership,
+        ProviderRole,
+    )
+
+    principal_id = uuid.uuid4()
+
+    ProviderMembership.objects.create(
+        tenant_id=TENANT_A,
+        created_by=principal_id,
+        updated_by=principal_id,
+        user_account_id=principal_id,
+        role=ProviderRole.PLATFORM_ADMIN,
+        status=MembershipStatus.ACTIVE,
+    )
+
+    response = HttpClient().get(
+        "/api/v1/dashboard/executive/",
+        **_h(principal=str(principal_id)),
+    )
+
+    assert response.status_code == 200
+
+    payload = response.json()
+
+    assert "operations" in payload
+    assert "employee_workload" in payload
+    assert "client_health" in payload
+    assert "work_health" in payload
+
+
+@pytest.mark.django_db
+def test_operations_admin_remains_denied_from_firm_operational_dashboard():
+    from contexts.identity.models import (
+        MembershipStatus,
+        ProviderMembership,
+        ProviderRole,
+    )
+
+    principal_id = uuid.uuid4()
+
+    ProviderMembership.objects.create(
+        tenant_id=TENANT_A,
+        created_by=principal_id,
+        updated_by=principal_id,
+        user_account_id=principal_id,
+        role=ProviderRole.OPERATIONS_ADMIN,
+        status=MembershipStatus.ACTIVE,
+    )
+
+    response = HttpClient().get(
+        "/api/v1/dashboard/executive/",
+        **_h(principal=str(principal_id)),
+    )
+
+    assert response.status_code == 403
+
+
+
+# --- Phase 5.2 Client Workspace ---
+
+@pytest.mark.django_db
+def test_client_workspace_reuses_existing_operational_projections():
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from contexts.work.models import (
+        DocumentRequest,
+        WorkItem,
+        WorkNote,
+    )
+
+    http = HttpClient()
+    client = _client(http)
+
+    item = WorkItem.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        title="Client Workspace GST",
+        client_id=client["id"],
+        owner_user_id=PARTNER,
+        priority="NORMAL",
+        due_date=timezone.now().date() + timedelta(days=2),
+    )
+
+    WorkNote.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        work_item_id=item.id,
+        author_user_id=PARTNER,
+        entry="Documents requested from client",
+    )
+
+    DocumentRequest.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        name="Bank Statement",
+        client_id=client["id"],
+        work_item_id=item.id,
+        mandatory=True,
+    )
+
+    response = http.get(
+        "/api/v1/client-workspace/",
+        {
+            "client_id": client["id"],
+        },
+        **_h(),
+    )
+
+    assert response.status_code == 200, response.content
+
+    payload = response.json()
+
+    assert payload["client_id"] == client["id"]
+    assert "work_health" in payload
+    assert "recent_activity" in payload
+    assert "history" in payload
+    assert "upcoming_deadlines" in payload
+
+    assert any(
+        row["work_item_id"] == str(item.id)
+        for row in payload["recent_activity"]
+    )
+
+    assert any(
+        row["work_item_id"] == str(item.id)
+        for row in payload["history"]
+    )
+
+    assert any(
+        row["work_item_id"] == str(item.id)
+        for row in payload["upcoming_deadlines"]
+    )
+
+
+@pytest.mark.django_db
+def test_client_workspace_is_tenant_isolated():
+    http = HttpClient()
+    client = _client(http)
+
+    response = http.get(
+        "/api/v1/client-workspace/",
+        {
+            "client_id": client["id"],
+        },
+        **_h(
+            tenant=TENANT_B,
+        ),
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_client_workspace_requires_client_id():
+    response = HttpClient().get(
+        "/api/v1/client-workspace/",
+        **_h(),
+    )
+
+    assert response.status_code == 400
+
+
+
+# --- Phase 5.3 Work Timeline ---
+
+@pytest.mark.django_db
+def test_work_timeline_projects_existing_durable_event_sources():
+    from contexts.assignment.models import AssignmentEvent
+    from contexts.work.models import (
+        DocumentRequest,
+        WorkItem,
+        WorkNote,
+    )
+
+    http = HttpClient()
+    client = _client(http)
+
+    item = WorkItem.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        title="Timeline GST Return",
+        client_id=client["id"],
+        owner_user_id=PARTNER,
+        priority="NORMAL",
+    )
+
+    AssignmentEvent.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        work_item_id=item.id,
+        event_type="REASSIGNED",
+        owner_user_id=PARTNER,
+        actor_user_id=PARTNER,
+        reason="Capacity balancing",
+    )
+
+    DocumentRequest.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        work_item_id=item.id,
+        client_id=client["id"],
+        name="Bank Statement",
+        mandatory=True,
+    )
+
+    WorkNote.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        work_item_id=item.id,
+        author_user_id=PARTNER,
+        entry="Submitted for review.",
+        from_status="IN_PROGRESS",
+        to_status="READY_FOR_REVIEW",
+    )
+
+    response = http.get(
+        f"/api/v1/work-items/{item.id}/history/",
+        **_h(),
+    )
+
+    assert response.status_code == 200, response.content
+
+    events = response.json()
+    event_types = [
+        event["event_type"]
+        for event in events
+    ]
+
+    assert event_types[0] == "WORK_CREATED"
+    assert "REASSIGNED" in event_types
+    assert "DOCUMENT_REQUESTED" in event_types
+    assert "SUBMITTED_FOR_REVIEW" in event_types
+
+    timestamps = [
+        event["created_at"]
+        for event in events
+    ]
+
+    assert timestamps == sorted(timestamps)
+
+
+@pytest.mark.django_db
+def test_work_timeline_remains_tenant_scoped():
+    from contexts.work.models import WorkItem
+
+    item = WorkItem.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        title="Tenant Timeline",
+        client_id=uuid.uuid4(),
+        priority="NORMAL",
+    )
+
+    response = HttpClient().get(
+        f"/api/v1/work-items/{item.id}/history/",
+        **_h(
+            tenant=TENANT_B,
+        ),
+    )
+
+    assert response.status_code == 404
+
+
+# --- Phase 5.3 deterministic ordering regression ---
+
+@pytest.mark.django_db
+def test_work_timeline_keeps_creation_first_when_event_timestamps_tie():
+    from contexts.assignment.models import AssignmentEvent
+    from contexts.work.models import WorkItem
+
+    http = HttpClient()
+
+    item = WorkItem.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        title="Timeline ordering invariant",
+        client_id=uuid.uuid4(),
+        owner_user_id=PARTNER,
+        priority="NORMAL",
+    )
+
+    assignment = AssignmentEvent.objects.create(
+        tenant_id=TENANT_A,
+        created_by=PARTNER,
+        updated_by=PARTNER,
+        work_item_id=item.id,
+        event_type="REASSIGNED",
+        owner_user_id=PARTNER,
+        actor_user_id=PARTNER,
+    )
+
+    # Reproduce the precise ordering edge explicitly rather than relying
+    # on execution timing or database timestamp precision.
+    AssignmentEvent.objects.filter(
+        id=assignment.id,
+    ).update(
+        created_at=item.created_at,
+    )
+
+    response = http.get(
+        f"/api/v1/work-items/{item.id}/history/",
+        **_h(),
+    )
+
+    assert response.status_code == 200, response.content
+
+    events = response.json()
+
+    assert events[0]["event_type"] == "WORK_CREATED"
+    assert events[1]["event_type"] == "REASSIGNED"

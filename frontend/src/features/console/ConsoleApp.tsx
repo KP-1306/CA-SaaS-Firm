@@ -1,8 +1,9 @@
-import type * as React from 'react';
+﻿import type * as React from 'react';
 import { useEffect, useState } from 'react';
-import { list, save } from './api';
+import { getObject, list, save } from './api';
 import { CatalogueArea } from './catalogue';
 import { WorkArea } from './work';
+import { ClientWorkspace } from './client-workspace';
 import { ServicingArea } from './servicing';
 import { EmployeeOpsArea } from './employee_ops';
 import { useBrand } from './branding';
@@ -10,6 +11,12 @@ import { EmployeeDashboard, ExecutiveDashboard } from './dashboards';
 import { ExpertisePanel } from './expertise';
 import { AuditViewer } from './audit';
 import { GlobalSearch } from './GlobalSearch';
+import {
+  QuickCreateMenu,
+} from './quick-create';
+import type {
+  QuickCreateAction,
+} from './quick-create';
 import { IdentityAccessAdministration } from './authorization';
 import {
   IdentityGate,
@@ -17,7 +24,7 @@ import {
   isProviderAdmin,
   useIdentity,
 } from './identity';
-import { CLIENT_TYPES, CLIENT_LIFECYCLE_STATUS, ENGAGEMENT_STATUS, WORK_STATUS, isOverdue, label } from './types';
+import { CLIENT_TYPES, CLIENT_LIFECYCLE_STATUS, ENGAGEMENT_STATUS, isOverdue, label } from './types';
 import type { Row } from './types';
 import { Chip, DataTable, Drawer, ErrorBar, Loading } from './ui';
 import type { Column, Field } from './ui';
@@ -72,805 +79,766 @@ function statusTone(status: string): string {
   return 'muted';
 }
 
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+
+// ---------------- Dashboard / Mission Control ----------------
+
+type MissionDict = Record<string, unknown>;
+
+function asMissionDict(value: unknown): MissionDict {
+  if (
+    value !== null
+    && typeof value === 'object'
+    && !Array.isArray(value)
+  ) {
+    return value as MissionDict;
+  }
+
+  return {};
 }
 
-// ---------------- Dashboard ----------------
-function Dashboard(): React.JSX.Element {
-  const clients = useRows('clients');
-  const employees = useRows('employees');
-  const services = useRows('services');
-  const work = useRows('work-items');
-  const docs = useRows('document-requests');
+function asMissionRows(value: unknown): Row[] {
+  return Array.isArray(value) ? value as Row[] : [];
+}
 
-  const loading =
-    clients.loading
-    || employees.loading
-    || services.loading
-    || work.loading
-    || docs.loading;
+function missionCount(value: unknown): number {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function missionTime(value: unknown): string {
+  const raw = String(value ?? '');
+
+  if (!raw) return '';
+
+  return raw.slice(0, 16).replace('T', ' ');
+}
+
+export function Dashboard({
+  onOpenWork,
+}: {
+  onOpenWork?: (workItemId: string) => void;
+} = {}): React.JSX.Element {
+  const [employeeData, setEmployeeData] = useState<Row>({});
+  const [firmData, setFirmData] = useState<Row>({});
+  const [capabilities, setCapabilities] = useState<MissionDict>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    const load = async (): Promise<void> => {
+      setLoading(true);
+      setError('');
+
+      try {
+        const brand = await getObject('branding');
+        const caps = asMissionDict(brand.capabilities);
+
+        const employee = await getObject(
+          'dashboard/employee',
+          { period: 'month' },
+        );
+
+        let firm: Row = {};
+
+        // Authorization is NOT invented in the frontend.
+        // This flag originates from the backend BrandingView.
+        if (caps.can_view_firm_operations === true) {
+          firm = await getObject(
+            'dashboard/executive',
+            { period: 'month' },
+          );
+        }
+
+        if (!active) return;
+
+        setCapabilities(caps);
+        setEmployeeData(employee);
+        setFirmData(firm);
+      } catch (caught: unknown) {
+        if (!active) return;
+
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : String(caught),
+        );
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (loading) return <Loading />;
 
-  const now = new Date();
-  const today = todayStr();
+  const canViewFirmOperations =
+    capabilities.can_view_firm_operations === true;
 
-  const isOpen = (row: Row): boolean => (
-    row.status !== 'COMPLETED'
-    && row.status !== 'CANCELLED'
+  // ----------------------------------------------------------
+  // Row 1 â€” ALWAYS PERSONAL
+  // ----------------------------------------------------------
+
+  const myWork = asMissionDict(employeeData.my_work);
+  const personalHealth = asMissionDict(employeeData.work_health);
+  const myWorkload = asMissionDict(employeeData.workload);
+
+  // ----------------------------------------------------------
+  // Leadership sections use the existing canViewFirmOperations aggregation.
+  // Staff remain entirely on employee-level Insight.
+  // ----------------------------------------------------------
+
+  const firmOverview = asMissionDict(firmData.overview);
+  const firmHealth = asMissionDict(firmData.work_health);
+  const firmOperations = asMissionDict(firmData.operations);
+  const actionCentre = asMissionDict(firmData.action_centre);
+  const employeeWorkload = asMissionDict(firmData.employee_workload);
+
+  const displayHealth = canViewFirmOperations
+    ? firmHealth
+    : personalHealth;
+
+  const workDistribution = asMissionDict(
+    canViewFirmOperations
+      ? firmOperations.by_status
+      : myWorkload.status_distribution,
   );
 
-  const daysFromToday = (value: unknown): number | null => {
-    if (!value) return null;
-
-    const parsed = new Date(String(value));
-
-    if (Number.isNaN(parsed.getTime())) return null;
-
-    const todayStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
-
-    const dateStart = new Date(
-      parsed.getFullYear(),
-      parsed.getMonth(),
-      parsed.getDate(),
-    );
-
-    return Math.round(
-      (dateStart.getTime() - todayStart.getTime())
-      / (1000 * 60 * 60 * 24),
-    );
-  };
-
-  const ageInDays = (value: unknown): number => {
-    if (!value) return 0;
-
-    const parsed = new Date(String(value));
-
-    if (Number.isNaN(parsed.getTime())) return 0;
-
-    return Math.max(
-      0,
-      Math.floor(
-        (now.getTime() - parsed.getTime())
-        / (1000 * 60 * 60 * 24),
-      ),
-    );
-  };
-
-  const activeClients = clients.rows.filter(
-    (client) => client.engagement_status === 'ACTIVE',
+  const immediateActions = asMissionRows(
+    displayHealth.immediate_actions,
   );
 
-  const openWork = work.rows.filter(isOpen);
-
-  const overdueWork = openWork.filter(
-    (row) => isOverdue(row.due_date, row.status),
+  const upcomingDeadlines = asMissionRows(
+    canViewFirmOperations
+      ? firmData.upcoming_deadlines
+      : employeeData.upcoming_deadlines,
   );
 
-  const dueToday = openWork.filter(
-    (row) => String(row.due_date ?? '').slice(0, 10) === today,
+  const recentActivity = asMissionRows(
+    canViewFirmOperations
+      ? firmData.recent_activity
+      : employeeData.recent_activity,
   );
 
-  const dueSoon = openWork.filter((row) => {
-    const days = daysFromToday(row.due_date);
-    return days !== null && days > 0 && days <= 7;
-  });
+  const clientActivity = canViewFirmOperations
+    ? asMissionRows(firmData.client_activity)
+    : [];
 
-  const waitingForClient = openWork.filter(
-    (row) => row.status === 'WAITING_FOR_CLIENT',
+  const team = canViewFirmOperations
+    ? asMissionRows(employeeWorkload.rows)
+    : [];
+
+  const myAssigned = missionCount(myWork.assigned_open);
+  const myDueToday = missionCount(myWork.due_today);
+  const myOverdue = missionCount(myWork.overdue);
+  const myWaitingClient = missionCount(myWork.waiting_for_client);
+
+  const myReviewQa =
+    missionCount(myWork.ready_for_review)
+    + missionCount(myWork.rework_required)
+    + missionCount(myWorkload.pending_reviews_assigned);
+
+  const myCompleted = missionCount(myWork.recently_completed);
+
+  const healthHealthy = missionCount(displayHealth.healthy);
+  const healthAttention = missionCount(
+    displayHealth.attention_required,
+  );
+  const healthHighRisk = missionCount(displayHealth.high_risk);
+  const healthDueSoon = missionCount(displayHealth.due_soon);
+  const healthWaitingClient = missionCount(
+    displayHealth.waiting_on_client,
+  );
+  const healthWaitingReviewer = missionCount(
+    displayHealth.waiting_on_reviewer,
   );
 
-  const readyForReview = openWork.filter(
-    (row) => row.status === 'READY_FOR_REVIEW',
-  );
-
-  const reworkRequired = openWork.filter(
-    (row) => row.status === 'REWORK_REQUIRED',
-  );
-
-  const highPriorityOverdue = overdueWork.filter((row) => (
-    row.priority === 'HIGH'
-    || row.priority === 'URGENT'
-    || row.priority === 'CRITICAL'
-  ));
-
-  const completedToday = work.rows.filter(
-    (row) => String(row.completed_at ?? '').slice(0, 10) === today,
-  );
-
-  const pendingDocuments = docs.rows.filter((row) => (
-    row.status === 'REQUESTED'
-    || row.status === 'PARTIALLY_RECEIVED'
-  ));
-
-  const documentAgeBuckets = [
-    {
-      label: '0Ã¢â‚¬â€œ3 days',
-      count: pendingDocuments.filter(
-        (row) => ageInDays(row.created_at || row.requested_at) <= 3,
-      ).length,
-      tone: 'good',
-    },
-    {
-      label: '4Ã¢â‚¬â€œ7 days',
-      count: pendingDocuments.filter((row) => {
-        const age = ageInDays(row.created_at || row.requested_at);
-        return age >= 4 && age <= 7;
-      }).length,
-      tone: 'watch',
-    },
-    {
-      label: '8Ã¢â‚¬â€œ15 days',
-      count: pendingDocuments.filter((row) => {
-        const age = ageInDays(row.created_at || row.requested_at);
-        return age >= 8 && age <= 15;
-      }).length,
-      tone: 'risk',
-    },
-    {
-      label: '15+ days',
-      count: pendingDocuments.filter(
-        (row) => ageInDays(row.created_at || row.requested_at) > 15,
-      ).length,
-      tone: 'critical',
-    },
+  const flowOrder = [
+    'NOT_STARTED',
+    'IN_PROGRESS',
+    'WAITING_FOR_CLIENT',
+    'READY_FOR_REVIEW',
+    'REWORK_REQUIRED',
+    'COMPLETED',
   ];
 
-  const statusDistribution = WORK_STATUS
-    .map((status) => ({
-      status,
-      count: work.rows.filter((row) => row.status === status).length,
-    }))
-    .filter((item) => item.count > 0);
+  const flowLabels: Record<string, string> = {
+    NOT_STARTED: 'Ready',
+    IN_PROGRESS: 'In Progress',
+    WAITING_FOR_CLIENT: 'Waiting Client',
+    READY_FOR_REVIEW: 'QA / Review',
+    REWORK_REQUIRED: 'Rework',
+    COMPLETED: 'Completed',
+  };
 
-  const maxStatusCount = Math.max(
-    1,
-    ...statusDistribution.map((item) => item.count),
-  );
+  const clientHealth = asMissionDict(firmData.client_health);
+  const clientRows = asMissionRows(clientHealth.rows);
 
-  const employeeWorkload = employees.rows
-    .filter((employee) => employee.is_active !== false)
-    .map((employee) => {
-      const assigned = openWork.filter(
-        (row) => String(row.owner_user_id) === String(employee.id),
-      );
+  const clientsWaiting = canViewFirmOperations
+    ? clientRows.filter(
+      (row) => missionCount(row.pending_documents) > 0,
+    ).length
+    : 0;
 
-      const overdue = assigned.filter(
-        (row) => isOverdue(row.due_date, row.status),
-      );
-
-      const review = openWork.filter(
-        (row) => (
-          String(row.reviewer_user_id) === String(employee.id)
-          && row.status === 'READY_FOR_REVIEW'
-        ),
-      );
-
-      const score =
-        assigned.length
-        + (overdue.length * 2)
-        + review.length;
-
-      const pressure =
-        score >= 8
-          ? 'OVERLOADED'
-          : score >= 5
-            ? 'BUSY'
-            : score >= 2
-              ? 'BALANCED'
-              : 'AVAILABLE';
-
-      return {
-        id: String(employee.id),
-        name: String(employee.name || employee.email || 'Unnamed employee'),
-        assigned: assigned.length,
-        overdue: overdue.length,
-        review: review.length,
-        score,
-        pressure,
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  const maxEmployeeScore = Math.max(
-    1,
-    ...employeeWorkload.map((employee) => employee.score),
-  );
-
-  const clientRisk = activeClients
-    .map((client) => {
-      const clientId = String(client.id);
-
-      const clientWork = openWork.filter(
-        (row) => String(row.client_id) === clientId,
-      );
-
-      const overdue = clientWork.filter(
-        (row) => isOverdue(row.due_date, row.status),
-      );
-
-      const waiting = clientWork.filter(
-        (row) => row.status === 'WAITING_FOR_CLIENT',
-      );
-
-      const nextDue = clientWork
-        .filter((row) => row.due_date)
-        .sort(
-          (a, b) => String(a.due_date).localeCompare(String(b.due_date)),
-        )[0];
-
-      const riskScore =
-        (overdue.length * 3)
-        + (waiting.length * 2)
-        + clientWork.length;
-
-      return {
-        id: clientId,
-        name: String(
-          client.trade_name
-          || client.legal_name
-          || 'Unnamed client',
-        ),
-        open: clientWork.length,
-        overdue: overdue.length,
-        waiting: waiting.length,
-        nextDue: String(nextDue?.due_date ?? ''),
-        riskScore,
-        risk:
-          riskScore >= 10
-            ? 'HIGH'
-            : riskScore >= 5
-              ? 'MEDIUM'
-              : 'LOW',
-      };
-    })
-    .filter((client) => client.open > 0)
-    .sort((a, b) => b.riskScore - a.riskScore)
-    .slice(0, 6);
-
-  const recentActivity = [...work.rows]
-    .sort(
-      (a, b) => String(b.updated_at).localeCompare(String(a.updated_at)),
-    )
-    .slice(0, 7);
-
-  const attentionItems: {
-    title: string;
-    detail: string;
-    tone: 'critical' | 'risk' | 'watch' | 'info';
-  }[] = [];
-
-  if (highPriorityOverdue.length > 0) {
-    attentionItems.push({
-      title: `${highPriorityOverdue.length} high-priority overdue item${
-        highPriorityOverdue.length === 1 ? '' : 's'
-      }`,
-      detail: 'Immediate partner or manager intervention is recommended.',
-      tone: 'critical',
-    });
-  }
-
-  if (overdueWork.length > 0) {
-    attentionItems.push({
-      title: `${overdueWork.length} overdue work item${
-        overdueWork.length === 1 ? '' : 's'
-      }`,
-      detail: 'Review ownership, blockers and revised completion plans.',
-      tone: 'risk',
-    });
-  }
-
-  if (readyForReview.length > 0) {
-    attentionItems.push({
-      title: `${readyForReview.length} item${
-        readyForReview.length === 1 ? '' : 's'
-      } awaiting review`,
-      detail: 'Reviewer action can unblock completion and client delivery.',
-      tone: 'watch',
-    });
-  }
-
-  const agedDocuments = pendingDocuments.filter(
-    (row) => ageInDays(row.created_at || row.requested_at) > 7,
-  );
-
-  if (agedDocuments.length > 0) {
-    attentionItems.push({
-      title: `${agedDocuments.length} document request${
-        agedDocuments.length === 1 ? '' : 's'
-      } pending beyond 7 days`,
-      detail: 'Client follow-up may be required to protect due dates.',
-      tone: 'watch',
-    });
-  }
-
-  const overloadedEmployees = employeeWorkload.filter(
-    (employee) => employee.pressure === 'OVERLOADED',
-  );
-
-  if (overloadedEmployees.length > 0) {
-    attentionItems.push({
-      title: `${overloadedEmployees.length} employee${
-        overloadedEmployees.length === 1 ? '' : 's'
-      } under high workload pressure`,
-      detail: 'Consider redistribution before additional work is assigned.',
-      tone: 'risk',
-    });
-  }
-
-  if (attentionItems.length === 0) {
-    attentionItems.push({
-      title: 'No critical operational exceptions',
-      detail: 'Current workload and deadlines appear under control.',
-      tone: 'info',
-    });
-  }
-
-  const healthPenalty =
-    (overdueWork.length * 8)
-    + (highPriorityOverdue.length * 7)
-    + (agedDocuments.length * 3)
-    + (overloadedEmployees.length * 6)
-    + (reworkRequired.length * 4);
-
-  const healthScore = Math.max(35, Math.min(100, 100 - healthPenalty));
-
-  const healthLabel =
-    healthScore >= 85
-      ? 'Strong'
-      : healthScore >= 70
-        ? 'Stable'
-        : healthScore >= 55
-          ? 'Attention required'
-          : 'At risk';
-
-  const healthTone =
-    healthScore >= 85
-      ? 'good'
-      : healthScore >= 70
-        ? 'stable'
-        : healthScore >= 55
-          ? 'watch'
-          : 'risk';
-
-  const kpis = [
-    {
-      label: 'Active Clients',
-      value: activeClients.length,
-      note: `${clients.rows.length} total client records`,
-      tone: 'blue',
-    },
-    {
-      label: 'Open Work',
-      value: openWork.length,
-      note: `${completedToday.length} completed today`,
-      tone: 'indigo',
-    },
-    {
-      label: 'Overdue',
-      value: overdueWork.length,
-      note: highPriorityOverdue.length
-        ? `${highPriorityOverdue.length} high priority`
-        : 'No high-priority exposure',
-      tone: overdueWork.length ? 'red' : 'green',
-    },
-    {
-      label: 'Due in 7 Days',
-      value: dueSoon.length + dueToday.length,
-      note: `${dueToday.length} due today`,
-      tone: dueToday.length ? 'amber' : 'violet',
-    },
-    {
-      label: 'Waiting for Client',
-      value: waitingForClient.length,
-      note: `${pendingDocuments.length} document requests pending`,
-      tone: waitingForClient.length ? 'amber' : 'green',
-    },
-    {
-      label: 'Ready for Review',
-      value: readyForReview.length,
-      note: `${reworkRequired.length} in rework`,
-      tone: readyForReview.length ? 'violet' : 'green',
-    },
-  ];
-
-  const error =
-    clients.error
-    || employees.error
-    || services.error
-    || work.error
-    || docs.error;
+  const clientsOverdue = canViewFirmOperations
+    ? clientRows.filter(
+      (row) => missionCount(row.overdue_work) > 0,
+    ).length
+    : 0;
 
   return (
-    <div className="cx-executive-dashboard">
+    <div className="cx-mission-control">
       <ErrorBar error={error} />
 
-      <section className="cx-executive-hero">
+      <section className="cx-mission-hero">
         <div>
-          <span className="cx-executive-eyebrow">
-            Firm Operations Command Center
+          <span className="cx-panel-kicker">
+            Operations Command Center
           </span>
 
-          <h1>Vridhi Consultants</h1>
+          <h1>Mission Control</h1>
 
           <p>
-            A live executive view of client delivery, deadlines,
-            document dependencies and team workload.
+            Everything requiring attention, in one operational view.
           </p>
         </div>
 
-        <div className={`cx-health-card ${healthTone}`}>
-          <div className="cx-health-ring">
-            <strong>{healthScore}</strong>
-            <small>/100</small>
+        <div className="cx-mission-hero-status">
+          <strong>{healthHighRisk}</strong>
+          <span>High Risk</span>
+        </div>
+      </section>
+
+      {/* ====================================================
+          ROW 1 â€” MY WORK TODAY
+         ==================================================== */}
+
+      <section className="cx-mission-panel cx-mission-today">
+        <div className="cx-mission-section-head">
+          <div>
+            <span className="cx-panel-kicker">My Day</span>
+            <h2>My Work Today</h2>
+          </div>
+        </div>
+
+        <div className="cx-mission-today-grid">
+          <div>
+            <strong>{myAssigned}</strong>
+            <span>Assigned / Open</span>
+          </div>
+
+          <div className={myDueToday > 0 ? 'watch' : ''}>
+            <strong>{myDueToday}</strong>
+            <span>Due Today</span>
+          </div>
+
+          <div className={myOverdue > 0 ? 'risk' : ''}>
+            <strong>{myOverdue}</strong>
+            <span>Overdue</span>
+          </div>
+
+          <div className={myWaitingClient > 0 ? 'watch' : ''}>
+            <strong>{myWaitingClient}</strong>
+            <span>Waiting for Client</span>
+          </div>
+
+          <div className={myReviewQa > 0 ? 'watch' : ''}>
+            <strong>{myReviewQa}</strong>
+            <span>Needs Review / QA</span>
           </div>
 
           <div>
-            <span>Firm Health</span>
-            <strong>{healthLabel}</strong>
-            <small>Updated from current operational data</small>
-
-            <span
-              className="cx-health-method"
-              title="The score considers overdue work, high-priority overdue exposure, aged client-document requests, rework and employee workload pressure."
-            >
-              Ã¢â€œËœ How this score is calculated
-            </span>
+            <strong>{myCompleted}</strong>
+            <span>Completed This Period</span>
           </div>
         </div>
       </section>
 
-      <section className="cx-executive-kpis">
-        {kpis.map((kpi) => (
-          <article
-            key={kpi.label}
-            className={`cx-executive-kpi ${kpi.tone}`}
-          >
-            <span>{kpi.label}</span>
-            <strong>{kpi.value}</strong>
-            <small>{kpi.note}</small>
-          </article>
-        ))}
+      {/* ====================================================
+          ROW 2 â€” IMMEDIATE ACTIONS
+         ==================================================== */}
+
+      <section className="cx-mission-panel cx-mission-actions-panel">
+        <div className="cx-mission-section-head">
+          <div>
+            <span className="cx-panel-kicker">
+              Highest Priority
+            </span>
+            <h2>Immediate Actions</h2>
+          </div>
+
+          <span className="cx-panel-count">
+            {immediateActions.length}
+          </span>
+        </div>
+
+        {immediateActions.length === 0 ? (
+          <div className="cx-mission-empty">
+            No immediate operational actions.
+          </div>
+        ) : (
+          <div className="cx-mission-actions">
+            {immediateActions.map((action) => {
+              const id = String(
+                action.work_item_id
+                ?? action.id
+                ?? action.title,
+              );
+
+              return (
+                <button
+                  type="button"
+                  className="cx-mission-action-card"
+                  key={id}
+                  data-work-item-id={String(
+                    action.work_item_id ?? '',
+                  )}
+                  data-testid={`mission-action-${id}`}
+                  onClick={() => {
+                    const workItemId = String(
+                      action.work_item_id ?? '',
+                    );
+
+                    if (workItemId) {
+                      onOpenWork?.(workItemId);
+                    }
+                  }}
+                >
+                  <div className="cx-mission-action-main">
+                    <div>
+                      <strong>
+                        {String(action.title ?? 'Work item')}
+                      </strong>
+
+                      {action.client_name ? (
+                        <span>
+                          {String(action.client_name)}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <p>
+                      {String(
+                        action.next_action
+                        ?? 'Continue work',
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="cx-mission-action-state">
+                    <Chip
+                      value={String(action.health ?? 'GREEN')}
+                      tone={
+                        String(action.health) === 'RED'
+                          ? 'danger'
+                          : String(action.health) === 'AMBER'
+                            ? 'warn'
+                            : 'ok'
+                      }
+                    />
+
+                    <small>
+                      {String(
+                        action.due_state
+                        ?? action.current_controller
+                        ?? '',
+                      )}
+                    </small>
+
+                    {missionCount(action.waiting_days) > 0 ? (
+                      <small>
+                        Waiting {missionCount(action.waiting_days)}d
+                      </small>
+                    ) : null}
+                  </div>
+                  <span className="cx-mission-open-label">
+                    Open
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <p className="cx-panel-footnote">
+          Priority and next action come directly from Work Health.
+        </p>
       </section>
 
-      <section className="cx-executive-grid primary">
-        <article className="cx-executive-panel attention">
-          <div className="cx-executive-panel-head">
+      {/* ====================================================
+          ROW 3 â€” OPERATIONAL HEALTH
+         ==================================================== */}
+
+      <section className="cx-mission-grid">
+        <article className="cx-mission-panel">
+          <div className="cx-mission-section-head">
             <div>
-              <span className="cx-panel-kicker">Action Center</span>
-              <h2>Needs Attention</h2>
+              <span className="cx-panel-kicker">
+                Work Health
+              </span>
+              <h2>Operational Health</h2>
             </div>
-
-            <span className="cx-panel-count">
-              {attentionItems.length}
-            </span>
           </div>
 
-          <div className="cx-attention-list">
-            {attentionItems.map((item) => (
-              <div
-                key={`${item.title}-${item.detail}`}
-                className={`cx-attention-item ${item.tone}`}
-              >
-                <span className="cx-attention-marker" />
-
-                <div>
-                  <strong>{item.title}</strong>
-                  <p>{item.detail}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="cx-executive-panel deadline">
-          <div className="cx-executive-panel-head">
+          <div className="cx-mission-health-grid">
             <div>
-              <span className="cx-panel-kicker">Delivery Control</span>
-              <h2>Deadline Risk</h2>
-            </div>
-          </div>
-
-          <div className="cx-risk-grid">
-            <div className="cx-risk-metric good">
-              <strong>
-                {Math.max(
-                  0,
-                  openWork.length
-                  - overdueWork.length
-                  - dueSoon.length
-                  - dueToday.length,
-                )}
-              </strong>
-              <span>On Track</span>
+              <strong>{healthHealthy}</strong>
+              <span>Healthy</span>
             </div>
 
-            <div className="cx-risk-metric watch">
-              <strong>{dueSoon.length}</strong>
+            <div className={
+              healthAttention > 0 ? 'watch' : ''
+            }>
+              <strong>{healthAttention}</strong>
+              <span>Attention</span>
+            </div>
+
+            <div className={
+              healthHighRisk > 0 ? 'risk' : ''
+            }>
+              <strong>{healthHighRisk}</strong>
+              <span>High Risk</span>
+            </div>
+
+            <div>
+              <strong>{healthDueSoon}</strong>
               <span>Due Soon</span>
             </div>
 
-            <div className="cx-risk-metric amber">
-              <strong>{dueToday.length}</strong>
-              <span>Due Today</span>
+            <div>
+              <strong>{healthWaitingClient}</strong>
+              <span>Client</span>
             </div>
 
-            <div className="cx-risk-metric critical">
-              <strong>{overdueWork.length}</strong>
+            <div>
+              <strong>{healthWaitingReviewer}</strong>
+              <span>Reviewer</span>
+            </div>
+          </div>
+        </article>
+
+        <article className="cx-mission-panel">
+          <div className="cx-mission-section-head">
+            <div>
+              <span className="cx-panel-kicker">
+                Work Flow
+              </span>
+              <h2>Work Distribution</h2>
+            </div>
+          </div>
+
+          <div className="cx-mission-flow">
+            {flowOrder.map((status) => (
+              <div key={status}>
+                <strong>
+                  {missionCount(workDistribution[status])}
+                </strong>
+
+                <span>{flowLabels[status]}</span>
+              </div>
+            ))}
+
+            <div className={
+              healthHighRisk > 0 ? 'risk' : ''
+            }>
+              <strong>
+                {missionCount(displayHealth.overdue)}
+              </strong>
               <span>Overdue</span>
             </div>
           </div>
 
-          <div className="cx-risk-summary">
-            <span>High-priority overdue exposure</span>
-            <strong>{highPriorityOverdue.length}</strong>
-          </div>
-        </article>
-      </section>
-
-      <section className="cx-executive-grid analytics">
-        <article className="cx-executive-panel">
-          <div className="cx-executive-panel-head">
-            <div>
-              <span className="cx-panel-kicker">Portfolio Flow</span>
-              <h2>Work Status Distribution</h2>
-            </div>
-
-            <span className="cx-panel-count">
-              {work.rows.length}
-            </span>
-          </div>
-
-          {statusDistribution.length === 0 ? (
-            <div className="cx-executive-empty">
-              No work items available.
-            </div>
-          ) : (
-            <div className="cx-status-bars">
-              {statusDistribution.map((item) => (
-                <div className="cx-status-row" key={item.status}>
-                  <div className="cx-status-label">
-                    <Chip
-                      value={item.status}
-                      tone={statusTone(item.status)}
-                    />
-                    <strong>{item.count}</strong>
-                  </div>
-
-                  <div className="cx-status-track">
-                    <span
-                      style={{
-                        width: `${
-                          Math.max(
-                            8,
-                            (item.count / maxStatusCount) * 100,
-                          )
-                        }%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </article>
-
-        <article className="cx-executive-panel">
-          <div className="cx-executive-panel-head">
-            <div>
-              <span className="cx-panel-kicker">Client Dependency</span>
-              <h2>Document Aging</h2>
-            </div>
-
-            <span className="cx-panel-count">
-              {pendingDocuments.length}
-            </span>
-          </div>
-
-          <div className="cx-aging-grid">
-            {documentAgeBuckets.map((bucket) => (
-              <div
-                key={bucket.label}
-                className={`cx-aging-card ${bucket.tone}`}
-              >
-                <strong>{bucket.count}</strong>
-                <span>{bucket.label}</span>
-              </div>
-            ))}
-          </div>
-
           <p className="cx-panel-footnote">
-            Pending client documents grouped by request age.
+            Overdue is due intelligence, not a workflow status.
           </p>
         </article>
       </section>
 
-      <section className="cx-executive-grid wide">
-        <article className="cx-executive-panel workload">
-          <div className="cx-executive-panel-head">
+      {/* ====================================================
+          ROW 4 â€” TEAM SNAPSHOT
+         ==================================================== */}
+
+      {canViewFirmOperations ? (
+        <section className="cx-mission-panel">
+          <div className="cx-mission-section-head">
             <div>
-              <span className="cx-panel-kicker">Resource Management</span>
-              <h2>Team Workload Pressure</h2>
+              <span className="cx-panel-kicker">Team</span>
+              <h2>Team Snapshot</h2>
             </div>
 
             <span className="cx-panel-count">
-              {employeeWorkload.length}
+              {team.length}
             </span>
           </div>
 
-          {employeeWorkload.length === 0 ? (
-            <div className="cx-executive-empty">
-              No active employees available.
+          {team.length === 0 ? (
+            <div className="cx-mission-empty">
+              No active team workload.
             </div>
           ) : (
-            <div className="cx-workload-table">
-              <div className="cx-workload-header">
-                <span>Employee</span>
-                <span>Open</span>
-                <span>Overdue</span>
-                <span>Review</span>
-                <span>Pressure</span>
-              </div>
-
-              {employeeWorkload.slice(0, 8).map((employee) => (
+            <div className="cx-mission-team">
+              {team.slice(0, 8).map((member) => (
                 <div
-                  className="cx-workload-row"
-                  key={employee.id}
+                  className="cx-mission-team-row"
+                  key={String(
+                    member.employee_id
+                    ?? member.employee_name,
+                  )}
                 >
-                  <div>
-                    <strong>{employee.name}</strong>
+                  <strong>
+                    {String(
+                      member.employee_name
+                      ?? 'Employee',
+                    )}
+                  </strong>
 
-                    <div className="cx-workload-track">
-                      <span
-                        style={{
-                          width: `${
-                            Math.max(
-                              4,
-                              (employee.score / maxEmployeeScore) * 100,
-                            )
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <span>{employee.assigned}</span>
+                  <span>
+                    {missionCount(member.open_work)} work
+                  </span>
 
                   <span className={
-                    employee.overdue > 0
+                    missionCount(member.overdue) > 0
                       ? 'cx-number-danger'
                       : ''
                   }>
-                    {employee.overdue}
+                    {missionCount(member.overdue)} overdue
                   </span>
 
-                  <span>{employee.review}</span>
-
-                  <Chip
-                    value={employee.pressure}
-                    tone={
-                      employee.pressure === 'OVERLOADED'
-                        ? 'danger'
-                        : employee.pressure === 'BUSY'
-                          ? 'warn'
-                          : employee.pressure === 'BALANCED'
-                            ? 'ok'
-                            : 'muted'
-                    }
-                  />
+                  <span>
+                    {missionCount(
+                      member.completed_in_period,
+                    )} completed
+                  </span>
                 </div>
               ))}
             </div>
           )}
-        </article>
-      </section>
+        </section>
+      ) : null}
 
-      <section className="cx-executive-grid bottom">
-        <article className="cx-executive-panel client-risk">
-          <div className="cx-executive-panel-head">
+      {/* ====================================================
+          ROW 5 â€” CLIENT ACTIVITY
+         ==================================================== */}
+
+      {canViewFirmOperations ? (
+        <section className="cx-mission-panel">
+          <div className="cx-mission-section-head">
             <div>
-              <span className="cx-panel-kicker">Client Portfolio</span>
-              <h2>Client Risk Snapshot</h2>
+              <span className="cx-panel-kicker">
+                Clients
+              </span>
+              <h2>Client Activity</h2>
             </div>
           </div>
 
-          {clientRisk.length === 0 ? (
-            <div className="cx-executive-empty">
-              No active client risk detected.
+          <div className="cx-mission-client-summary">
+            <div>
+              <strong>{clientsWaiting}</strong>
+              <span>Clients Waiting</span>
             </div>
-          ) : (
-            <div className="cx-client-risk-table">
-              <div className="cx-client-risk-header">
-                <span>Client</span>
-                <span>Open</span>
-                <span>Overdue</span>
-                <span>Waiting</span>
-                <span>Next Due</span>
-                <span>Risk</span>
-              </div>
 
-              {clientRisk.map((client) => (
-                <div
-                  className="cx-client-risk-row"
-                  key={client.id}
+            <div>
+              <strong>
+                {missionCount(
+                  firmOverview.recently_completed,
+                )}
+              </strong>
+              <span>Recently Completed</span>
+            </div>
+
+            <div className={
+              clientsOverdue > 0 ? 'risk' : ''
+            }>
+              <strong>{clientsOverdue}</strong>
+              <span>Requiring Follow-up</span>
+            </div>
+
+            <div>
+              <strong>{clientActivity.length}</strong>
+              <span>Recent Client Movement</span>
+            </div>
+          </div>
+
+          {clientActivity.length > 0 ? (
+            <div className="cx-mission-client-events">
+              {clientActivity.map((activity) => (
+                <article
+                  key={String(activity.id)}
+                  className="cx-mission-client-event"
                 >
-                  <strong>{client.name}</strong>
-                  <span>{client.open}</span>
+                  <strong>
+                    {String(
+                      activity.client_name
+                      ?? 'Client',
+                    )}
+                  </strong>
 
-                  <span className={
-                    client.overdue > 0
-                      ? 'cx-number-danger'
-                      : ''
-                  }>
-                    {client.overdue}
-                  </span>
+                  <p>
+                    {String(activity.entry ?? 'Updated')}
+                  </p>
 
-                  <span>{client.waiting}</span>
-                  <span>{client.nextDue || 'Ã¢â‚¬â€'}</span>
-
-                  <Chip
-                    value={client.risk}
-                    tone={
-                      client.risk === 'HIGH'
-                        ? 'danger'
-                        : client.risk === 'MEDIUM'
-                          ? 'warn'
-                          : 'ok'
-                    }
-                  />
-                </div>
+                  <small>
+                    {String(activity.title ?? 'Work item')}
+                    {' Â· '}
+                    {missionTime(activity.created_at)}
+                  </small>
+                </article>
               ))}
             </div>
-          )}
-        </article>
+          ) : null}
+        </section>
+      ) : null}
 
-        <article className="cx-executive-panel activity">
-          <div className="cx-executive-panel-head">
+      {/* ====================================================
+          ROW 6 + UPCOMING â€” TIMELINE / DEADLINES
+         ==================================================== */}
+
+      <section className="cx-mission-grid cx-mission-bottom-grid">
+        <article className="cx-mission-panel">
+          <div className="cx-mission-section-head">
             <div>
-              <span className="cx-panel-kicker">Latest Movement</span>
-              <h2>Recent Firm Activity</h2>
+              <span className="cx-panel-kicker">
+                Latest Movement
+              </span>
+              <h2>Timeline</h2>
             </div>
           </div>
 
           {recentActivity.length === 0 ? (
-            <div className="cx-executive-empty">
-              No recent activity available.
+            <div className="cx-mission-empty">
+              No recent operational activity.
             </div>
           ) : (
             <div className="cx-activity-feed">
-              {recentActivity.map((row) => (
+              {recentActivity.map((activity) => (
                 <div
                   className="cx-activity-item"
-                  key={String(row.id)}
+                  key={String(activity.id)}
                 >
                   <span className="cx-activity-dot" />
 
                   <div>
-                    <strong>{String(row.title || 'Work item')}</strong>
+                    <strong>
+                      {String(
+                        activity.title
+                        ?? 'Work item',
+                      )}
+                    </strong>
 
                     <p>
-                      {String(row.client_name || 'Internal')}
-                      {' Ã‚Â· '}
-                      {label(String(row.status || 'UPDATED'))}
+                      {String(
+                        activity.entry
+                        ?? 'Updated',
+                      )}
                     </p>
+
+                    {activity.client_name ? (
+                      <small>
+                        {String(activity.client_name)}
+                      </small>
+                    ) : null}
                   </div>
 
                   <time>
-                    {String(row.updated_at ?? '')
-                      .slice(0, 16)
-                      .replace('T', ' ')}
+                    {missionTime(activity.created_at)}
                   </time>
                 </div>
               ))}
             </div>
           )}
         </article>
+
+        <aside className="cx-mission-panel cx-mission-upcoming">
+          <div className="cx-mission-section-head">
+            <div>
+              <span className="cx-panel-kicker">
+                Upcoming
+              </span>
+              <h2>Deadlines</h2>
+            </div>
+          </div>
+
+          {upcomingDeadlines.length === 0 ? (
+            <div className="cx-mission-empty">
+              No upcoming dated work.
+            </div>
+          ) : (
+            <div className="cx-mission-deadlines">
+              {upcomingDeadlines.map((item) => (
+                <button
+                  type="button"
+                  key={String(item.work_item_id)}
+                  className="cx-mission-deadline"
+                  data-work-item-id={String(
+                    item.work_item_id ?? '',
+                  )}
+                  data-testid={`mission-deadline-${String(
+                    item.work_item_id ?? '',
+                  )}`}
+                  onClick={() => {
+                    const workItemId = String(
+                      item.work_item_id ?? '',
+                    );
+
+                    if (workItemId) {
+                      onOpenWork?.(workItemId);
+                    }
+                  }}
+                >
+                  <div>
+                    <strong>
+                      {String(
+                        item.title
+                        ?? 'Work item',
+                      )}
+                    </strong>
+
+                    <small>
+                      {String(item.client_name ?? '')}
+                    </small>
+                  </div>
+
+                  <div>
+                    <strong>
+                      {String(item.due_date ?? '')}
+                    </strong>
+
+                    <small>
+                      {missionCount(item.days_to_due) === 0
+                        ? 'Today'
+                        : `${missionCount(
+                          item.days_to_due,
+                        )} day(s)`}
+                    </small>
+                  </div>
+                  <span className="cx-mission-open-label">
+                    Open
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </aside>
       </section>
+
+      {/* Existing action-centre figures remain available to leadership
+          without creating Phase 5.4 here. */}
+      {canViewFirmOperations && (
+        missionCount(actionCentre.unassigned) > 0
+        || missionCount(actionCentre.review_backlog) > 0
+      ) ? (
+        <p className="cx-mission-footnote">
+          {missionCount(actionCentre.unassigned)} unassigned
+          {' Â· '}
+          {missionCount(actionCentre.review_backlog)} review backlog
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -900,6 +868,11 @@ function ResourceManager({
   blank,
   filters,
   drawerExtra,
+  initialCreateRequest = 0,
+  onInitialCreateHandled,
+  initialEditRow = null,
+  onInitialEditHandled,
+  onOpenRow,
 }: {
   resource: string;
   title: string;
@@ -908,6 +881,11 @@ function ResourceManager({
   blank: Row;
   filters?: { name: string; options: readonly string[] }[];
   drawerExtra?: (editing: Row) => React.ReactNode;
+  initialCreateRequest?: number;
+  onInitialCreateHandled?: () => void;
+  initialEditRow?: Row | null;
+  onInitialEditHandled?: () => void;
+  onOpenRow?: (row: Row) => void;
 }): React.JSX.Element {
   const [search, setSearch] = useState('');
   const [applied, setApplied] = useState('');
@@ -916,6 +894,29 @@ function ResourceManager({
   const { rows, error, loading, reload } = useRows(resource, params);
   const [editing, setEditing] = useState<Row | null>(null);
   const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    if (!initialCreateRequest) return;
+
+    // Reuse the exact existing Add {title} state.
+    setEditing({ ...blank });
+    setSaveError('');
+    onInitialCreateHandled?.();
+  }, [
+    initialCreateRequest,
+  ]);
+
+
+  useEffect(() => {
+    if (!initialEditRow) return;
+
+    // Client Workspace returns to the same certified edit Drawer.
+    setEditing({ ...initialEditRow });
+    setSaveError('');
+    onInitialEditHandled?.();
+  }, [
+    initialEditRow,
+  ]);
 
   const submit = (): void => {
     if (!editing) return;
@@ -950,7 +951,24 @@ function ResourceManager({
         <div className="cx-spacer" />
         <button className="cx-btn" onClick={() => { setEditing({ ...blank }); setSaveError(''); }}>Add {title}</button>
       </div>
-      {loading ? <Loading /> : <DataTable columns={columns} rows={rows} onRow={(r) => { setEditing({ ...r }); setSaveError(''); }} empty={`No ${title.toLowerCase()} yet.`} />}
+      {loading ? (
+        <Loading />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={rows}
+          onRow={(row) => {
+            if (onOpenRow) {
+              onOpenRow(row);
+              return;
+            }
+
+            setEditing({ ...row });
+            setSaveError('');
+          }}
+          empty={`No ${title.toLowerCase()} yet.`}
+        />
+      )}
       {editing && (
         <Drawer
           title={`${editing.id ? 'Edit' : 'New'} ${title}`}
@@ -1172,12 +1190,96 @@ function Reports(): React.JSX.Element {
 // ---------------- Root ----------------
 function OperationalConsole(): React.JSX.Element {
   const [area, setArea] = useState<Area>('dashboard');
+
+  const [
+    workItemToOpen,
+    setWorkItemToOpen,
+  ] = useState<string | null>(null);
+
+  const [
+    clientCreateRequest,
+    setClientCreateRequest,
+  ] = useState(0);
+
+
+  const [
+    clientToOpen,
+    setClientToOpen,
+  ] = useState<string | null>(null);
+
+  const [
+    clientEditRow,
+    setClientEditRow,
+  ] = useState<Row | null>(null);
+
+  const [
+    workQuickAction,
+    setWorkQuickAction,
+  ] = useState<
+    'create' | 'documents' | null
+  >(null);
+
+  const [
+    employeeOpsInitialSection,
+    setEmployeeOpsInitialSection,
+  ] = useState<'assignment' | null>(null);
+
+  const openWorkItem = (workItemId: string): void => {
+    if (!workItemId) return;
+
+    setWorkItemToOpen(workItemId);
+    setArea('work');
+  };
+
+
+  const openClient = (clientId: string): void => {
+    if (!clientId) return;
+
+    setClientEditRow(null);
+    setClientToOpen(clientId);
+    setArea('clients');
+  };
+
+  const launchQuickCreate = (
+    action: QuickCreateAction,
+  ): void => {
+    if (action === 'NEW_CLIENT') {
+      setClientToOpen(null);
+      setClientEditRow(null);
+
+      setClientCreateRequest(
+        (current) => current + 1,
+      );
+      setArea('clients');
+      return;
+    }
+
+    if (action === 'NEW_WORK') {
+      setWorkQuickAction('create');
+      setArea('work');
+      return;
+    }
+
+    if (action === 'ASSIGN_WORK') {
+      setEmployeeOpsInitialSection('assignment');
+      setArea('employee-ops');
+      return;
+    }
+
+    setWorkQuickAction('documents');
+    setArea('work');
+  };
+
   const { identity } = useIdentity();
   const brand = useBrand();
   const view = ((): React.JSX.Element => {
     switch (area) {
       case 'dashboard':
-        return <Dashboard />;
+        return (
+          <Dashboard
+            onOpenWork={openWorkItem}
+          />
+        );
       case 'my-dashboard':
         return <EmployeeDashboard onDrill={(f) => { setArea('work'); void f; }} />;
       case 'firm-overview':
@@ -1187,6 +1289,22 @@ function OperationalConsole(): React.JSX.Element {
       case 'identity':
         return isProviderAdmin(identity) ? <IdentityAccessAdministration /> : <div className="cx-warning">Administrator access is required.</div>;
       case 'clients':
+        if (clientToOpen) {
+          return (
+            <ClientWorkspace
+              clientId={clientToOpen}
+              onBack={() => {
+                setClientToOpen(null);
+              }}
+              onEditClient={(client) => {
+                setClientToOpen(null);
+                setClientEditRow(client);
+              }}
+              onOpenWork={openWorkItem}
+            />
+          );
+        }
+
         return (
           <ResourceManager
             resource="clients"
@@ -1225,14 +1343,51 @@ function OperationalConsole(): React.JSX.Element {
                 ? <ClientContactsPanel key={String(client.id)} clientId={String(client.id)} />
                 : <div className="cx-warning">Save the client before adding contacts.</div>
             )}
+            initialCreateRequest={
+              clientCreateRequest
+            }
+            onInitialCreateHandled={() => {
+              setClientCreateRequest(0);
+            }}
+            initialEditRow={clientEditRow}
+            onInitialEditHandled={() => {
+              setClientEditRow(null);
+            }}
+            onOpenRow={(client) => {
+              openClient(String(client.id));
+            }}
           />
         );
       case 'work':
-        return <WorkArea />;
+        return (
+          <WorkArea
+            initialWorkItemId={
+              workItemToOpen ?? undefined
+            }
+            onInitialWorkOpened={() => {
+              setWorkItemToOpen(null);
+            }}
+            initialQuickAction={
+              workQuickAction ?? undefined
+            }
+            onInitialQuickActionHandled={() => {
+              setWorkQuickAction(null);
+            }}
+          />
+        );
       case 'servicing':
         return <ServicingArea />;
       case 'employee-ops':
-        return <EmployeeOpsArea />;
+        return (
+          <EmployeeOpsArea
+            initialSection={
+              employeeOpsInitialSection ?? undefined
+            }
+            onInitialSectionHandled={() => {
+              setEmployeeOpsInitialSection(null);
+            }}
+          />
+        );
       case 'team':
         return (
           <ResourceManager
@@ -1303,7 +1458,17 @@ function OperationalConsole(): React.JSX.Element {
             }
             return true;
           }).map((n) => (
-            <button key={n.key} className={n.key === area ? 'active' : ''} onClick={() => setArea(n.key)}>
+            <button
+              key={n.key}
+              className={n.key === area ? 'active' : ''}
+              onClick={() => {
+                if (n.key === 'clients') {
+                  setClientToOpen(null);
+                }
+
+                setArea(n.key);
+              }}
+            >
               {n.label}
             </button>
           ))}
@@ -1314,6 +1479,15 @@ function OperationalConsole(): React.JSX.Element {
         <header className="cx-top">
           <h2>{NAV.find((n) => n.key === area)?.label}</h2>
           <GlobalSearch onNavigate={setArea} />
+          <QuickCreateMenu
+            canAssign={
+              brand.capabilities?.is_executive === true
+              || String(
+                brand.capabilities?.role ?? '',
+              ) === 'MANAGER'
+            }
+            onSelect={launchQuickCreate}
+          />
           <UserMenu />
         </header>
         <div className="cx-body">{view}</div>

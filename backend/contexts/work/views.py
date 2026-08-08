@@ -30,6 +30,7 @@ from contexts.configuration.models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
 )
+from contexts.assignment.models import AssignmentEvent
 from contexts.identity.models import Employee
 from contexts.quality.services import (
     cycle_summary as qa_cycle_summary,
@@ -1194,9 +1195,409 @@ class WorkItemViewSet(TenantModelViewSet):
 
     @action(detail=True, methods=["get"])
     def history(self, request, pk=None):
+        """Chronological operational story for one Work Item.
+
+        Phase 5.3 deliberately introduces no Timeline table or event engine.
+        This endpoint projects already-durable domain history into one ordered
+        read model while keeping the existing WorkItem ``history`` action.
+        """
         item = self.get_object()
-        notes = WorkNote.objects.filter(tenant_id=self.principal().tenant_id, work_item_id=item.id)
-        return Response(WorkNoteSerializer(notes, many=True).data)
+        tenant_id = self.principal().tenant_id
+
+        notes = list(
+            WorkNote.objects.filter(
+                tenant_id=tenant_id,
+                work_item_id=item.id,
+            )
+        )
+
+        assignments = list(
+            AssignmentEvent.objects.filter(
+                tenant_id=tenant_id,
+                work_item_id=item.id,
+            )
+        )
+
+        document_requests = list(
+            DocumentRequest.objects.filter(
+                tenant_id=tenant_id,
+                work_item_id=item.id,
+            )
+        )
+
+        attachments = list(
+            DocumentAttachment.objects.filter(
+                tenant_id=tenant_id,
+                work_item_id=item.id,
+            )
+        )
+
+        # Some legacy/versioned attachments are linked through the request
+        # rather than carrying work_item_id directly.
+        request_ids = {
+            document_request.id
+            for document_request in document_requests
+        }
+
+        if request_ids:
+            linked_attachments = list(
+                DocumentAttachment.objects.filter(
+                    tenant_id=tenant_id,
+                    document_request_id__in=request_ids,
+                )
+            )
+
+            seen_attachment_ids = {
+                attachment.id
+                for attachment in attachments
+            }
+
+            attachments.extend(
+                attachment
+                for attachment in linked_attachments
+                if attachment.id not in seen_attachment_ids
+            )
+
+        actor_ids = {
+            value
+            for value in [
+                item.created_by,
+                *[
+                    note.author_user_id
+                    for note in notes
+                    if note.author_user_id
+                ],
+                *[
+                    assignment.actor_user_id
+                    for assignment in assignments
+                    if assignment.actor_user_id
+                ],
+                *[
+                    attachment.uploaded_by
+                    for attachment in attachments
+                    if attachment.uploaded_by
+                ],
+                *[
+                    attachment.reviewed_by
+                    for attachment in attachments
+                    if attachment.reviewed_by
+                ],
+            ]
+            if value
+        }
+
+        employees = Employee.objects.filter(
+            tenant_id=tenant_id,
+        ).filter(
+            models.Q(id__in=actor_ids)
+            | models.Q(principal_id__in=actor_ids)
+        )
+
+        actor_names = {}
+
+        for employee in employees:
+            actor_names[str(employee.id)] = employee.name
+
+            if employee.principal_id:
+                actor_names[str(employee.principal_id)] = employee.name
+
+        def actor_name(actor_id):
+            if not actor_id:
+                return ""
+
+            return actor_names.get(
+                str(actor_id),
+                "",
+            )
+
+        def iso(value):
+            return value.isoformat() if value else ""
+
+        events = []
+
+        # --------------------------------------------------------
+        # Work creation
+        # --------------------------------------------------------
+
+        events.append(
+            {
+                "id": f"work-created-{item.id}",
+                "event_type": "WORK_CREATED",
+                "title": "Work created",
+                "entry": item.title,
+                "detail": "",
+                "created_at": iso(item.created_at),
+                "actor_id": str(item.created_by or ""),
+                "actor_name": actor_name(item.created_by),
+                "from_status": "",
+                "to_status": WorkStatus.NOT_STARTED,
+            }
+        )
+
+        # --------------------------------------------------------
+        # Existing append-only WorkNote ledger
+        #
+        # This remains authoritative for workflow transitions and
+        # manual/direct assignment changes recorded by WorkItemViewSet.
+        # --------------------------------------------------------
+
+        for note in notes:
+            if note.to_status == WorkStatus.IN_PROGRESS:
+                if note.from_status == WorkStatus.REWORK_REQUIRED:
+                    event_type = "WORK_RESUMED"
+                    title = "Work resumed"
+                else:
+                    event_type = "WORK_STARTED"
+                    title = "Work started"
+
+            elif note.to_status == WorkStatus.WAITING_FOR_CLIENT:
+                event_type = "WAITING_FOR_CLIENT"
+                title = "Waiting for client"
+
+            elif note.to_status == WorkStatus.READY_FOR_REVIEW:
+                event_type = "SUBMITTED_FOR_REVIEW"
+                title = "Submitted for review"
+
+            elif note.to_status == WorkStatus.REWORK_REQUIRED:
+                event_type = "REWORK_REQUIRED"
+                title = "Returned for rework"
+
+            elif note.to_status == WorkStatus.COMPLETED:
+                event_type = "REVIEW_APPROVED"
+                title = "Review approved and completed"
+
+            elif note.to_status == WorkStatus.CANCELLED:
+                event_type = "WORK_CANCELLED"
+                title = "Work cancelled"
+
+            elif note.entry == "Assignment updated.":
+                event_type = "ASSIGNMENT_UPDATED"
+                title = "Assignment updated"
+
+            elif note.from_status or note.to_status:
+                event_type = "STATUS_CHANGED"
+                title = "Work status changed"
+
+            else:
+                event_type = "WORK_NOTE"
+                title = "Work note"
+
+            events.append(
+                {
+                    "id": f"note-{note.id}",
+                    "event_type": event_type,
+                    "title": title,
+                    "entry": note.entry,
+                    "detail": "",
+                    "created_at": iso(note.created_at),
+                    "actor_id": str(note.author_user_id or ""),
+                    "actor_name": actor_name(
+                        note.author_user_id,
+                    ),
+                    "from_status": note.from_status,
+                    "to_status": note.to_status,
+                }
+            )
+
+        # --------------------------------------------------------
+        # Existing append-only AssignmentEvent ledger
+        # --------------------------------------------------------
+
+        for assignment in assignments:
+            owner = Employee.objects.filter(
+                tenant_id=tenant_id,
+                id=assignment.owner_user_id,
+            ).first() if assignment.owner_user_id else None
+
+            reviewer = Employee.objects.filter(
+                tenant_id=tenant_id,
+                id=assignment.reviewer_user_id,
+            ).first() if assignment.reviewer_user_id else None
+
+            event_type = str(assignment.event_type)
+
+            title_map = {
+                "RECOMMENDED_APPLIED": "Work assigned",
+                "OVERRIDE_APPLIED": "Assignment override applied",
+                "REASSIGNED": "Work reassigned",
+                "REVIEWER_SET": "Reviewer assigned",
+            }
+
+            detail_parts = []
+
+            if owner:
+                detail_parts.append(
+                    f"Owner: {owner.name}"
+                )
+
+            if reviewer:
+                detail_parts.append(
+                    f"Reviewer: {reviewer.name}"
+                )
+
+            if assignment.reason:
+                detail_parts.append(
+                    assignment.reason
+                )
+
+            events.append(
+                {
+                    "id": f"assignment-{assignment.id}",
+                    "event_type": event_type,
+                    "title": title_map.get(
+                        event_type,
+                        "Assignment updated",
+                    ),
+                    "entry": " · ".join(detail_parts),
+                    "detail": "",
+                    "created_at": iso(assignment.created_at),
+                    "actor_id": str(
+                        assignment.actor_user_id or ""
+                    ),
+                    "actor_name": actor_name(
+                        assignment.actor_user_id,
+                    ),
+                    "from_status": "",
+                    "to_status": "",
+                }
+            )
+
+        # --------------------------------------------------------
+        # Existing DocumentRequest lifecycle
+        # --------------------------------------------------------
+
+        request_names = {
+            document_request.id: document_request.name
+            for document_request in document_requests
+        }
+
+        for document_request in document_requests:
+            sent_time = (
+                document_request.sent_at
+                or document_request.created_at
+            )
+
+            events.append(
+                {
+                    "id": f"document-request-{document_request.id}",
+                    "event_type": "DOCUMENT_REQUESTED",
+                    "title": "Document requested",
+                    "entry": document_request.name,
+                    "detail": str(
+                        document_request.request_channel or ""
+                    ),
+                    "created_at": iso(sent_time),
+                    "actor_id": str(
+                        document_request.created_by or ""
+                    ),
+                    "actor_name": actor_name(
+                        document_request.created_by,
+                    ),
+                    "from_status": "",
+                    "to_status": str(
+                        document_request.status or ""
+                    ),
+                }
+            )
+
+        # --------------------------------------------------------
+        # Existing DocumentAttachment lifecycle
+        # --------------------------------------------------------
+
+        for attachment in attachments:
+            document_name = request_names.get(
+                attachment.document_request_id,
+                attachment.original_name,
+            )
+
+            source = str(
+                attachment.source or ""
+            )
+
+            upload_title = (
+                "Document received from client"
+                if source == "CLIENT"
+                else "Document uploaded"
+            )
+
+            events.append(
+                {
+                    "id": f"attachment-upload-{attachment.id}",
+                    "event_type": "DOCUMENT_RECEIVED",
+                    "title": upload_title,
+                    "entry": document_name,
+                    "detail": attachment.original_name,
+                    "created_at": iso(attachment.created_at),
+                    "actor_id": str(
+                        attachment.uploaded_by or ""
+                    ),
+                    "actor_name": actor_name(
+                        attachment.uploaded_by,
+                    ),
+                    "from_status": "",
+                    "to_status": str(
+                        attachment.review_status or ""
+                    ),
+                }
+            )
+
+            if attachment.reviewed_at:
+                review_status = str(
+                    attachment.review_status or ""
+                )
+
+                if review_status == AttachmentReviewStatus.ACCEPTED:
+                    review_title = "Document accepted"
+                    review_type = "DOCUMENT_ACCEPTED"
+
+                elif review_status == AttachmentReviewStatus.REJECTED:
+                    review_title = "Document rejected"
+                    review_type = "DOCUMENT_REJECTED"
+
+                else:
+                    review_title = "Document reviewed"
+                    review_type = "DOCUMENT_REVIEWED"
+
+                events.append(
+                    {
+                        "id": f"attachment-review-{attachment.id}",
+                        "event_type": review_type,
+                        "title": review_title,
+                        "entry": document_name,
+                        "detail": str(
+                            attachment.review_comment or ""
+                        ),
+                        "created_at": iso(
+                            attachment.reviewed_at
+                        ),
+                        "actor_id": str(
+                            attachment.reviewed_by or ""
+                        ),
+                        "actor_name": actor_name(
+                            attachment.reviewed_by,
+                        ),
+                        "from_status": "PENDING_REVIEW",
+                        "to_status": review_status,
+                    }
+                )
+
+        # Oldest -> newest creates the natural operational story.
+        #
+        # Multiple domain events can legitimately resolve to the same
+        # timestamp. Work creation is the causal anchor of every later
+        # event, so it wins only that timestamp tie. The remaining events
+        # keep their existing deterministic id ordering.
+        events.sort(
+            key=lambda event: (
+                event["created_at"],
+                0
+                if event["event_type"] == "WORK_CREATED"
+                else 1,
+                event["id"],
+            )
+        )
+
+        return Response(events)
 
 
 class WorkNoteViewSet(TenantModelViewSet):

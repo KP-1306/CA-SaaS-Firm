@@ -3803,3 +3803,421 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ================================================================
+   VRIDHI MISSION CONTROL V1
+   ================================================================ */
+
+.cx-mission-control {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 18px;
+  color: #172033;
+}
+
+.cx-mission-hero,
+.cx-mission-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgb(15 23 42 / 5%);
+}
+
+.cx-mission-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px 30px;
+}
+
+.cx-mission-hero h1,
+.cx-mission-panel h2 {
+  margin: 4px 0 0;
+}
+
+.cx-mission-hero p {
+  margin: 8px 0 0;
+  color: #667085;
+}
+
+.cx-mission-hero-status {
+  display: flex;
+  min-width: 105px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 20px;
+  border-radius: 14px;
+  background: #fff4f1;
+}
+
+.cx-mission-hero-status strong {
+  font-size: 30px;
+}
+
+.cx-mission-hero-status span {
+  color: #9b382d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cx-mission-panel {
+  padding: 22px;
+}
+
+.cx-mission-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.cx-mission-today-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cx-mission-today-grid > div,
+.cx-mission-health-grid > div,
+.cx-mission-flow > div,
+.cx-mission-client-summary > div {
+  display: flex;
+  min-height: 92px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 15px;
+  border: 1px solid #e7ebf1;
+  border-radius: 13px;
+  background: #fafbfc;
+}
+
+.cx-mission-today-grid .watch,
+.cx-mission-health-grid .watch {
+  border-color: #f0d28b;
+  background: #fffbeb;
+}
+
+.cx-mission-today-grid .risk,
+.cx-mission-health-grid .risk,
+.cx-mission-flow .risk,
+.cx-mission-client-summary .risk {
+  border-color: #f0b7ad;
+  background: #fff5f3;
+}
+
+.cx-mission-today-grid strong,
+.cx-mission-health-grid strong,
+.cx-mission-flow strong,
+.cx-mission-client-summary strong {
+  font-size: 25px;
+  line-height: 1;
+}
+
+.cx-mission-today-grid span,
+.cx-mission-health-grid span,
+.cx-mission-flow span,
+.cx-mission-client-summary span {
+  color: #556070;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cx-mission-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cx-mission-action-card {
+  display: flex;
+  min-height: 126px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 17px;
+  border: 1px solid #e4e8ef;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.cx-mission-action-main {
+  min-width: 0;
+}
+
+.cx-mission-action-main > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cx-mission-action-main > div span,
+.cx-mission-action-main p,
+.cx-mission-action-state small {
+  color: #667085;
+}
+
+.cx-mission-action-main p {
+  margin: 14px 0 0;
+  font-weight: 600;
+}
+
+.cx-mission-action-state {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.cx-mission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.cx-mission-health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cx-mission-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cx-mission-team {
+  display: flex;
+  flex-direction: column;
+}
+
+.cx-mission-team-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(100px, auto));
+  gap: 20px;
+  padding: 13px 2px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.cx-mission-team-row:last-child {
+  border-bottom: 0;
+}
+
+.cx-mission-team-row span {
+  color: #667085;
+}
+
+.cx-mission-client-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cx-mission-client-events {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.cx-mission-client-event {
+  padding: 15px;
+  border: 1px solid #e7ebf1;
+  border-radius: 13px;
+  background: #fafbfc;
+}
+
+.cx-mission-client-event p {
+  margin: 8px 0;
+}
+
+.cx-mission-client-event small {
+  color: #667085;
+}
+
+.cx-mission-bottom-grid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+}
+
+.cx-mission-deadlines {
+  display: flex;
+  flex-direction: column;
+}
+
+.cx-mission-deadline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 2px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.cx-mission-deadline:last-child {
+  border-bottom: 0;
+}
+
+.cx-mission-deadline > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cx-mission-deadline > div:last-child {
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+
+.cx-mission-deadline small,
+.cx-mission-footnote {
+  color: #667085;
+}
+
+.cx-mission-empty {
+  padding: 28px 12px;
+  color: #667085;
+  text-align: center;
+}
+
+.cx-mission-footnote {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 12px;
+}
+
+@media (max-width: 1200px) {
+  .cx-mission-today-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cx-mission-client-events {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .cx-mission-grid,
+  .cx-mission-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cx-mission-actions,
+  .cx-mission-client-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .cx-mission-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cx-mission-today-grid,
+  .cx-mission-actions,
+  .cx-mission-health-grid,
+  .cx-mission-flow,
+  .cx-mission-client-summary,
+  .cx-mission-client-events {
+    grid-template-columns: 1fr;
+  }
+
+  .cx-mission-team-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+
+/* VRIDHI MISSION CONTROL WORKSPACE BRIDGE */
+
+button.cx-mission-action-card,
+button.cx-mission-deadline {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.cx-mission-action-card {
+  appearance: none;
+}
+
+button.cx-mission-action-card:hover,
+button.cx-mission-deadline:hover {
+  border-color: #c7d2e3;
+  box-shadow: 0 5px 16px rgb(15 23 42 / 7%);
+}
+
+button.cx-mission-action-card:focus-visible,
+button.cx-mission-deadline:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.cx-mission-open-label {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+
+/* VRIDHI PHASE 5.1A - UNIVERSAL QUICK CREATE */
+
+.cx-quick-create {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.cx-quick-create-trigger {
+  white-space: nowrap;
+}
+
+.cx-quick-create-menu {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  width: 280px;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 14px 32px rgb(15 23 42 / 14%);
+}
+
+.cx-quick-create-menu > button {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cx-quick-create-menu > button:hover,
+.cx-quick-create-menu > button:focus-visible {
+  background: #f8fafc;
+}
+
+.cx-quick-create-menu > button span {
+  color: #64748b;
+  font-size: 12px;
+}

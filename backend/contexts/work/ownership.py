@@ -20,6 +20,8 @@ history, so C4 blocks them rather than introduce soft deletion.
 
 from __future__ import annotations
 
+from contexts.identity.access import is_platform_admin
+
 import uuid
 
 from contexts.identity.models import Employee
@@ -80,65 +82,13 @@ def _is_linked_employee(tenant_id, employee_user_id, principal) -> bool:
 
 
 def is_operational_superuser(tenant_id, principal) -> bool:
-    """Return True only for an active Vridhi PLATFORM_ADMIN.
+    """Return True only for active tenant-local PLATFORM_ADMIN authority.
 
-    This is the emergency operational override for owner/reviewer
-    availability. It changes assignment authority only; existing
-    workflow-state, document-readiness and terminal-state rules
-    continue to apply in their existing helpers/endpoints.
+    Provider identity resolution is canonical in contexts.identity.access.
+    Existing workflow, document-readiness and terminal-state protections are
+    unchanged.
     """
-    if principal is None:
-        return False
-
-    principal_id = _as_uuid(
-        getattr(principal, "principal_id", None)
-    )
-
-    principal_tenant = _as_uuid(
-        getattr(principal, "tenant_id", None)
-    )
-
-    tenant_uuid = _as_uuid(tenant_id)
-
-    if (
-        principal_id is None
-        or tenant_uuid is None
-        or principal_tenant != tenant_uuid
-    ):
-        return False
-
-    memberships = ProviderMembership.objects.filter(
-        tenant_id=tenant_uuid,
-        role=ProviderRole.PLATFORM_ADMIN,
-        status=MembershipStatus.ACTIVE,
-    )
-
-    # Session representation: UserAccount id.
-    if memberships.filter(
-        user_account_id=principal_id
-    ).exists():
-        return True
-
-    # Session representation: linked Employee id.
-    if memberships.filter(
-        employee_id=principal_id
-    ).exists():
-        return True
-
-    # Canonical employee mapping:
-    # Employee.principal_id -> authenticated principal.
-    employee_ids = Employee.objects.filter(
-        tenant_id=tenant_uuid,
-        principal_id=principal_id,
-        is_active=True,
-    ).values_list(
-        "id",
-        flat=True,
-    )
-
-    return memberships.filter(
-        employee_id__in=employee_ids
-    ).exists()
+    return is_platform_admin(tenant_id, principal)
 def is_owner(item, principal) -> bool:
     """True when the acting principal is the assigned owner of the item.
 

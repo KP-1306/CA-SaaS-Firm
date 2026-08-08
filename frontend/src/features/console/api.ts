@@ -4,6 +4,46 @@ const API_BASE = '/api/v1';
 const DEV_TENANT = '11111111-1111-1111-1111-111111111111';
 const DEV_PRINCIPAL = '22222222-2222-2222-2222-222222222222';
 
+function developmentIdentity(): {
+  tenantId: string;
+  principalId: string;
+} {
+  const storedTenant =
+    localStorage.getItem('tenantId');
+
+  const storedPrincipal =
+    localStorage.getItem('principalId');
+
+  const tenantId =
+    storedTenant === DEV_TENANT
+      ? storedTenant
+      : DEV_TENANT;
+
+  const principalId =
+    storedPrincipal === DEV_PRINCIPAL
+      ? storedPrincipal
+      : DEV_PRINCIPAL;
+
+  if (storedTenant !== tenantId) {
+    localStorage.setItem(
+      'tenantId',
+      tenantId,
+    );
+  }
+
+  if (storedPrincipal !== principalId) {
+    localStorage.setItem(
+      'principalId',
+      principalId,
+    );
+  }
+
+  return {
+    tenantId,
+    principalId,
+  };
+}
+
 function cookieValue(name: string): string {
   const prefix = `${encodeURIComponent(name)}=`;
   const item = document.cookie
@@ -14,9 +54,11 @@ function cookieValue(name: string): string {
 }
 
 function headers(json = true): Record<string, string> {
+  const identity = developmentIdentity();
+
   const base: Record<string, string> = {
-    'X-Tenant-ID': localStorage.getItem('tenantId') ?? DEV_TENANT,
-    'X-Principal-ID': localStorage.getItem('principalId') ?? DEV_PRINCIPAL,
+    'X-Tenant-ID': identity.tenantId,
+    'X-Principal-ID': identity.principalId,
   };
   const csrf = cookieValue('csrftoken');
   if (csrf) base['X-CSRFToken'] = csrf;

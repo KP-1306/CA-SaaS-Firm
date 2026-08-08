@@ -55,8 +55,26 @@ function useList(resource: string): { rows: Row[]; error: string; loading: boole
   return { rows, error, loading, reload };
 }
 
-export function EmployeeOpsArea(): React.JSX.Element {
-  const [section, setSection] = useState<Section>('directory');
+export function EmployeeOpsArea({
+  initialSection,
+  onInitialSectionHandled,
+}: {
+  initialSection?: Section | undefined;
+  onInitialSectionHandled?: () => void;
+} = {}): React.JSX.Element {
+  const [section, setSection] = useState<Section>(
+    initialSection ?? 'directory',
+  );
+
+  useEffect(() => {
+    if (!initialSection) return;
+
+    setSection(initialSection);
+    onInitialSectionHandled?.();
+  }, [
+    initialSection,
+  ]);
+
   return (
     <div className="cx-area">
       <div className="cx-subnav">
