@@ -268,6 +268,8 @@ class WorkItemAccessPermission(ActionAccessPermission):
         # Core work-item CRUD.
         "list": "work.view",
         "retrieve": "work.view",
+        "health": "work.view",
+        "history": "work.view",
         "create": "work.create",
         "update": "work.submit",
         "partial_update": "work.submit",

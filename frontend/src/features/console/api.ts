@@ -1,6 +1,8 @@
 // Central internal-plane API client. Dev headers live here only (charter section 7).
 const API_BASE = '/api/v1';
 
+let csrfToken = '';
+
 const DEV_TENANT = '11111111-1111-1111-1111-111111111111';
 const DEV_PRINCIPAL = '22222222-2222-2222-2222-222222222222';
 
@@ -60,7 +62,7 @@ function headers(json = true): Record<string, string> {
     'X-Tenant-ID': identity.tenantId,
     'X-Principal-ID': identity.principalId,
   };
-  const csrf = cookieValue('csrftoken');
+  const csrf = csrfToken || cookieValue('csrftoken');
   if (csrf) base['X-CSRFToken'] = csrf;
   if (json) base['Content-Type'] = 'application/json';
   return base;
@@ -196,6 +198,23 @@ export async function remove(resource: string, id: string): Promise<void> {
   if (!res.ok && res.status !== 404) return fail(res);
 }
 
+export async function collectionAct(
+  resource: string,
+  verb: string,
+  body: Row = {},
+): Promise<Row> {
+  const res = await fetch(
+    `${API_BASE}/${resource}/${verb}/`,
+    options({
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  );
+
+  if (!res.ok) return fail(res);
+
+  return (await res.json()) as Row;
+}
 export async function act(resource: string, id: string, verb: string, body: Row = {}): Promise<Row> {
   const res = await fetch(`${API_BASE}/${resource}/${id}/${verb}/`, options({
     method: 'POST',
@@ -232,7 +251,17 @@ export async function requestObject(
   const res = await fetch(`${API_BASE}/${path}`, options(init));
   if (!res.ok) return fail(res);
   if (res.status === 204) return {};
-  return (await res.json()) as Row;
+
+  const row = (await res.json()) as Row;
+
+  if (
+    path === 'auth/login/' &&
+    typeof row.csrf_token === 'string'
+  ) {
+    csrfToken = row.csrf_token;
+  }
+
+  return row;
 }
 
 export async function requestRows(

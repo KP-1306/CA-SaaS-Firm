@@ -1,6 +1,6 @@
 import type * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { act, list, save } from './api';
+import { act, list, save, collectionAct } from './api';
 import { label } from './types';
 import {
   EMPLOYMENT_TYPES,
@@ -16,7 +16,7 @@ import type { Column, Field } from './ui';
 
 // Employee Operations V1 console area. Reuses the shared UI kit and API client.
 // Every UUID reference is chosen from a selector whose options are existing row
-// ids with a human-readable label lookup — no raw-UUID inputs anywhere.
+// ids with a human-readable label lookup â€” no raw-UUID inputs anywhere.
 
 type Section =
   | 'directory'
@@ -624,7 +624,7 @@ function AssignmentSection(): React.JSX.Element {
   const recommend = (): void => {
     setBusy(true);
     setErr('');
-    act('assignment-recommendations', 'x', 'recommend', {
+    collectionAct('assignment-recommendations', 'recommend', {
       required_category: category || undefined,
     })
       .then((r) => setCandidates(((r as Row).candidates as Row[]) ?? []))
@@ -645,7 +645,7 @@ function AssignmentSection(): React.JSX.Element {
       explanation: candidate.score_breakdown ?? {},
     };
     if (isOverride) body.override_reason = 'Manual override from recommendation panel';
-    act('assignment-recommendations', 'x', 'execute', body)
+    collectionAct('assignment-recommendations', 'execute', body)
       .then(() => {
         setErr('');
         work.reload();
@@ -682,7 +682,7 @@ function AssignmentSection(): React.JSX.Element {
           </select>
         </div>
         <button type="button" className="cx-btn" disabled={busy} onClick={recommend}>
-          {busy ? 'Computing…' : 'Get recommendations'}
+          {busy ? 'Computingâ€¦' : 'Get recommendations'}
         </button>
       </div>
       <ErrorBar error={work.error || err} />

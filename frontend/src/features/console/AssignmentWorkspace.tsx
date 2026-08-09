@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type * as React from 'react';
 
-import { act } from './api';
+import { collectionAct } from './api';
 import type { Row } from './types';
 import { ErrorBar, Loading } from './ui';
 
@@ -49,9 +49,8 @@ export function AssignmentWorkspace({
     setError('');
     setCandidates([]);
 
-    void act(
+    void collectionAct(
       'assignment-recommendations',
-      'x',
       'recommend',
       {
         work_item_id: workItemId,
@@ -123,9 +122,8 @@ export function AssignmentWorkspace({
     setExecutingId(employeeId);
     setError('');
 
-    void act(
+    void collectionAct(
       'assignment-recommendations',
-      'x',
       'execute',
       body,
     )

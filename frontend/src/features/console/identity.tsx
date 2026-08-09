@@ -226,7 +226,11 @@ export function IdentityGate({
   };
 
   useEffect(() => {
-    void reload();
+    void requestObject('auth/login/')
+      .catch(() => undefined)
+      .finally(() => {
+        void reload();
+      });
   }, []);
 
   const logout = async (): Promise<void> => {
