@@ -150,12 +150,49 @@ def _effective_on(
     return True
 
 
+
+def _applicability_matches(
+    applicability,
+    operational_context,
+) -> bool:
+    if applicability in (None, {}):
+        return True
+
+    if not isinstance(applicability, dict):
+        raise ValueError(
+            "Compliance deadline applicability must be an object."
+        )
+
+    context = operational_context or {}
+
+    if not isinstance(context, dict):
+        raise ValueError(
+            "Compliance deadline operational context must be an object."
+        )
+
+    for key, expected in applicability.items():
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                "Compliance deadline applicability keys must be "
+                "non-empty strings."
+            )
+
+        if key not in context:
+            return False
+
+        if context[key] != expected:
+            return False
+
+    return True
+
+
 def _select_rule(
     *,
     tenant_id,
     service_id,
     frequency: str,
     on_date: dt.date,
+    operational_context: dict | None = None,
 ) -> ComplianceDeadlineRule | None:
     rules = ComplianceDeadlineRule.objects.filter(
         tenant_id=tenant_id,
@@ -167,12 +204,21 @@ def _select_rule(
         "-created_at",
     )
 
-    generic_rule = None
+    best_rule = None
+    best_score = None
 
     for candidate in rules:
         if not _effective_on(
             candidate,
             on_date,
+        ):
+            continue
+
+        applicability = candidate.applicability or {}
+
+        if not _applicability_matches(
+            applicability,
+            operational_context,
         ):
             continue
 
@@ -186,18 +232,38 @@ def _select_rule(
             period_start_month=period_start_month,
         )
 
-        # A period-specific rule wins over a generic rule.
-        if candidate.period_number == current_period:
-            return candidate
+        is_period_specific = (
+            candidate.period_number is not None
+        )
 
-        # NULL retains the existing generic-rule behavior.
         if (
-            candidate.period_number is None
-            and generic_rule is None
+            is_period_specific
+            and candidate.period_number != current_period
         ):
-            generic_rule = candidate
+            continue
 
-    return generic_rule
+        # Higher score means a more specific applicable rule.
+        #
+        # 1. period-specific beats generic;
+        # 2. conditional beats unconditional;
+        # 3. among conditional rules, more keys beats fewer keys.
+        #
+        # Query ordering remains the tie-breaker because we retain
+        # the first candidate encountered for an equal score.
+        score = (
+            1 if is_period_specific else 0,
+            1 if applicability else 0,
+            len(applicability),
+        )
+
+        if (
+            best_score is None
+            or score > best_score
+        ):
+            best_rule = candidate
+            best_score = score
+
+    return best_rule
 
 
 def calculate_compliance_due_date(
@@ -206,12 +272,14 @@ def calculate_compliance_due_date(
     service_id,
     frequency: str,
     on_date: dt.date,
+    operational_context: dict | None = None,
 ) -> dt.date | None:
     rule = _select_rule(
         tenant_id=tenant_id,
         service_id=service_id,
         frequency=frequency,
         on_date=on_date,
+        operational_context=operational_context,
     )
 
     if rule is None:

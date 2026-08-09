@@ -84,6 +84,7 @@ def test_statutory_deadline_has_precedence(
         ),
         frequency="MONTHLY",
         on_date=dt.date(2026, 7, 5),
+        operational_context={},
     )
 
 

@@ -129,6 +129,18 @@ class ComplianceDeadlineRule(TenantModel):
         default=1,
     )
 
+    # Generic exact-match conditions evaluated against the operational
+    # context of the recurring work stream.
+    #
+    # {} means unconditional.
+    # Example: {"tds_form": "26Q"}
+    #
+    # The engine deliberately supports exact key/value AND matching only.
+    applicability = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
     effective_from = models.DateField(
         null=True,
         blank=True,

@@ -122,11 +122,21 @@ def _resolved_values(
         or f"Recurring work {period_key_for(profile.frequency, on_date)}"
     )
 
+    operational_context = dict(
+        getattr(
+            profile,
+            "operational_defaults",
+            None,
+        )
+        or {}
+    )
+
     due_date = calculate_compliance_due_date(
         tenant_id=profile.tenant_id,
         service_id=profile.service_id,
         frequency=profile.frequency,
         on_date=on_date,
+        operational_context=operational_context,
     )
 
     if (
@@ -195,12 +205,7 @@ def _resolved_values(
         "priority": priority,
         "estimated_hours": estimated_hours,
         "operational_data": dict(
-            getattr(
-                profile,
-                "operational_defaults",
-                None,
-            )
-            or {}
+            operational_context
         ),
     }
 
