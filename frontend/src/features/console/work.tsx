@@ -179,7 +179,7 @@ export function WorkHealthCard({
           Work health
         </span>
         <strong>
-          Calculating operational healthâ€¦
+          Calculating operational health…
         </strong>
       </section>
     );
