@@ -80,6 +80,91 @@ class Service(TenantModel):
         ordering = ["name"]
 
 
+class ComplianceDeadlineRule(TenantModel):
+    """Effective-dated statutory deadline rule for one configured service."""
+
+    service_id = models.UUIDField(db_index=True)
+
+    frequency = models.CharField(
+        max_length=15,
+        choices=[
+            ("MONTHLY", "Monthly"),
+            ("QUARTERLY", "Quarterly"),
+            ("HALF_YEARLY", "Half yearly"),
+            ("YEARLY", "Yearly"),
+        ],
+        db_index=True,
+    )
+
+    due_day = models.PositiveSmallIntegerField()
+    due_month_offset = models.PositiveSmallIntegerField(
+        default=0,
+    )
+
+    # Optional position within the recurrence cycle.
+    #
+    # NULL means the rule applies to every period for the frequency.
+    # Examples:
+    #   MONTHLY     -> 1..12
+    #   QUARTERLY   -> 1..4
+    #   HALF_YEARLY -> 1..2
+    #   YEARLY      -> 1
+    #
+    # Period-specific rules allow statutory deadlines to vary between
+    # periods without creating artificial services.
+    period_number = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    # Month in which this compliance cycle begins.
+    #
+    # 1 = calendar-year basis (Jan-Dec)
+    # 4 = Indian financial-year basis (Apr-Mar)
+    #
+    # This controls period numbering for quarterly,
+    # half-yearly and yearly statutory rules.
+    period_start_month = models.PositiveSmallIntegerField(
+        default=1,
+    )
+
+    effective_from = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    effective_until = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+    )
+
+    class Meta:
+        ordering = [
+            "service_id",
+            "-effective_from",
+            "-created_at",
+        ]
+        indexes = [
+            models.Index(
+                fields=[
+                    "tenant_id",
+                    "service_id",
+                    "frequency",
+                    "is_active",
+                ],
+                name="idx_deadline_rule_lookup",
+            ),
+        ]
+
+
 class ServiceDocumentRequirementSet(TenantModel):
     """Versioned document checklist owned by one configured service.
 

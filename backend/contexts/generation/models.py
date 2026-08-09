@@ -121,6 +121,16 @@ class RecurringWorkProfile(TenantModel):
         default=RecurrenceFrequency.MONTHLY,
     )
     anchor_date = models.DateField(null=True, blank=True)
+
+    operational_defaults = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Service-specific operational values copied into "
+            "generated work items."
+        ),
+    )
+
     default_owner_user_id = models.UUIDField(null=True, blank=True, db_index=True)
     default_reviewer_user_id = models.UUIDField(null=True, blank=True, db_index=True)
     is_active = models.BooleanField(default=True)

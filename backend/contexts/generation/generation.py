@@ -13,6 +13,8 @@ from decimal import Decimal
 
 from django.db import IntegrityError, transaction
 
+from contexts.configuration.deadline_rules import calculate_compliance_due_date
+
 from contexts.work.models import WorkItem, WorkStatus
 
 from .models import (
@@ -120,10 +122,16 @@ def _resolved_values(
         or f"Recurring work {period_key_for(profile.frequency, on_date)}"
     )
 
-    due_date = None
+    due_date = calculate_compliance_due_date(
+        tenant_id=profile.tenant_id,
+        service_id=profile.service_id,
+        frequency=profile.frequency,
+        on_date=on_date,
+    )
 
     if (
-        template
+        due_date is None
+        and template
         and template.default_due_days is not None
     ):
         due_date = on_date + _dt.timedelta(
@@ -186,6 +194,14 @@ def _resolved_values(
         "reviewer_user_id": reviewer_user_id,
         "priority": priority,
         "estimated_hours": estimated_hours,
+        "operational_data": dict(
+            getattr(
+                profile,
+                "operational_defaults",
+                None,
+            )
+            or {}
+        ),
     }
 
 
@@ -366,6 +382,9 @@ def generate_for_profile(
                 estimated_hours=resolved[
                     "estimated_hours"
                 ],
+                operational_data=dict(
+                    resolved["operational_data"]
+                ),
             )
 
             ledger = GeneratedWorkLedger.objects.create(
