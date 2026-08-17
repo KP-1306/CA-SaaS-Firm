@@ -94,6 +94,18 @@ const FIELD_LABELS: Record<string, string> = {
   gstin: 'GSTIN',
 };
 
+const fieldLabel = (key: string): string => {
+  const explicit = FIELD_LABELS[key];
+
+  if (explicit) return explicit;
+
+  const fallback = key.replace(/_/g, ' ');
+
+  return fallback
+    ? fallback.charAt(0).toUpperCase() + fallback.slice(1)
+    : fallback;
+};
+
 // Turn a DRF error body into one readable sentence (charter section 6).
 export function translateError(raw: string): string {
   try {
@@ -104,8 +116,35 @@ export function translateError(raw: string): string {
       if (typeof obj.detail === 'string') return obj.detail;
       const parts: string[] = [];
       for (const [key, val] of Object.entries(obj)) {
-        const label = FIELD_LABELS[key] ?? key.replace(/_/g, ' ');
-        const msg = Array.isArray(val) ? String(val[0]) : String(val);
+        const label = fieldLabel(key);
+        const formatValue = (value: unknown): string => {
+          if (Array.isArray(value)) {
+            return value.map(formatValue).filter(Boolean).join(', ');
+          }
+
+          if (
+            value &&
+            typeof value === 'object'
+          ) {
+            return Object.entries(
+              value as Record<string, unknown>,
+            )
+              .map(([nestedKey, nestedValue]) => {
+                const nestedMessage =
+                  formatValue(nestedValue);
+
+                return nestedMessage
+                  ? `${fieldLabel(nestedKey)}: ${nestedMessage}`
+                  : '';
+              })
+              .filter(Boolean)
+              .join('; ');
+          }
+
+          return String(value ?? '');
+        };
+
+        const msg = formatValue(val);
         if (/valid uuid/i.test(msg)) parts.push(`Please select a valid ${label}.`);
         else parts.push(`${label}: ${msg}`);
       }

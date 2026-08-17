@@ -65,6 +65,49 @@ class WorkItem(TenantModel):
         ordering = ["due_date", "-created_at"]
 
 
+class WorkProcessState(TenantModel):
+    """
+    Current service-process position for one WorkItem.
+
+    Process definitions live in configuration.ServiceProcessStep.
+    This model stores runtime position only.
+
+    Process transition history is recorded through the existing
+    mandatory AuditEvent mechanism rather than duplicated here.
+    """
+
+    work_item_id = models.UUIDField(db_index=True)
+    current_step_id = models.UUIDField(db_index=True)
+    entered_at = models.DateTimeField()
+    entered_by = models.UUIDField()
+    note = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = (
+            "-entered_at",
+            "work_item_id",
+            "id",
+        )
+        constraints = [
+            models.UniqueConstraint(
+                fields=("tenant_id", "work_item_id"),
+                name="uniq_work_process_state_work",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("tenant_id", "current_step_id"),
+                name="wrk_procstate_step_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.work_item_id}: "
+            f"{self.current_step_id}"
+        )
+
+
 class WorkNote(TenantModel):
     """An append-only history/comment entry against a work item."""
 

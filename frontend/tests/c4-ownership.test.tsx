@@ -54,15 +54,21 @@ describe('C4 WorkArea flag-driven UI', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows a lock banner and disables Save when can_edit is false', async () => {
+  it('shows a lock banner and offers no actionable Save when can_edit is false', async () => {
     mockFetchReturning([LOCKED_ITEM]);
     render(<WorkArea />);
     const table = await screen.findByRole('table');
     const row = within(table).getByText('Locked Work');
     fireEvent.click(row);
     await waitFor(() => expect(screen.getByText(/submitted for review/i)).toBeInTheDocument());
-    const saveButtons = screen.getAllByRole('button', { name: /^Save$/ });
-    expect(saveButtons.some((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    // A user with can_edit=false must not have an actionable Save control.
+    // The working UI renders only a Close control in the footer for a locked
+    // record, so there is no Save button in the document (it is not merely
+    // disabled).  This reflects the intended locked-user contract.
+    expect(screen.queryByRole('button', { name: /^Save$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Save & Close$/ })).not.toBeInTheDocument();
+    // Close remains available.
+    expect(screen.getByRole('button', { name: /^Close$/ })).toBeInTheDocument();
   });
 
   it('does not show a lock banner for an editable owner item', async () => {

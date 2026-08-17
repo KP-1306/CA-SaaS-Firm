@@ -9,12 +9,48 @@ from contexts.configuration.models import (
     Domain,
     Service,
     ServiceOperationalField,
+    ServiceProcessStep,
 )
 from contexts.identity.models import Employee
 
+
+# ---------------------------------------------------------------------------
+# Udyam process-owned lifecycle evidence keys.
+#
+# These keys are written ONLY by dedicated Udyam business actions
+# (udyam-submit-application, udyam-report-query, udyam-resolve-query,
+# udyam-complete-registration).  They are NOT user-configurable
+# ServiceOperationalField values.  Generic Work create/update must never
+# manufacture, overwrite or erase them; for these keys the database instance
+# is authoritative.
+#
+# This ownership constant is defined here, in the persistence layer that
+# enforces it, so the persistence contract does not depend on the monitoring /
+# observability subsystem.
+# ---------------------------------------------------------------------------
+UDYAM_PROCESS_OWNED_KEYS = frozenset(
+    {
+        "udyam_application_reference",
+        "udyam_submission_date",
+        "udyam_submission_time",
+        "udyam_query_type",
+        "udyam_query_remarks",
+        "udyam_query_resolution_remarks",
+        "udyam_certificate_attachment_id",
+    }
+)
+
+_UDYAM_SERVICE_CODE = "UDYAM_REGISTRATION"
+
 from . import ownership
 from .document_intelligence import calculate_document_readiness
-from .models import DocumentAttachment, DocumentRequest, WorkItem, WorkNote
+from .models import (
+    DocumentAttachment,
+    DocumentRequest,
+    WorkItem,
+    WorkNote,
+    WorkProcessState,
+)
 
 _AUDIT = ("id", "tenant_id", "created_at", "created_by", "updated_at", "updated_by", "row_version")
 
@@ -36,6 +72,10 @@ class WorkItemSerializer(serializers.ModelSerializer):
     can_submit_for_review = serializers.SerializerMethodField()
     can_review = serializers.SerializerMethodField()
     can_upload_internal = serializers.SerializerMethodField()
+
+    # Display-only status. Generic WorkItem.status remains the
+    # authoritative lifecycle/control status.
+    effective_status = serializers.SerializerMethodField()
 
     document_ready = serializers.SerializerMethodField()
     document_readiness_state = serializers.SerializerMethodField()
@@ -133,6 +173,107 @@ class WorkItemSerializer(serializers.ModelSerializer):
             self._principal(),
         )
 
+    def _effective_status_context(self, tenant_id):
+        cache_name = (
+            "_vridhi_effective_status_context_"
+            f"{tenant_id}"
+        )
+
+        if not hasattr(self, cache_name):
+            service_codes = {
+                row.id: row.code
+                for row in Service.objects.filter(
+                    tenant_id=tenant_id,
+                ).only(
+                    "id",
+                    "code",
+                )
+            }
+
+            process_states = {
+                row.work_item_id: row.current_step_id
+                for row in WorkProcessState.objects.filter(
+                    tenant_id=tenant_id,
+                ).only(
+                    "work_item_id",
+                    "current_step_id",
+                )
+            }
+
+            process_steps = {
+                row.id: {
+                    "code": row.code,
+                    "name": row.name,
+                }
+                for row in ServiceProcessStep.objects.filter(
+                    tenant_id=tenant_id,
+                    is_active=True,
+                ).only(
+                    "id",
+                    "code",
+                    "name",
+                )
+            }
+
+            setattr(
+                self,
+                cache_name,
+                (
+                    service_codes,
+                    process_states,
+                    process_steps,
+                ),
+            )
+
+        return getattr(self, cache_name)
+
+    def get_effective_status(self, obj):
+        raw_status = str(obj.status or "")
+
+        if not obj.service_id:
+            return raw_status
+
+        (
+            service_codes,
+            process_states,
+            process_steps,
+        ) = self._effective_status_context(
+            obj.tenant_id,
+        )
+
+        if (
+            service_codes.get(obj.service_id)
+            != "UDYAM_REGISTRATION"
+        ):
+            return raw_status
+
+        # Generic workflow control states remain authoritative.
+        # Do not disguise review/rework/waiting semantics with
+        # a service-process label.
+        if raw_status in {
+            "WAITING_FOR_CLIENT",
+            "READY_FOR_REVIEW",
+            "REWORK_REQUIRED",
+            "CANCELLED",
+        }:
+            return raw_status
+
+        current_step_id = process_states.get(obj.id)
+
+        if not current_step_id:
+            return raw_status
+
+        current_step = process_steps.get(current_step_id)
+
+        if not current_step:
+            return raw_status
+
+        process_name = str(
+            current_step.get("name") or ""
+        ).strip()
+
+        return process_name or raw_status
+
     @staticmethod
     def _document_readiness(obj):
         cache_name = "_vridhi_document_readiness"
@@ -182,6 +323,16 @@ class WorkItemSerializer(serializers.ModelSerializer):
         ]
 
 
+    def _is_udyam_service(self, service_id) -> bool:
+        """True only for the configured Udyam registration service."""
+        if not service_id:
+            return False
+        return Service.objects.filter(
+            tenant_id=self._tenant(),
+            id=service_id,
+            code=_UDYAM_SERVICE_CODE,
+        ).exists()
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
 
@@ -192,15 +343,59 @@ class WorkItemSerializer(serializers.ModelSerializer):
             getattr(instance, "service_id", None),
         )
 
-        operational_data = attrs.get(
-            "operational_data",
-            getattr(instance, "operational_data", {}),
-        )
+        # Non-Udyam services keep the EXACT original behaviour: the supplied
+        # operational_data (or the instance's, when not supplied) is validated
+        # and rebuilt against the configured ServiceOperationalField set.
+        if not self._is_udyam_service(service_id):
+            operational_data = attrs.get(
+                "operational_data",
+                getattr(instance, "operational_data", {}),
+            )
+            attrs["operational_data"] = self._validate_operational_data(
+                service_id,
+                operational_data,
+            )
+            return attrs
 
-        attrs["operational_data"] = self._validate_operational_data(
-            service_id,
-            operational_data,
-        )
+        # Udyam service: protect process-owned lifecycle evidence.  The
+        # database instance is authoritative for the reserved keys; generic
+        # saves may only touch normal configured fields.
+        current_data = dict(getattr(instance, "operational_data", None) or {})
+        preserved_evidence = {
+            key: current_data[key]
+            for key in UDYAM_PROCESS_OWNED_KEYS
+            if key in current_data
+        }
+
+        if "operational_data" in attrs:
+            # A generic save supplied operational_data.  Ignore any incoming
+            # values for reserved keys (never trust the browser), validate the
+            # normal fields exactly as usual, then re-apply authoritative
+            # evidence from the database.
+            incoming = dict(attrs.get("operational_data") or {})
+            normal_incoming = {
+                key: value
+                for key, value in incoming.items()
+                if key not in UDYAM_PROCESS_OWNED_KEYS
+            }
+            validated_normal = self._validate_operational_data(
+                service_id,
+                normal_incoming,
+            )
+            attrs["operational_data"] = {**validated_normal, **preserved_evidence}
+        else:
+            # No operational_data supplied.  Validate the instance's normal
+            # fields (unchanged behaviour) and re-apply authoritative evidence.
+            existing_normal = {
+                key: value
+                for key, value in current_data.items()
+                if key not in UDYAM_PROCESS_OWNED_KEYS
+            }
+            validated_normal = self._validate_operational_data(
+                service_id,
+                existing_normal,
+            )
+            attrs["operational_data"] = {**validated_normal, **preserved_evidence}
 
         return attrs
 

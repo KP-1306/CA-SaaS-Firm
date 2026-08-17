@@ -88,7 +88,7 @@ function useList(
 
 function rowName(
   row: Row | null | undefined,
-  fallback = 'â€”',
+  fallback = '—',
 ): string {
   return String(row?.name ?? fallback);
 }
@@ -538,7 +538,7 @@ export function CatalogueArea(): React.JSX.Element {
             className="cx-btn subtle"
             onClick={clearService}
           >
-            â† Back to Services
+            ← Back to Services
           </button>
 
           <div>
@@ -633,7 +633,7 @@ export function CatalogueArea(): React.JSX.Element {
                   <dd>
                     {String(
                       selectedService.code ??
-                      'â€”',
+                      '—',
                     )}
                   </dd>
                 </div>
@@ -781,7 +781,7 @@ export function CatalogueArea(): React.JSX.Element {
                   currentRequirementSet.version_number ??
                   1,
                 )}
-                {' â€¢ '}
+                {' • '}
                 managed automatically for
                 history and audit.
               </div>

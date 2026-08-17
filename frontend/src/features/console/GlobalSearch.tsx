@@ -47,28 +47,28 @@ function resultSubtitle(group: SearchTarget, row: Row): string {
         row.client_type,
         row.pan,
         row.engagement_status,
-      ].filter(Boolean).join(' Â· ');
+      ].filter(Boolean).join(' · ');
 
     case 'team':
       return [
         row.employee_code,
         row.email,
         row.role,
-      ].filter(Boolean).join(' Â· ');
+      ].filter(Boolean).join(' · ');
 
     case 'work':
       return [
         row.client_name,
         row.service_name,
         row.status,
-      ].filter(Boolean).join(' Â· ');
+      ].filter(Boolean).join(' · ');
 
     case 'services':
       return [
         row.code,
         row.domain_name,
         row.status,
-      ].filter(Boolean).join(' Â· ');
+      ].filter(Boolean).join(' · ');
 
     case 'documents':
       return [
@@ -76,7 +76,7 @@ function resultSubtitle(group: SearchTarget, row: Row): string {
         row.status,
         row.content_type,
         row.source,
-      ].filter(Boolean).join(' Â· ');
+      ].filter(Boolean).join(' · ');
   }
 }
 
@@ -347,7 +347,7 @@ export function GlobalSearch({
           className="cx-global-search-icon"
           aria-hidden="true"
         >
-          âŒ•
+          ⌕
         </span>
 
         <input
@@ -385,7 +385,7 @@ export function GlobalSearch({
 
           {loading ? (
             <div className="cx-global-search-state">
-              Searchingâ€¦
+              Searching…
             </div>
           ) : null}
 
@@ -457,7 +457,7 @@ export function GlobalSearch({
             : null}
 
           <div className="cx-global-search-footer">
-            <span>â†‘ â†“ Navigate</span>
+            <span>↑ ↓ Navigate</span>
             <span>Enter Open</span>
             <span>Esc Close</span>
           </div>

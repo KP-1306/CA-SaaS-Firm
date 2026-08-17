@@ -1,5 +1,5 @@
 import type * as React from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   act,
   ApiRequestError,
@@ -251,7 +251,7 @@ export function WorkHealthCard({
             <strong>
               {label(health.health)}
             </strong>
-            <span>Â·</span>
+            <span>·</span>
             <span>
               {label(health.risk)} risk
             </span>
@@ -354,7 +354,7 @@ export function WorkHealthCard({
             {
               health.documents
                 .missing
-            } missing Â·{' '}
+            } missing ·{' '}
             {
               health.documents
                 .pending_review
@@ -604,9 +604,9 @@ function AttachmentList({
 
               <div className="cx-muted">
                 {label(String(attachment.source))}
-                {' Ã‚Â· '}
+                {' · '}
                 {formatBytes(attachment.size_bytes)}
-                {' Ã‚Â· '}
+                {' · '}
                 {String(attachment.created_at ?? '').slice(0, 16).replace('T', ' ')}
               </div>
 
@@ -744,9 +744,9 @@ function documentDependencyReason(row: Row): string {
 
   switch (String(row.status)) {
     case 'REJECTED':
-      return 'Rejected Ã¢â‚¬â€ upload a corrected document';
+      return 'Rejected • upload a corrected document';
     case 'RECEIVED':
-      return 'Received Ã¢â‚¬â€ waiting for acceptance';
+      return 'Received • waiting for acceptance';
     case 'PARTIALLY_RECEIVED':
       return 'Partially received';
     case 'REQUESTED':
@@ -939,7 +939,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'EXPIRED',
-        message: 'Expired Ã¢â‚¬â€ obtain a valid replacement',
+        message: 'Expired • obtain a valid replacement',
         priority: 10,
         document: row,
       });
@@ -974,7 +974,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'REJECTED',
-        message: 'Rejected Ã¢â‚¬â€ corrected document required',
+        message: 'Rejected • corrected document required',
         priority: 15,
         document: row,
       });
@@ -988,7 +988,7 @@ function buildDocumentActionQueue(
         name: String(row.name),
         category: String(row.category || 'OTHER'),
         kind: 'PENDING_REVIEW',
-        message: 'Uploaded Ã¢â‚¬â€ review and accept or reject',
+        message: 'Uploaded • review and accept or reject',
         priority: 30,
         document: row,
       });
@@ -1074,6 +1074,1384 @@ function documentQueueTone(
 }
 
 
+export type ServiceProcessStepDefinition = {
+  id: string;
+  service_id: string;
+  code: string;
+  name: string;
+  description?: string;
+  display_order?: number;
+  is_active?: boolean;
+};
+
+export type WorkProcessStateSnapshot = {
+  work_item_id: string;
+  current_step: {
+    id: string;
+    code: string;
+    name: string;
+    display_order?: number;
+  } | null;
+  entered_at: string | null;
+  entered_by: string | null;
+  note: string;
+};
+
+export function isWorkProcessStateSnapshot(
+  value: unknown,
+): value is WorkProcessStateSnapshot {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate =
+    value as Partial<WorkProcessStateSnapshot>;
+
+  if (typeof candidate.work_item_id !== 'string') {
+    return false;
+  }
+
+  if (candidate.current_step === null) {
+    return true;
+  }
+
+  return (
+    !!candidate.current_step &&
+    typeof candidate.current_step === 'object' &&
+    typeof candidate.current_step.id === 'string' &&
+    typeof candidate.current_step.code === 'string' &&
+    typeof candidate.current_step.name === 'string'
+  );
+}
+
+/*
+ * UDYAM 8-STAGE VISUAL JOURNEY
+ *
+ * The analyst-facing Udyam process has EIGHT business stages.  The backend
+ * persists SIX durable process-step codes; "Application Reviewed" and "Submit
+ * Application" are display milestones derived from existing authoritative
+ * signals (health.next_action, WorkProcessState.current_step) — no fake
+ * backend codes are introduced.
+ *
+ * Stage codes used here:
+ *   CLIENT_INFORMATION         durable seed code
+ *   VERIFICATION_PREPARATION   durable seed code
+ *   INTERNAL_REVIEW            durable seed code
+ *   APPLICATION_REVIEWED       display-only — derived from approved state
+ *   SUBMIT_APPLICATION         backend guard code (not seeded, action only)
+ *   APPLICATION_SUBMISSION     durable seed code
+ *   QUERY_RESOLUTION           durable seed code
+ *   COMPLETION                 durable seed code
+ */
+export const UDYAM_JOURNEY = [
+  { code: 'CLIENT_INFORMATION',       name: 'Client Information & Documents' },
+  { code: 'VERIFICATION_PREPARATION', name: 'Verification & Preparation' },
+  { code: 'INTERNAL_REVIEW',          name: 'Internal Review & Approval' },
+  { code: 'APPLICATION_REVIEWED',     name: 'Application Reviewed' },
+  { code: 'SUBMIT_APPLICATION',       name: 'Submit Application' },
+  { code: 'APPLICATION_SUBMISSION',   name: 'Application Submitted' },
+  { code: 'QUERY_RESOLUTION',         name: 'Query / OTP / Technical Resolution' },
+  { code: 'COMPLETION',               name: 'Registration Completion & Certificate' },
+] as const;
+
+export type UdyamStageCode = typeof UDYAM_JOURNEY[number]['code'];
+
+/*
+ * Analyst guidance for all 8 visual stages.
+ * Fields: meaning, todo, required, next.
+ * Language is business-facing only — no developer/API terminology.
+ */
+export const UDYAM_STAGE_GUIDANCE: Record<string, { meaning: string; todo: string; required: string; next: string }> = {
+  CLIENT_INFORMATION: {
+    meaning: 'Establish the client and collect the documents needed for Udyam registration before preparation can begin.',
+    todo: 'Confirm the client, verify useful contact information, collect the required documents, and resolve any outstanding mandatory items.',
+    required: 'Aadhaar card, PAN card, and Business / Enterprise details (mandatory). Bank account and GST details (optional but useful).',
+    next: 'When mandatory documents and information are satisfied the case advances to Verification & Preparation.',
+  },
+  VERIFICATION_PREPARATION: {
+    meaning: 'Verify the collected client and business details and prepare the registration case for internal review.',
+    todo: 'Review captured client and business information, check documents for accuracy and completeness, resolve any missing mandatory details, and prepare the application.',
+    required: 'Completed, accurate business/operational information; all mandatory documents collected and verified.',
+    next: 'Submit for Review to hand the prepared case to an internal reviewer.',
+  },
+  INTERNAL_REVIEW: {
+    meaning: 'An independent internal review validates the prepared application before it is submitted to the government portal.',
+    todo: 'The reviewer checks the prepared information and supporting documents. Approve if correct, or return for correction with a clear explanation of what needs changing.',
+    required: 'Prepared application ready for review. A justification comment is required when returning for rework.',
+    next: 'Approval marks the application as reviewed and ready for government submission. Returning it sends the case back for correction.',
+  },
+  APPLICATION_REVIEWED: {
+    meaning: 'Internal review has been approved. The application is confirmed ready for government submission — no further internal action is needed at this stage.',
+    todo: 'Confirm the reviewed application details are correct. This milestone is reached automatically once the reviewer approves — no separate action is needed to mark it.',
+    required: 'Internal approval already recorded.',
+    next: 'Proceed to Submit Application to record the actual government submission.',
+  },
+  SUBMIT_APPLICATION: {
+    meaning: 'The reviewed application is ready to be submitted through the government/MSME Udyam portal. Record the submission details once you have submitted externally.',
+    todo: 'Submit the application through the government portal, then return here and record the submission evidence accurately — this evidence is permanent.',
+    required: 'Application / Reference Number, Submission Date, and Submission Time (all required to record submission).',
+    next: 'Record the submission to advance the case to Application Submitted.',
+  },
+  APPLICATION_SUBMISSION: {
+    meaning: 'The government application has been submitted and recorded. The case is now awaiting the government outcome or any follow-up.',
+    todo: 'Monitor the government portal for the outcome. When a response is received, record it using the appropriate action below.',
+    required: 'Submission reference, date and time already recorded.',
+    next: 'Record a query / OTP / technical issue if one arrives, or complete registration when the certificate is received.',
+  },
+  QUERY_RESOLUTION: {
+    meaning: 'The government portal has raised a query, OTP requirement or technical issue that must be resolved before the registration can proceed.',
+    todo: 'Record the issue type and full details, perform the required resolution (supply OTP, resolve document query, etc.), then record the resolution remarks.',
+    required: 'Issue type (portal query, OTP, technical issue, additional information required, document query, or other) and remarks; resolution remarks when closing.',
+    next: 'Resolving the issue returns the case to Application Submitted to await the final outcome.',
+  },
+  COMPLETION: {
+    meaning: 'The Udyam registration has been successfully completed and the certificate received.',
+    todo: 'Confirm registration success, upload or link the Udyam certificate using the document facility, and complete the registration to close the Work Item.',
+    required: 'The official Udyam registration certificate.',
+    next: 'Work completed. No further analyst action is required.',
+  },
+};
+
+/*
+ * Derive the current visual stage index (0–7) from authoritative backend state.
+ *
+ * Priority (highest wins):
+ *   forceTerminalComplete  → always Stage 8 (index 7) for COMPLETED Udyam
+ *   persistedStepCode      → maps directly to a journey index
+ *   nextActionCode         → fallback from Health projection
+ *   health readiness       → earlier stage derivation
+ *
+ * APPLICATION_REVIEWED (index 3) is current when internal review has approved
+ * but submission recording has not yet begun.  The signal is
+ * SUBMIT_UDYAM_APPLICATION appearing as the next action while the durable
+ * process position has not yet moved to SUBMIT_APPLICATION.
+ */
+export function deriveUdyamStageIndex(opts: {
+  forceTerminalComplete: boolean;
+  persistedStepCode: string;
+  nextActionCode: string;
+  operationalRemaining: number;
+  documentsMissing: boolean;
+  documentsPending: boolean;
+  currentController: string;
+}): number {
+  const {
+    forceTerminalComplete,
+    persistedStepCode,
+    nextActionCode,
+    operationalRemaining,
+    documentsMissing,
+    documentsPending,
+    currentController,
+  } = opts;
+
+  if (forceTerminalComplete) return 7; // Stage 8 — terminal
+
+  // Direct mapping from durable process step codes.
+  const codeMap: Record<string, number> = {
+    CLIENT_INFORMATION:       0,
+    VERIFICATION_PREPARATION: 1,
+    INTERNAL_REVIEW:          2,
+    // APPLICATION_REVIEWED has no durable code
+    SUBMIT_APPLICATION:       4,
+    APPLICATION_SUBMISSION:   5,
+    QUERY_RESOLUTION:         6,
+    COMPLETION:               7,
+  };
+  if (persistedStepCode && codeMap[persistedStepCode] !== undefined) {
+    return codeMap[persistedStepCode];
+  }
+
+  // Health-based next-action fallback.
+  if (nextActionCode === 'RESOLVE_UDYAM_QUERY') return 6;
+  if (nextActionCode === 'AWAIT_UDYAM_OUTCOME')  return 5;
+  // Stage 5 (Submit Application) — durable code not yet present but action is ready.
+  if (nextActionCode === 'SUBMIT_UDYAM_APPLICATION') return 4;
+  // Stage 4 (Application Reviewed) — no action code exists; this is a transient
+  // milestone.  Rely on the health/controller signals below after review.
+
+  // Generic Work readiness derivation for stages 1–3.
+  if (
+    nextActionCode === 'REVIEW_WORK' ||
+    currentController === 'REVIEWER'
+  ) {
+    return 2; // Stage 3 — Internal Review
+  }
+
+  if (
+    operationalRemaining === 0 &&
+    !documentsMissing &&
+    !documentsPending
+  ) {
+    return 1; // Stage 2 — Verification & Preparation
+  }
+
+  return 0; // Stage 1 — Client Information
+}
+
+export function ProcessTracker({
+  health,
+  processState,
+  forceTerminalComplete,
+  loading,
+  onOpenDocuments,
+}: {
+  health: WorkHealthSnapshot | null;
+  processState: WorkProcessStateSnapshot | null;
+  forceTerminalComplete: boolean;
+  loading: boolean;
+  onOpenDocuments: () => void;
+}): React.JSX.Element | null {
+
+  const nextActionCode = String(health?.next_action?.code ?? '');
+  const operationalRemaining = Number(health?.operational?.mandatory_remaining ?? 0);
+  const documentsMissing =
+    Number(health?.documents?.mandatory_missing ?? 0) > 0 ||
+    Number(health?.documents?.missing ?? 0) > 0;
+  const documentsPending =
+    Number(health?.documents?.pending_review ?? 0) > 0 ||
+    Number(health?.documents?.pending_acceptance ?? 0) > 0;
+  const persistedStepCode = String(processState?.current_step?.code ?? '');
+  const currentController = String(health?.current_controller ?? '');
+
+  const currentIndex = deriveUdyamStageIndex({
+    forceTerminalComplete,
+    persistedStepCode,
+    nextActionCode,
+    operationalRemaining,
+    documentsMissing,
+    documentsPending,
+    currentController,
+  });
+
+  const currentStage = UDYAM_JOURNEY[currentIndex];
+
+  const processNextActionLabel =
+    forceTerminalComplete
+      ? 'Work completed'
+      : currentStage?.code === 'SUBMIT_APPLICATION'
+        ? 'Record Udyam application submission'
+        : currentStage?.code === 'APPLICATION_SUBMISSION'
+          ? 'Record government outcome'
+          : currentStage?.code === 'QUERY_RESOLUTION'
+            ? 'Resolve query / OTP / technical issue'
+            : currentStage?.code === 'COMPLETION'
+              ? 'Registration completed'
+              : currentStage?.code === 'APPLICATION_REVIEWED'
+                ? 'Proceed to submit application'
+                : health?.next_action?.label || 'Continue work';
+
+  const actionIsDocuments =
+    nextActionCode === 'REQUEST_MISSING_DOCUMENTS' || documentsMissing;
+
+  const currentGuidance = UDYAM_STAGE_GUIDANCE[currentStage?.code ?? ''];
+
+  return (
+    <section
+      className="cx-process-tracker cx-process-tracker-8stage"
+      aria-label="Udyam process journey"
+    >
+      <div className="cx-process-heading">
+        <h4>Process</h4>
+        <p className="cx-process-heading-sub">
+          Progress updates automatically from the work recorded in this case.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="cx-process-loading">Loading process&hellip;</div>
+      ) : (
+        <div className="cx-process-steps">
+          {UDYAM_JOURNEY.map((stage, index) => {
+            const active = index === currentIndex;
+            const completed = index < currentIndex;
+            const guidance = UDYAM_STAGE_GUIDANCE[stage.code];
+
+            return (
+              <div
+                key={stage.code}
+                className={
+                  `cx-process-step cx-process-static ${
+                    active ? 'current' : completed ? 'completed' : 'upcoming'
+                  }${guidance ? ' cx-process-step-guided' : ''}`
+                }
+                aria-current={active ? 'step' : undefined}
+                tabIndex={guidance ? 0 : undefined}
+              >
+                <span className="cx-process-number">
+                  {completed ? '\u2713' : index + 1}
+                </span>
+
+                <span className="cx-process-step-copy">
+                  <span className="cx-process-label">{stage.name}</span>
+                  <span className="cx-process-state-label">
+                    {active ? 'Current' : completed ? 'Completed' : 'Upcoming'}
+                  </span>
+                </span>
+
+                {guidance ? (
+                  <div className="cx-process-guidance-pop" role="tooltip">
+                    <div className="cx-process-guidance-title">{stage.name}</div>
+                    <dl>
+                      <dt>What this stage means</dt>
+                      <dd>{guidance.meaning}</dd>
+                      <dt>What you need to do</dt>
+                      <dd>{guidance.todo}</dd>
+                      <dt>Required information</dt>
+                      <dd>{guidance.required}</dd>
+                      <dt>Next step</dt>
+                      <dd>{guidance.next}</dd>
+                    </dl>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!loading ? (
+        <div className="cx-process-currentstage">
+          <div className="cx-process-currentstage-head">
+            <span className="cx-process-currentstage-kicker">Current stage</span>
+            <strong className="cx-process-currentstage-name">
+              {currentStage?.name ?? 'Starting'}
+            </strong>
+            {currentGuidance ? (
+              <p className="cx-process-currentstage-meaning">
+                {currentGuidance.meaning}
+              </p>
+            ) : null}
+          </div>
+          <div className="cx-process-currentstage-next">
+            <span className="cx-process-currentstage-kicker">Next action</span>
+            <strong>{processNextActionLabel}</strong>
+            {actionIsDocuments && !forceTerminalComplete ? (
+              <button type="button" className="cx-btn subtle" onClick={onOpenDocuments}>
+                Open Documents
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+
+export async function completeUdyamRegistrationAndRefresh(deps: {
+  workItemId: string;
+  certificate: File;
+  remarks: string;
+  upload: typeof uploadMany;
+  onUploaded: () => void;
+  onChanged: () => Promise<void>;
+}): Promise<void> {
+  const {
+    workItemId,
+    certificate,
+    remarks,
+    upload,
+    onUploaded,
+    onChanged,
+  } = deps;
+
+  await upload(
+    'work-items',
+    workItemId,
+    'udyam-complete-registration',
+    [certificate],
+    remarks.trim() ? { remarks: remarks.trim() } : {},
+  );
+
+  // Preserve the production ordering: clear the local completion form after
+  // the server accepts the action, then reconcile the open workspace from the
+  // authoritative WorkItem before any further lifecycle action is presented.
+  onUploaded();
+  await onChanged();
+}
+
+
+type UdyamExternalActionsProps = {
+  workItem: Row;
+  processState: WorkProcessStateSnapshot | null;
+  health: WorkHealthSnapshot | null;
+  onChanged: () => Promise<void>;
+  onError: (message: string) => void;
+};
+
+function UdyamExternalActions({
+  workItem,
+  processState,
+  health,
+  onChanged,
+  onError,
+}: UdyamExternalActionsProps): React.JSX.Element | null {
+  const persistedStepCode = String(
+    processState?.current_step?.code ?? '',
+  );
+
+  const nextActionCode = String(
+    health?.next_action?.code ?? '',
+  );
+
+  const stepCode =
+    persistedStepCode ||
+    (
+      nextActionCode === 'SUBMIT_UDYAM_APPLICATION'
+        ? 'SUBMIT_APPLICATION'
+        : nextActionCode === 'AWAIT_UDYAM_OUTCOME'
+          ? 'APPLICATION_SUBMISSION'
+          : nextActionCode === 'RESOLVE_UDYAM_QUERY'
+            ? 'QUERY_RESOLUTION'
+            : ''
+    );
+
+  const operationalData =
+    (
+      workItem.operational_data as
+        | Record<string, unknown>
+        | undefined
+    ) ?? {};
+
+  const certificateAttachments = useList(
+    'document-attachments',
+    {
+      work_item_id: String(workItem.id),
+    },
+  );
+
+  const persistedCertificateAttachmentId = String(
+    operationalData.udyam_certificate_attachment_id ?? '',
+  );
+
+  const persistedCertificateAttachment =
+    persistedCertificateAttachmentId
+      ? (
+          certificateAttachments.rows.find(
+            (attachment) =>
+              String(attachment.id) ===
+              persistedCertificateAttachmentId,
+          ) ?? null
+        )
+      : null;
+
+  const completionTimestamp = String(
+    workItem.completed_at ?? '',
+  );
+
+  const [reference, setReference] = useState(
+    String(
+      operationalData.udyam_application_reference ?? '',
+    ),
+  );
+
+  const [submissionDate, setSubmissionDate] = useState(
+    String(
+      operationalData.udyam_submission_date ?? '',
+    ),
+  );
+
+  const [submissionTime, setSubmissionTime] = useState(
+    String(
+      operationalData.udyam_submission_time ?? '',
+    ),
+  );
+
+  const canSubmitApplication =
+    workItem.can_edit === true;
+
+  const persistedQueryType = String(
+    operationalData.udyam_query_type ?? '',
+  );
+
+  const persistedQueryRemarks = String(
+    operationalData.udyam_query_remarks ?? '',
+  );
+
+  const persistedQueryResolutionRemarks = String(
+    operationalData.udyam_query_resolution_remarks ?? '',
+  );
+
+  const [queryType, setQueryType] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [certificate, setCertificate] =
+    useState<File | null>(null);
+
+  const certificateInputRef =
+    useRef<HTMLInputElement | null>(null);
+
+  const [governmentOutcome, setGovernmentOutcome] =
+    useState<'QUERY' | 'REGISTERED' | ''>('');
+
+  const [busy, setBusy] = useState(false);
+
+  const workCompleted =
+    String(workItem.status ?? '') === 'COMPLETED';
+
+  if (
+    !workCompleted &&
+    stepCode !== 'SUBMIT_APPLICATION' &&
+    stepCode !== 'APPLICATION_SUBMISSION' &&
+    stepCode !== 'QUERY_RESOLUTION'
+  ) {
+    return null;
+  }
+
+  const runAction = async (
+    actionName: string,
+    payload: Row,
+  ): Promise<void> => {
+    setBusy(true);
+    onError('');
+
+    try {
+      await act(
+        'work-items',
+        String(workItem.id),
+        actionName,
+        payload,
+      );
+
+      setRemarks('');
+      setQueryType('');
+      await onChanged();
+    } catch (error) {
+      // Show the original business error first, and keep it visible.
+      onError(
+        error instanceof Error
+          ? error.message
+          : 'Udyam action failed.',
+      );
+      // Then re-read backend truth so a stale previous-stage action cannot
+      // remain visible after the backend has already transitioned.  This
+      // refresh is guarded: if it also fails, the original business error is
+      // preserved and not replaced by a secondary refresh failure.
+      try {
+        await onChanged();
+      } catch {
+        // Intentionally swallow refresh failure; the original error stands.
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadCertificate = async (): Promise<void> => {
+
+    const selectedCertificate =
+      certificateInputRef.current?.files?.[0] ??
+      certificate;
+
+    if (!selectedCertificate) {
+      onError('Udyam certificate is required.');
+      return;
+    }
+
+    setBusy(true);
+    onError('');
+
+    try {
+      await completeUdyamRegistrationAndRefresh({
+        workItemId: String(workItem.id),
+        certificate: selectedCertificate,
+        remarks,
+        upload: uploadMany,
+        onUploaded: () => {
+          setCertificate(null);
+
+          if (certificateInputRef.current) {
+            certificateInputRef.current.value = '';
+          }
+
+          setRemarks('');
+        },
+        onChanged,
+      });
+    } catch (error) {
+      onError(
+        error instanceof Error
+          ? error.message
+          : 'Registration completion failed.',
+      );
+      try {
+        await onChanged();
+      } catch {
+        // Preserve the original completion error if refresh also fails.
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (workCompleted) {
+    return (
+      <section
+        className="cx-process-guidance"
+        style={{ marginBottom: 16 }}
+      >
+        <div style={{ width: '100%' }}>
+          <strong>
+            Registration Completion & Certificate
+          </strong>
+
+          <p>
+            Udyam registration is complete. The application
+            submission details and previous query history are
+            retained below as a read-only record.
+          </p>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns:
+                'minmax(240px, 1fr) minmax(180px, 0.65fr) minmax(180px, 0.65fr)',
+              gap: 12,
+              marginTop: 12,
+            }}
+          >
+            <div className="cx-field">
+              <label>Application / Reference Number</label>
+              <input
+                type="text"
+                value={reference}
+                disabled
+              />
+            </div>
+
+            <div className="cx-field">
+              <label>Submission Date</label>
+              <input
+                type="date"
+                value={submissionDate}
+                disabled
+              />
+            </div>
+
+            <div className="cx-field">
+              <label>Submission Time</label>
+              <input
+                type="time"
+                value={submissionTime}
+                disabled
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 16,
+              paddingTop: 14,
+              borderTop:
+                '1px solid var(--cx-border, #d8dee8)',
+            }}
+          >
+            <strong>Registration Certificate</strong>
+
+            <div
+              style={{
+                marginTop: 10,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
+            >
+              <div>
+                {persistedCertificateAttachment ? (
+                  <>
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        marginBottom: 3,
+                      }}
+                    >
+                      {String(
+                        persistedCertificateAttachment
+                          .original_name ||
+                          'Udyam Registration Certificate',
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: '#64748b',
+                      }}
+                    >
+                      Certificate retained with this completed registration.
+                    </div>
+                  </>
+                ) : persistedCertificateAttachmentId ? (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: '#64748b',
+                    }}
+                  >
+                    Registration certificate is recorded but is currently unavailable.
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: '#64748b',
+                    }}
+                  >
+                    This earlier completed record does not yet have a durable certificate link.
+                  </div>
+                )}
+              </div>
+
+              {persistedCertificateAttachment &&
+              persistedCertificateAttachment.download_url ? (
+                <a
+                  className="cx-btn"
+                  href={String(
+                    persistedCertificateAttachment.download_url,
+                  )}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Download Certificate
+                </a>
+              ) : null}
+            </div>
+
+            {completionTimestamp ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  fontSize: 12,
+                  color: '#64748b',
+                }}
+              >
+                Registration completed:{' '}
+                {new Date(
+                  completionTimestamp,
+                ).toLocaleString()}
+              </div>
+            ) : null}
+          </div>
+
+          {(
+            persistedQueryType ||
+            persistedQueryRemarks ||
+            persistedQueryResolutionRemarks
+          ) ? (
+            <div
+              style={{
+                marginTop: 16,
+                paddingTop: 14,
+                borderTop:
+                  '1px solid var(--cx-border, #d8dee8)',
+              }}
+            >
+              <strong>Previous Application Query</strong>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'minmax(220px, 0.8fr) minmax(300px, 1.2fr)',
+                  gap: 12,
+                  marginTop: 12,
+                }}
+              >
+                <div className="cx-field">
+                  <label>Query / Issue Type</label>
+                  <input
+                    type="text"
+                    value={persistedQueryType}
+                    disabled
+                  />
+                </div>
+
+                <div className="cx-field">
+                  <label>Query Remarks</label>
+                  <textarea
+                    value={persistedQueryRemarks}
+                    disabled
+                  />
+                </div>
+              </div>
+
+              <div
+                className="cx-field"
+                style={{ marginTop: 12 }}
+              >
+                <label>Response Provided</label>
+                <textarea
+                  value={persistedQueryResolutionRemarks}
+                  disabled
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (stepCode === 'SUBMIT_APPLICATION') {
+    return (
+      <section className="cx-process-guidance">
+        <div style={{ width: '100%' }}>
+          <div style={{ marginBottom: 14 }}>
+            <strong style={{ fontSize: 15 }}>
+              Submit Application
+            </strong>
+
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                color: '#64748b',
+              }}
+            >
+              Enter the government portal submission details
+              before moving this work item to Application Submitted.
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns:
+                'minmax(260px, 2fr) minmax(180px, 1fr) minmax(160px, 1fr)',
+              gap: 12,
+              alignItems: 'end',
+            }}
+          >
+            <div
+              className="cx-field"
+              style={{ marginBottom: 0 }}
+            >
+              <label>Application / Reference Number *</label>
+              <input
+                type="text"
+                value={reference}
+                disabled={
+                  busy || !canSubmitApplication
+                }
+                onChange={(event) =>
+                  setReference(event.target.value)
+                }
+              />
+            </div>
+
+            <div
+              className="cx-field"
+              style={{ marginBottom: 0 }}
+            >
+              <label>Submission Date *</label>
+              <input
+                type="date"
+                value={submissionDate}
+                disabled={
+                  busy || !canSubmitApplication
+                }
+                onChange={(event) =>
+                  setSubmissionDate(event.target.value)
+                }
+              />
+            </div>
+
+            <div
+              className="cx-field"
+              style={{ marginBottom: 0 }}
+            >
+              <label>Submission Time *</label>
+              <input
+                type="time"
+                value={submissionTime}
+                disabled={
+                  busy || !canSubmitApplication
+                }
+                onChange={(event) =>
+                  setSubmissionTime(event.target.value)
+                }
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              marginTop: 14,
+            }}
+          >
+            <button
+              type="button"
+              className="cx-btn cx-udyam-primary-action"
+              style={{
+                width: 'auto',
+                minWidth: 190,
+                paddingLeft: 18,
+                paddingRight: 18,
+              }}
+              disabled={
+                busy ||
+                !canSubmitApplication ||
+                !reference.trim() ||
+                !submissionDate ||
+                !submissionTime
+              }
+              onClick={() => {
+                void runAction(
+                  'udyam-submit-application',
+                  {
+                    application_reference: reference.trim(),
+                    submission_date: submissionDate,
+                    submission_time: submissionTime,
+                  },
+                );
+              }}
+            >
+              {busy
+                ? 'Submitting...'
+                : 'Submit Udyam application'}
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (stepCode === 'QUERY_RESOLUTION') {
+    return (
+      <section className="cx-process-guidance">
+        <div style={{ width: '100%' }}>
+          <strong>
+            Query / OTP / Technical Resolution
+          </strong>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns:
+                'minmax(260px, 2fr) minmax(180px, 1fr) minmax(160px, 1fr)',
+              gap: 12,
+              marginTop: 12,
+              marginBottom: 14,
+            }}
+          >
+            <div className="cx-field" style={{ marginBottom: 0 }}>
+              <label>Application / Reference Number</label>
+              <input
+                type="text"
+                value={reference}
+                disabled
+              />
+            </div>
+
+            <div className="cx-field" style={{ marginBottom: 0 }}>
+              <label>Submission Date</label>
+              <input
+                type="date"
+                value={submissionDate}
+                disabled
+              />
+            </div>
+
+            <div className="cx-field" style={{ marginBottom: 0 }}>
+              <label>Submission Time</label>
+              <input
+                type="time"
+                value={submissionTime}
+                disabled
+              />
+            </div>
+          </div>
+
+          {(persistedQueryType || persistedQueryRemarks) ? (
+            <div
+              style={{
+                marginTop: 14,
+                marginBottom: 14,
+              }}
+            >
+              <strong>Government Query</strong>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'minmax(220px, 0.8fr) minmax(320px, 1.2fr)',
+                  gap: 12,
+                  marginTop: 10,
+                }}
+              >
+                <div className="cx-field">
+                  <label>Query / Issue Type</label>
+                  <input
+                    type="text"
+                    value={persistedQueryType}
+                    disabled
+                  />
+                </div>
+
+                <div className="cx-field">
+                  <label>Query Remarks</label>
+                  <textarea
+                    value={persistedQueryRemarks}
+                    disabled
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="cx-field">
+            <label>Resolution remarks *</label>
+            <textarea
+              value={remarks}
+              disabled={busy}
+              onChange={(event) =>
+                setRemarks(event.target.value)
+              }
+            />
+          </div>
+
+          <button
+            type="button"
+            className="cx-btn cx-udyam-primary-action"
+            disabled={busy || !remarks.trim()}
+            onClick={() => {
+              void runAction(
+                'udyam-resolve-query',
+                {
+                  remarks: remarks.trim(),
+                },
+              );
+            }}
+          >
+            {busy
+              ? 'Saving...'
+              : 'Respond to Application Query'}
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="cx-process-guidance">
+      <div style={{ width: '100%' }}>
+        <div style={{ marginBottom: 16 }}>
+          <strong>Application Submitted</strong>
+
+          <p style={{ marginBottom: 0 }}>
+            The application has been submitted to the government
+            portal. Record the registration outcome when it becomes
+            available.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns:
+              'minmax(260px, 2fr) minmax(180px, 1fr) minmax(160px, 1fr)',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <div className="cx-field" style={{ marginBottom: 0 }}>
+            <label>Application / Reference Number</label>
+            <input
+              type="text"
+              value={reference}
+              disabled
+            />
+          </div>
+
+          <div className="cx-field" style={{ marginBottom: 0 }}>
+            <label>Submission Date</label>
+            <input
+              type="date"
+              value={submissionDate}
+              disabled
+            />
+          </div>
+
+          <div className="cx-field" style={{ marginBottom: 0 }}>
+            <label>Submission Time</label>
+            <input
+              type="time"
+              value={submissionTime}
+              disabled
+            />
+          </div>
+        </div>
+
+        {persistedQueryType || persistedQueryRemarks || persistedQueryResolutionRemarks ? (
+          <div
+            className="cx-process-guidance"
+            style={{ marginBottom: 16 }}
+          >
+            <div style={{ width: '100%' }}>
+              <strong>Previous Application Query</strong>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns:
+                    'minmax(220px, 0.8fr) minmax(300px, 1.2fr)',
+                  gap: 12,
+                  marginTop: 12,
+                }}
+              >
+                <div className="cx-field">
+                  <label>Query / Issue Type</label>
+                  <input
+                    type="text"
+                    value={persistedQueryType}
+                    disabled
+                  />
+                </div>
+
+                <div className="cx-field">
+                  <label>Query Remarks</label>
+                  <textarea
+                    value={persistedQueryRemarks}
+                    disabled
+                  />
+                </div>
+              </div>
+
+              <div className="cx-field">
+                <label>Response Provided</label>
+                <textarea
+                  value={persistedQueryResolutionRemarks}
+                  disabled
+                />
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns:
+              'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <button
+            type="button"
+            className={
+              governmentOutcome === 'QUERY'
+                ? 'cx-btn cx-udyam-outcome-selected'
+                : 'cx-btn subtle cx-udyam-outcome-option'
+            }
+            disabled={busy}
+            onClick={() => {
+              setGovernmentOutcome('QUERY');
+              setCertificate(null);
+            }}
+            style={{
+              textAlign: 'left',
+              minHeight: 64,
+            }}
+          >
+            Query / OTP / Technical Issue Received
+          </button>
+
+          <button
+            type="button"
+            className={
+              governmentOutcome === 'REGISTERED'
+                ? 'cx-btn cx-udyam-outcome-selected'
+                : 'cx-btn subtle cx-udyam-outcome-option'
+            }
+            disabled={busy}
+            onClick={() => {
+              setGovernmentOutcome('REGISTERED');
+              setQueryType('');
+              setRemarks('');
+            }}
+            style={{
+              textAlign: 'left',
+              minHeight: 64,
+            }}
+          >
+            Registration Successful / Certificate Received
+          </button>
+        </div>
+
+        {governmentOutcome === 'QUERY' ? (
+          <div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns:
+                  'minmax(220px, 0.8fr) minmax(300px, 1.2fr)',
+                gap: 12,
+                alignItems: 'start',
+              }}
+            >
+              <div className="cx-field">
+                <label>Query / Issue Type *</label>
+
+                <select
+                  value={queryType}
+                  disabled={busy}
+                  onChange={(event) =>
+                    setQueryType(event.target.value)
+                  }
+                >
+                  <option value="">
+                    Select query / issue
+                  </option>
+
+                  <option value="PORTAL_QUERY">
+                    Portal query
+                  </option>
+
+                  <option value="OTP_REQUIRED">
+                    OTP required
+                  </option>
+
+                  <option value="TECHNICAL_ISSUE">
+                    Technical issue
+                  </option>
+
+                  <option value="ADDITIONAL_INFORMATION">
+                    Additional information required
+                  </option>
+
+                  <option value="DOCUMENT_QUERY">
+                    Document query
+                  </option>
+
+                  <option value="OTHER">
+                    Other
+                  </option>
+                </select>
+              </div>
+
+              <div className="cx-field">
+                <label>Remarks *</label>
+
+                <textarea
+                  value={remarks}
+                  disabled={busy}
+                  onChange={(event) =>
+                    setRemarks(event.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                marginTop: 10,
+              }}
+            >
+              <button
+                type="button"
+                className="cx-btn cx-udyam-primary-action"
+                disabled={
+                  busy ||
+                  !queryType ||
+                  !remarks.trim()
+                }
+                onClick={() => {
+                  void runAction(
+                    'udyam-report-query',
+                    {
+                      query_type: queryType,
+                      remarks: remarks.trim(),
+                    },
+                  );
+                }}
+              >
+                {busy
+                  ? 'Saving...'
+                  : 'Move to Query Resolution'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {governmentOutcome === 'REGISTERED' ? (
+          <div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns:
+                  'minmax(280px, 1fr) minmax(300px, 1fr)',
+                gap: 12,
+                alignItems: 'start',
+              }}
+            >
+              <div className="cx-field">
+                <label>Registration Certificate *</label>
+
+                <input
+                  ref={certificateInputRef}
+                  type="file"
+                  disabled={busy}
+                  onChange={(event) => {
+                    const selectedFile =
+                      event.target.files?.[0] ?? null;
+
+                    setCertificate(selectedFile);
+
+                    if (selectedFile) {
+                      onError('');
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="cx-field">
+                <label>Remarks</label>
+
+                <textarea
+                  value={remarks}
+                  disabled={busy}
+                  onChange={(event) =>
+                    setRemarks(event.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                marginTop: 10,
+              }}
+            >
+              <button
+                type="button"
+                className="cx-btn cx-udyam-primary-action"
+                disabled={busy || !certificate}
+                onClick={() => {
+                  void uploadCertificate();
+                }}
+              >
+                {busy
+                  ? 'Completing...'
+                  : 'Complete Registration'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );}
+
+
 export type ServiceOperationalFieldDefinition = {
   id: string;
   service_id: string;
@@ -1150,7 +2528,7 @@ export function checklistVisualState(
   ) {
     return {
       key: 'PENDING_REVIEW',
-      label: 'Uploaded Ã¢â‚¬â€ pending review',
+      label: 'Uploaded • pending review',
       tone: 'pending',
     };
   }
@@ -1209,7 +2587,7 @@ export function OperationalFieldsPanel({
           <div>
             <h4>Operational details</h4>
             <p>
-              Loading fields for the selected serviceÃ¢â‚¬Â¦
+              Loading fields for the selected service…
             </p>
           </div>
         </div>
@@ -1771,7 +3149,7 @@ export function DocumentsPanel({
                     duplicateUpload.existingAttachment
                       .original_name ||
                       'Earlier upload',
-                  )} Ã‚Â· ${String(
+                  )} · ${String(
                     duplicateUpload.existingAttachment
                       .version_label ||
                       `V${String(
@@ -2091,7 +3469,7 @@ export function DocumentsPanel({
       </div>
       {eligibleContacts.length === 0 ? (
         <p className="cx-warning">
-          No eligible document contact exists for this client. Add or enable one under Client Ã¢â€ â€™ Contacts.
+          No eligible document contact exists for this client. Add or enable one under Client · Contacts.
         </p>
       ) : null}
       {docs.loading ? <Loading /> : docs.rows.length === 0 ? <p style={{ color: '#64748b', fontSize: 13 }}>No documents requested yet.</p> : docs.rows.map((d) => (
@@ -2155,13 +3533,13 @@ export function DocumentsPanel({
                     aria-hidden="true"
                   >
                     {visualState.key === 'RECEIVED'
-                      ? 'Ã¢Å“â€œ'
+                      ? '✓'
                       : visualState.key === 'REJECTED'
                         ? '!'
                         : visualState.key ===
                             'PENDING_REVIEW'
-                          ? 'Ã¢â‚¬Â¦'
-                          : 'Ã¢â€”â€¹'}
+                          ? '…'
+                          : '›'}
                   </span>
 
                   <span>
@@ -2457,7 +3835,7 @@ export function TimelinePanel({
               </div>
 
               {entry ? (
-                <p>{entry}</p>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{entry}</p>
               ) : null}
 
               {detail ? (
@@ -2467,7 +3845,7 @@ export function TimelinePanel({
               {fromStatus && toStatus ? (
                 <small>
                   {label(fromStatus)}
-                  {' â†’ '}
+                  {' → '}
                   {label(toStatus)}
                 </small>
               ) : null}
@@ -2490,11 +3868,15 @@ export type PendingWorkAction =
   | { kind: 'START_WORK'; label: 'Start Work' }
   | { kind: 'SUBMIT_FOR_REVIEW'; label: 'Submit for review' }
   | { kind: 'RESUME_WORK'; label: 'Resume Work' }
-  | { kind: 'APPROVE'; label: 'Approve & complete' }
+  | {
+      kind: 'APPROVE';
+      label: 'Approve & complete' | 'Approve & continue';
+    }
   | { kind: 'RETURN_FOR_REWORK'; label: 'Return for rework'; comment: string };
 
 function cleanWorkItemPayload(editing: Row): Row {
   const body: Row = {};
+
   for (const [k, v] of Object.entries(editing)) {
     if (
       v !== '' &&
@@ -2503,6 +3885,12 @@ function cleanWorkItemPayload(editing: Row): Row {
       body[k] = v;
     }
   }
+
+  // The server serializer owns Udyam process-owned evidence: for the Udyam
+  // service it preserves the reserved lifecycle keys from the database and
+  // ignores any incoming values for them.  The frontend therefore no longer
+  // needs to strip udyam_* keys before a generic save.
+
   return body;
 }
 
@@ -2528,19 +3916,77 @@ export async function persistWorkItem(
   setError: (message: string) => void,
   reload: () => void,
   pendingAction: PendingWorkAction | null = null,
+  closeAfterSave: boolean = true,
+  onSaved: (() => void) | null = null,
 ): Promise<void> {
   try {
-    const saved = await save('work-items', cleanWorkItemPayload(editing));
-    const workItemId = String(saved.id ?? editing.id ?? '');
+    const reviewerOnlyAction =
+      editing.can_review === true &&
+      editing.can_edit !== true &&
+      (
+        pendingAction?.kind === 'APPROVE' ||
+        pendingAction?.kind === 'RETURN_FOR_REWORK'
+      );
+
+    if (reviewerOnlyAction && pendingAction) {
+      const workItemId = String(editing.id ?? '');
+
+      if (!workItemId) {
+        throw new Error(
+          'A saved work item is required for reviewer action.',
+        );
+      }
+
+      await executePendingWorkAction(
+        workItemId,
+        pendingAction,
+      );
+
+      setError('');
+      // Reviewer workflow actions always conclude the edit and return to the
+      // list, matching existing behaviour.
+      closeDrawer();
+      reload();
+      return;
+    }
+
+    const saved = await save(
+      'work-items',
+      cleanWorkItemPayload(editing),
+    );
+
+    const workItemId = String(
+      saved.id ?? editing.id ?? '',
+    );
 
     if (pendingAction) {
-      if (!workItemId) throw new Error('Save the work item before applying a workflow action.');
-      await executePendingWorkAction(workItemId, pendingAction);
+      if (!workItemId) {
+        throw new Error(
+          'Save the work item before applying a workflow action.',
+        );
+      }
+
+      await executePendingWorkAction(
+        workItemId,
+        pendingAction,
+      );
     }
 
     setError('');
-    closeDrawer();
-    reload();
+
+    // A workflow action (pendingAction) always concludes by returning to the
+    // list, preserving the existing save-gated behaviour.  A plain record save
+    // honours the caller intent: Save keeps the drawer open; Save & Close
+    // closes only after successful persistence.
+    if (pendingAction || closeAfterSave) {
+      closeDrawer();
+      reload();
+    } else {
+      reload();
+      if (onSaved) {
+        onSaved();
+      }
+    }
   } catch (e: unknown) {
     setError(String(e instanceof Error ? e.message : e));
   }
@@ -2744,12 +4190,187 @@ export function WorkCatalogueCascade({
 }
 
 
+/*
+ * reconcileOpenWorkspace  (Requirement 1 / P0)
+ *
+ * After a workflow mutation that can change Work status or process position
+ * (especially completion), the open workspace must reconcile from authoritative
+ * server state.  The RELEASE-CRITICAL step is that the open `editing` WorkItem
+ * is replaced by the freshly fetched authoritative WorkItem, because the
+ * terminal projection is anchored to `editing.status === 'COMPLETED'`.
+ *
+ * The previous implementation fetched WorkItem + Health + Process in a single
+ * Promise.all.  If the combined request rejected (or a projection failed) the
+ * whole batch was caught and `editing` stayed stale (e.g. IN_PROGRESS) while
+ * Health had already advanced elsewhere, so the tracker fell back to Stage 2
+ * and re-exposed Submit for Review on an already-completed record.
+ *
+ * This helper fixes the reconciliation boundary:
+ *   1. The authoritative WorkItem is fetched FIRST and independently.  On
+ *      success `editing` is replaced immediately (reconciled).  On failure it
+ *      surfaces an explicit error via onWorkItemError and does NOT fabricate a
+ *      completed record or silently leave a contradictory editable state.
+ *   2. Health and Process are then fetched as NON-FATAL projections.  A failure
+ *      there records a projection error but never blocks or reverts the
+ *      authoritative WorkItem reconciliation from step 1.
+ *
+ * It is a pure orchestration function (all IO and state writes are injected),
+ * so the real completion-reconciliation sequence can be tested directly.
+ */
+export async function reconcileOpenWorkspace(deps: {
+  workItemId: string;
+  fetchObject: (path: string) => Promise<Row>;
+  setEditing: (row: Row) => void;
+  setWorkHealth: (snapshot: WorkHealthSnapshot | null) => void;
+  setWorkProcessState: (
+    snapshot: WorkProcessStateSnapshot | null,
+  ) => void;
+  onWorkItemError: (message: string) => void;
+  onProjectionError: (message: string) => void;
+  clearError: () => void;
+}): Promise<boolean> {
+  const {
+    workItemId,
+    fetchObject,
+    setEditing,
+    setWorkHealth,
+    setWorkProcessState,
+    onWorkItemError,
+    onProjectionError,
+    clearError,
+  } = deps;
+
+  // Step 1 - authoritative WorkItem refetch (release-critical reconciliation).
+  try {
+    const freshWorkItem = await fetchObject(
+      `work-items/${workItemId}`,
+    );
+    setEditing({ ...freshWorkItem });
+    clearError();
+  } catch (error) {
+    /*
+     * The authoritative refresh failed.  Do NOT silently return the user to a
+     * contradictory editable state and do NOT fabricate a completed record.
+     * Surface the failure through the existing error channel so the analyst can
+     * retry (reopen) the record.  The stale editing snapshot is left untouched
+     * rather than being wrongly presented as reconciled.
+     */
+    onWorkItemError(
+      String(
+        error instanceof Error
+          ? `Could not refresh this work item after the last action. ` +
+            `Please reopen it to see its current state. (${error.message})`
+          : error,
+      ),
+    );
+    return false;
+  }
+
+  // Step 2 - dependent projections are non-fatal.
+  try {
+    const [freshHealth, freshProcessState] = await Promise.all([
+      fetchObject(`work-items/${workItemId}/health`),
+      fetchObject(`work-items/${workItemId}/process-step`),
+    ]);
+
+    setWorkHealth(
+      isWorkHealthSnapshot(freshHealth) ? freshHealth : null,
+    );
+    setWorkProcessState(
+      isWorkProcessStateSnapshot(freshProcessState)
+        ? freshProcessState
+        : null,
+    );
+  } catch (error) {
+    /*
+     * A projection hiccup must never revert the authoritative WorkItem that was
+     * already reconciled in step 1.  Record the projection error only.  The
+     * terminal invariant still holds because it is anchored to editing.status.
+     */
+    onProjectionError(
+      String(error instanceof Error ? error.message : error),
+    );
+  }
+
+  return true;
+}
+
+
+/*
+ * UdyamWorkflowConfirm
+ *
+ * The confirmation surface for a selected generic Udyam lifecycle action.  It
+ * renders inside the TOP workflow zone so the analyst completes the workflow in
+ * one place (V1.3 fix).  It reuses the caller's canonical submit() path and the
+ * existing pendingAction state; it introduces no new persistence and no second
+ * pending-action state.
+ *
+ * Exported for rendered workspace tests.
+ */
+export function UdyamWorkflowConfirm({
+  pendingAction,
+  canEdit,
+  onCommentChange,
+  onConfirm,
+  onCancel,
+}: {
+  pendingAction: PendingWorkAction | null;
+  canEdit: boolean;
+  onCommentChange: (comment: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}): React.JSX.Element | null {
+  if (!pendingAction) return null;
+
+  const isReturn = pendingAction.kind === 'RETURN_FOR_REWORK';
+  const returnComment = isReturn ? (pendingAction as { comment: string }).comment : '';
+  const confirmDisabled = isReturn && !returnComment.trim();
+
+  return (
+    <div
+      className="cx-workflow-confirm"
+      role="group"
+      aria-label="Confirm workflow action"
+    >
+      {isReturn ? (
+        <div className="cx-field cx-workflow-confirm-field">
+          <label htmlFor="udyam-reviewer-return-justification">
+            Reviewer return justification *
+          </label>
+          <textarea
+            id="udyam-reviewer-return-justification"
+            value={returnComment}
+            onChange={(event) => onCommentChange(event.target.value)}
+          />
+        </div>
+      ) : null}
+
+      <div className="cx-workflow-confirm-actions">
+        <button
+          type="button"
+          className={isReturn ? 'cx-btn danger' : 'cx-btn'}
+          disabled={confirmDisabled}
+          onClick={onConfirm}
+        >
+          {canEdit ? `Save & ${pendingAction.label}` : `Confirm ${pendingAction.label}`}
+        </button>
+        <button type="button" className="cx-btn subtle" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 export function WorkArea({
+  initialVerticalId,
   initialWorkItemId,
   onInitialWorkOpened,
   initialQuickAction,
   onInitialQuickActionHandled,
 }: {
+  initialVerticalId?: string | undefined;
   initialWorkItemId?: string | undefined;
   onInitialWorkOpened?: () => void;
   initialQuickAction?:
@@ -2764,9 +4385,66 @@ export function WorkArea({
   const services = useList('services');
   const employees = useList('employees');
   const [statusFilter, setStatusFilter] = useState('');
-  const params = useMemo(() => (statusFilter ? { status: statusFilter } : {}), [statusFilter]);
+  const [listVerticalId, setListVerticalId] = useState(
+    initialVerticalId ?? '',
+  );
+
+  useEffect(() => {
+    setListVerticalId(initialVerticalId ?? '');
+  }, [initialVerticalId]);
+
+  const params = useMemo(
+    () => ({
+      ...(statusFilter
+        ? { status: statusFilter }
+        : {}),
+      ...(listVerticalId
+        ? { vertical_id: listVerticalId }
+        : {}),
+    }),
+    [statusFilter, listVerticalId],
+  );
+
   const work = useList('work-items', params);
   const [editing, setEditing] = useState<Row | null>(null);
+
+  /*
+   * Correction 2 (V1.4.1): frontend-only reconciliation safety state.
+   *
+   * If a workflow mutation succeeds on the server but the authoritative
+   * WorkItem refetch subsequently fails, the workspace must NOT continue
+   * presenting stale lifecycle controls (the server state is now unknown).
+   * This flag activates a "refresh required" mode that:
+   *   - suppresses all lifecycle controls (workflow zone and footer)
+   *   - suppresses Save / Save & Close (server state is unknown)
+   *   - shows an explicit "Refresh Work" recovery action
+   *
+   * This is NOT a business workflow state.  It is never persisted, never
+   * sent to the backend, and does not change Work status semantics.
+   * It clears automatically when a subsequent reconciliation succeeds.
+   */
+  const [workspaceNeedsRefresh, setWorkspaceNeedsRefresh] =
+    useState(false);
+
+  /*
+   * Requirement 4: while a Work record is open, the workspace renders as a
+   * fixed full-viewport overlay (.cx-workspace-backdrop) with its own scroll.
+   * Lock the underlying shell body scroll so the analyst sees exactly one
+   * scrollbar (the overlay's) instead of the overlay plus the shell scrolling
+   * behind it.  The class is removed on close/unmount.
+   */
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.body;
+    if (editing) {
+      root.classList.add('cx-workspace-open');
+    } else {
+      root.classList.remove('cx-workspace-open');
+    }
+    return () => {
+      root.classList.remove('cx-workspace-open');
+    };
+  }, [editing]);
 
   const [
     workHealth,
@@ -2785,6 +4463,18 @@ export function WorkArea({
     setWorkHealthError,
   ] = useState('');
 
+  const [
+    workProcessState,
+    setWorkProcessState,
+  ] = useState<WorkProcessStateSnapshot | null>(
+    null,
+  );
+
+  const [
+    workProcessStateLoading,
+    setWorkProcessStateLoading,
+  ] = useState(false);
+
   const [selectedVerticalId, setSelectedVerticalId] =
     useState('');
   const [selectedDomainId, setSelectedDomainId] =
@@ -2793,6 +4483,73 @@ export function WorkArea({
   const selectedServiceId = String(
     editing?.service_id ?? '',
   );
+
+  const selectedServiceCode = String(
+    services.rows.find(
+      (service) =>
+        String(service.id ?? '') === selectedServiceId,
+    )?.code ?? '',
+  );
+
+  const workDisplayStatus = (() => {
+    const rawStatus = String(
+      editing?.status ?? '',
+    );
+
+    const effectiveStatus = String(
+      editing?.effective_status ?? '',
+    ).trim();
+
+    if (effectiveStatus) {
+      return effectiveStatus;
+    }
+
+    if (
+      selectedServiceCode !==
+      'UDYAM_REGISTRATION'
+    ) {
+      return rawStatus;
+    }
+
+    if (rawStatus === 'COMPLETED') {
+      return 'Completed';
+    }
+
+    if (rawStatus === 'REWORK_REQUIRED') {
+      return 'Returned';
+    }
+
+    const processCode = String(
+      workProcessState?.current_step?.code ?? '',
+    );
+
+    const nextActionCode = String(
+      workHealth?.next_action?.code ?? '',
+    );
+
+    if (
+      processCode === 'SUBMIT_APPLICATION' ||
+      nextActionCode === 'SUBMIT_UDYAM_APPLICATION'
+    ) {
+      return 'Application reviewed';
+    }
+
+    if (
+      processCode === 'APPLICATION_SUBMISSION' ||
+      nextActionCode === 'AWAIT_UDYAM_OUTCOME'
+    ) {
+      return 'Application submitted';
+    }
+
+    if (
+      processCode === 'QUERY_RESOLUTION' ||
+      nextActionCode === 'RESOLVE_UDYAM_QUERY'
+    ) {
+      return 'Query / OTP / Technical Issue';
+    }
+
+    return rawStatus;
+  })();
 
   const operationalFields = useList(
     'service-operational-fields',
@@ -2835,6 +4592,7 @@ export function WorkArea({
     domains.rows,
   ]);
 
+
   const updateWorkField = (
     name: string,
     value: unknown,
@@ -2843,10 +4601,74 @@ export function WorkArea({
       if (!current) return current;
 
       if (name === 'service_id') {
+        const selectedClient = clients.rows.find(
+          (row) =>
+            String(row.id ?? '') ===
+            String(current.client_id ?? ''),
+        );
+
+        const clientName = String(
+          selectedClient?.trade_name ??
+          selectedClient?.display_name ??
+          selectedClient?.legal_name ??
+          selectedClient?.business_name ??
+          selectedClient?.client_name ??
+          selectedClient?.name ??
+          '',
+        ).trim();
+
         return {
           ...current,
           service_id: value,
-          operational_data: {},
+          operational_data: clientName
+            ? {
+                enterprise_name: clientName,
+              }
+            : {},
+        };
+      }
+
+      if (name === 'client_id') {
+        const selectedClient = clients.rows.find(
+          (row) =>
+            String(row.id ?? '') ===
+            String(value ?? ''),
+        );
+
+        const operationalData =
+          current.operational_data &&
+          typeof current.operational_data === 'object' &&
+          !Array.isArray(current.operational_data)
+            ? current.operational_data as Row
+            : {};
+
+        const existingEnterpriseName = String(
+          operationalData.enterprise_name ?? '',
+        ).trim();
+
+        const clientName = String(
+          selectedClient?.trade_name ??
+          selectedClient?.display_name ??
+          selectedClient?.legal_name ??
+          selectedClient?.business_name ??
+          selectedClient?.client_name ??
+          selectedClient?.name ??
+          '',
+        ).trim();
+
+        return {
+          ...current,
+          client_id: value,
+          operational_data: {
+            ...operationalData,
+            ...(
+              !existingEnterpriseName && clientName
+                ? {
+                    enterprise_name: clientName,
+                  }
+                : {}
+            ),
+          },
         };
       }
 
@@ -2856,6 +4678,7 @@ export function WorkArea({
       };
     });
   };
+
 
   const updateOperationalField = (
     key: string,
@@ -2885,7 +4708,7 @@ export function WorkArea({
   };
 
   const [err, setErr] = useState('');
-  const [tab, setTab] = useState<'details' | 'assignment' | 'documents' | 'qa' | 'history'>('details');
+  const [tab, setTab] = useState<'details' | 'documents' | 'qa' | 'history'>('details');
   const [pendingAction, setPendingAction] = useState<PendingWorkAction | null>(null);
 
   const [
@@ -3007,18 +4830,155 @@ export function WorkArea({
       });
   };
 
+  const loadWorkProcessState = (): void => {
+    const workItemId = String(
+      editing?.id ?? '',
+    );
+
+    if (!workItemId) {
+      setWorkProcessState(null);
+      setWorkProcessStateLoading(false);
+      return;
+    }
+
+    setWorkProcessStateLoading(true);
+
+    void getObject(
+      `work-items/${workItemId}/process-step`,
+    )
+      .then((snapshot) => {
+        setWorkProcessState(
+          isWorkProcessStateSnapshot(snapshot)
+            ? snapshot
+            : null,
+        );
+      })
+      .catch(() => {
+        setWorkProcessState(null);
+      })
+      .finally(() => {
+        setWorkProcessStateLoading(false);
+      });
+  };
+
   useEffect(() => {
     loadWorkHealth();
+    loadWorkProcessState();
   }, [
     editing?.id,
     tab,
   ]);
 
+  const refreshOpenWorkWorkspace =
+    async (): Promise<void> => {
+      const workItemId = String(
+        editing?.id ?? '',
+      );
+
+      if (!workItemId) {
+        work.reload();
+        return;
+      }
+
+      /*
+       * Reconcile the open workspace from authoritative server state.
+       *
+       * The authoritative WorkItem is refreshed FIRST and independently so a
+       * completed record replaces the stale open `editing` snapshot even if a
+       * dependent projection (Health/Process) is slow or fails.  See
+       * reconcileOpenWorkspace for the full rationale (Requirement 1 / P0).
+       */
+      setWorkHealthLoading(true);
+      setWorkProcessStateLoading(true);
+
+      try {
+        await reconcileOpenWorkspace({
+          workItemId,
+          fetchObject: (path) => getObject(path),
+          setEditing: (row) => setEditing({ ...row }),
+          setWorkHealth,
+          setWorkProcessState,
+          onWorkItemError: (message) => {
+            // Surface a failed authoritative refresh and activate the
+            // refresh-required safety state.  While that flag is set the
+            // workspace suppresses all lifecycle controls and Save/Save&Close.
+            setErr(message);
+            setWorkHealthError(message);
+            setWorkspaceNeedsRefresh(true);
+          },
+          onProjectionError: (message) => {
+            // Non-fatal: the authoritative WorkItem already reconciled.
+            setWorkHealthError(message);
+          },
+          clearError: () => {
+            // Clear only the refresh/reconciliation presentation state after
+            // the authoritative WorkItem has been fetched successfully.
+            setErr('');
+            setWorkHealthError('');
+            setWorkspaceNeedsRefresh(false);
+          },
+        });
+      } finally {
+        setWorkHealthLoading(false);
+        setWorkProcessStateLoading(false);
+
+        // Preserve the existing Work grid refresh.
+        work.reload();
+      }
+    };
+
+
+  const udyamProcessStepCode = String(
+    workProcessState?.current_step?.code ?? '',
+  );
+
+  /*
+   * Requirement 1: anchor terminal signal to the authoritative Work Item status
+   * rather than the separately-loaded process snapshot.  editing.status is
+   * always present on the fetched record; the process snapshot can be
+   * null/slow during loading and must never cause a completed record to appear
+   * editable or to regress the tracker to Stage 2.
+   */
+  const udyamCompletedTerminal =
+    Boolean(editing?.id) &&
+    selectedServiceCode === 'UDYAM_REGISTRATION' &&
+    String(editing?.status ?? '') === 'COMPLETED';
+
+  /*
+   * Udyam post-review stages use dedicated event actions.
+   * Generic Work Save must not compete with them.  A completed Udyam record
+   * is terminal and must likewise not present generic Save or Save & Close.
+   */
+  const udyamOwnsPrimaryAction =
+    Boolean(editing?.id) &&
+    (
+      udyamCompletedTerminal ||
+      udyamProcessStepCode === 'SUBMIT_APPLICATION' ||
+      udyamProcessStepCode === 'APPLICATION_SUBMISSION' ||
+      udyamProcessStepCode === 'QUERY_RESOLUTION' ||
+      udyamProcessStepCode === 'COMPLETION'
+    );
+
+  /*
+   * Requirement 8: when generic Work fields are locked but a stage-owned Udyam
+   * workflow action is still available (an active, non-completed external
+   * stage), the read-only banner must not imply that nothing can be done.
+   * Permissions are unchanged; only the lock-banner wording is clarified.
+   */
+  const udyamHasProcessOwnedAction =
+    selectedServiceCode === 'UDYAM_REGISTRATION' &&
+    !udyamCompletedTerminal &&
+    (
+      udyamProcessStepCode === 'SUBMIT_APPLICATION' ||
+      udyamProcessStepCode === 'APPLICATION_SUBMISSION' ||
+      udyamProcessStepCode === 'QUERY_RESOLUTION'
+    );
 
   const closeWorkDrawer = (): void => {
     setWorkHealth(null);
     setWorkHealthError('');
-
+    setWorkProcessState(null);
+    setWorkspaceNeedsRefresh(false);
     setPendingAction(null);
     setSelectedVerticalId('');
     setSelectedDomainId('');
@@ -3032,7 +4992,22 @@ export function WorkArea({
 
   const submit = (): void => {
     if (!editing) return;
-    void persistWorkItem(editing, closeWorkDrawer, setErr, work.reload, pendingAction);
+    // Save & Close (or workflow action): persist then close on success.
+    void persistWorkItem(editing, closeWorkDrawer, setErr, work.reload, pendingAction, true);
+  };
+
+  const submitStayOpen = (): void => {
+    if (!editing) return;
+    // Save: persist and KEEP the drawer open so the analyst can continue editing.
+    void persistWorkItem(
+      editing,
+      closeWorkDrawer,
+      setErr,
+      work.reload,
+      pendingAction,
+      false,
+      () => { void refreshOpenWorkWorkspace(); },
+    );
   };
 
   const actionButton = (
@@ -3058,7 +5033,41 @@ export function WorkArea({
     const canSubmit = row.can_submit_for_review === true;
     const canReview = row.can_review === true;
     if (action === 'SUBMIT_FOR_REVIEW' && canSubmit) {
-      return actionButton({ kind: 'SUBMIT_FOR_REVIEW', label: 'Submit for review' });
+      const udyamNextActionCode = String(
+        workHealth?.next_action?.code ?? '',
+      );
+
+      const udyamPostReviewAction =
+        udyamNextActionCode === 'SUBMIT_UDYAM_APPLICATION' ||
+        udyamNextActionCode === 'AWAIT_UDYAM_OUTCOME' ||
+        udyamNextActionCode === 'RESOLVE_UDYAM_QUERY' ||
+        udyamNextActionCode === 'COMPLETE_UDYAM_REGISTRATION';
+
+      const udyamPostReviewProcessStep =
+        workProcessState?.current_step?.code ===
+          'SUBMIT_APPLICATION' ||
+        workProcessState?.current_step?.code ===
+          'APPLICATION_SUBMISSION' ||
+        workProcessState?.current_step?.code ===
+          'QUERY_RESOLUTION' ||
+        workProcessState?.current_step?.code ===
+          'COMPLETION';
+
+      const internalReviewCompleted =
+        selectedServiceCode === 'UDYAM_REGISTRATION' &&
+        (
+          udyamPostReviewAction ||
+          udyamPostReviewProcessStep
+        );
+
+      if (internalReviewCompleted) {
+        return null;
+      }
+
+      return actionButton({
+        kind: 'SUBMIT_FOR_REVIEW',
+        label: 'Submit for review',
+      });
     }
     if (action === 'RESUME_WORK' && row.can_edit === true) {
       return actionButton({ kind: 'RESUME_WORK', label: 'Resume Work' });
@@ -3067,7 +5076,15 @@ export function WorkArea({
     if (s === 'READY_FOR_REVIEW' && canReview) {
       return (
         <div style={{ display: 'flex', gap: 6 }}>
-          {actionButton({ kind: 'APPROVE', label: 'Approve & complete' })}
+          {actionButton({
+            kind: 'APPROVE',
+            label:
+              selectedServiceCode === 'UDYAM_REGISTRATION' &&
+              workProcessState?.current_step?.code ===
+                'INTERNAL_REVIEW'
+                ? 'Approve & continue'
+                : 'Approve & complete',
+          })}
           <button
             type="button"
             className={`cx-btn danger${pendingAction?.kind === 'RETURN_FOR_REWORK' ? ' pending' : ''}`}
@@ -3077,14 +5094,11 @@ export function WorkArea({
                 setPendingAction(null);
                 return;
               }
-              const comment = window.prompt('Reason for rework?') ?? '';
-              if (comment.trim()) {
-                selectPendingAction({
-                  kind: 'RETURN_FOR_REWORK',
-                  label: 'Return for rework',
-                  comment: comment.trim(),
-                });
-              }
+              selectPendingAction({
+                kind: 'RETURN_FOR_REWORK',
+                label: 'Return for rework',
+                comment: '',
+              });
             }}
           >
             {pendingAction?.kind === 'RETURN_FOR_REWORK'
@@ -3114,10 +5128,45 @@ export function WorkArea({
   return (
     <>
       <div className="cx-toolbar">
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">All statuses</option>
-          {WORK_STATUS.map((s) => <option key={s} value={s}>{label(s)}</option>)}
+        <select
+          value={listVerticalId}
+          onChange={(e) =>
+            setListVerticalId(e.target.value)
+          }
+          aria-label="Filter Work by vertical"
+        >
+          <option value="">All verticals</option>
+          {verticals.rows
+            .filter(
+              (vertical) =>
+                String(vertical.status ?? 'ACTIVE')
+                === 'ACTIVE',
+            )
+            .map((vertical) => (
+              <option
+                key={String(vertical.id)}
+                value={String(vertical.id)}
+              >
+                {String(vertical.name)}
+              </option>
+            ))}
         </select>
+
+        <select
+          value={statusFilter}
+          onChange={(e) =>
+            setStatusFilter(e.target.value)
+          }
+          aria-label="Filter Work by status"
+        >
+          <option value="">All statuses</option>
+          {WORK_STATUS.map((s) => (
+            <option key={s} value={s}>
+              {label(s)}
+            </option>
+          ))}
+        </select>
+
         <div className="cx-spacer" />
         <button className="cx-btn" onClick={() => { setDocumentSelectionMode(false); setEditing({ title: '', priority: 'NORMAL', status: 'NOT_STARTED' }); setPendingAction(null); setTab('details'); setErr(''); }}>Add Work Item</button>
       </div>
@@ -3190,7 +5239,7 @@ export function WorkArea({
                 );
               },
             },
-            { key: 'status', header: 'Status', render: (r) => <Chip value={String(r.status)} tone={statusTone(String(r.status))} /> },
+            { key: 'status', header: 'Status', render: (r) => <Chip value={String(r.effective_status || r.status)} tone={statusTone(String(r.status))} /> },
           ]}
           rows={work.rows}
         />
@@ -3198,7 +5247,152 @@ export function WorkArea({
       {editing && (
         <div className="cx-workspace-backdrop" onClick={closeWorkDrawer}>
           <div className="cx-workspace-page" onClick={(e) => e.stopPropagation()}>
-            <h3>{editing.id ? String(editing.title) : 'New Work Item'}</h3>
+            <div className="cx-workspace-commandbar" data-testid="work-commandbar">
+              <div className="cx-workspace-commandbar-title">
+                {editing.id ? (
+                  /*
+                    Phase 1 GREEN (Change A + B): identity and current
+                    responsibility are rendered read-only from values already
+                    present on the serialized WorkItem (client_name,
+                    service_name, status/effective_status, current_controller,
+                    current_controller_name).  No state is written, no handler,
+                    callback, API, or workflow derivation is touched, and no
+                    component is mounted/unmounted.  workDisplayStatus and
+                    statusTone are existing read-only helpers.
+                  */
+                  <div className="cx-work-identity" data-testid="work-identity">
+                    <div className="cx-work-identity-line">
+                      <Chip
+                        value={workDisplayStatus}
+                        tone={statusTone(String(editing.status))}
+                      />
+                      <h3 className="cx-work-identity-title">
+                        {String(editing.title)}
+                      </h3>
+                    </div>
+                    {(editing.client_name || editing.service_name) ? (
+                      <div className="cx-work-identity-meta">
+                        {editing.client_name ? (
+                          <span className="cx-work-identity-client">
+                            {String(editing.client_name)}
+                          </span>
+                        ) : null}
+                        {editing.client_name && editing.service_name ? (
+                          <span className="cx-work-identity-sep"> · </span>
+                        ) : null}
+                        {editing.service_name ? (
+                          <span className="cx-work-identity-service">
+                            {String(editing.service_name)}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="cx-work-identity-responsibility">
+                      <span className="cx-work-identity-kicker">
+                        Current responsibility:
+                      </span>{' '}
+                      <span className="cx-work-identity-owner">
+                        {
+                          /*
+                            Read-only projection of the EXISTING controller
+                            fields.  Current responsibility is deliberately
+                            derived from current_controller (not owner_name):
+                            the durable Owner and the Current Responsibility are
+                            not necessarily the same principal.
+                          */
+                          String(editing.status) === 'COMPLETED'
+                            ? 'Completed - no active controller'
+                            : String(editing.status) === 'CANCELLED'
+                              ? 'Cancelled - no active controller'
+                              : String(editing.current_controller) === 'REVIEWER'
+                                ? (editing.current_controller_name
+                                    ? `Reviewer - ${String(editing.current_controller_name)}`
+                                    : 'Reviewer')
+                                : String(editing.current_controller) === 'OWNER'
+                                  ? (editing.current_controller_name
+                                      ? `Owner - ${String(editing.current_controller_name)}`
+                                      : 'Owner')
+                                  : String(editing.current_controller) === 'CLIENT'
+                                    ? 'Waiting on client'
+                                    : (editing.current_controller_name
+                                        ? String(editing.current_controller_name)
+                                        : 'Unassigned')
+                        }
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <h3>New Work Item</h3>
+                )}
+              </div>
+
+              <div
+                className="cx-workspace-commandbar-action"
+                aria-label="Current workflow action"
+              >
+                {/* TOP WORKFLOW ACTION ZONE - complete workflow interaction in one place */}
+            {editing.id && !workspaceNeedsRefresh ? (
+              <div className="cx-workflow-zone" data-testid="udyam-workflow-zone">
+                {selectedServiceCode === 'UDYAM_REGISTRATION'
+                  ? (
+                    udyamCompletedTerminal
+                      ? (
+                        // Terminal completed: show only a close action
+                        <div className="cx-workflow-zone-inner">
+                          <span className="cx-workflow-zone-label">Work completed</span>
+                          <button type="button" className="cx-btn subtle" onClick={closeWorkDrawer}>
+                            Close
+                          </button>
+                        </div>
+                      )
+                      : (
+                        <div className="cx-workflow-zone-inner">
+                          {/* Udyam generic-review actions (Submit for Review / Approve / Return / Start / Resume) */}
+                          {reviewButtons(editing)}
+                          {/* Udyam external business actions (Submit Application / Report Query / Resolve / Complete) */}
+                          <UdyamExternalActions
+                            workItem={editing}
+                            processState={workProcessState}
+                            health={workHealth}
+                            onError={setErr}
+                            onChanged={refreshOpenWorkWorkspace}
+                          />
+
+                          {/*
+                            V1.3: a selected generic lifecycle action is COMPLETED
+                            here in the top zone - not at the footer.  The reviewer
+                            justification (Return for Rework) and the confirm control
+                            render together in this same zone.  Execution reuses the
+                            canonical submit() -> persistWorkItem(pendingAction) path.
+                          */}
+                          <UdyamWorkflowConfirm
+                            pendingAction={pendingAction}
+                            canEdit={editing.can_edit === true}
+                            onCommentChange={(comment) =>
+                              setPendingAction(
+                                pendingAction &&
+                                  pendingAction.kind === 'RETURN_FOR_REWORK'
+                                  ? { ...pendingAction, comment }
+                                  : pendingAction,
+                              )
+                            }
+                            onConfirm={submit}
+                            onCancel={() => setPendingAction(null)}
+                          />
+                        </div>
+                      )
+                  )
+                  : (
+                    /* Non-Udyam: primary generic workflow actions (footer confirm preserved) */
+                    <div className="cx-workflow-zone-inner">
+                      {reviewButtons(editing)}
+                    </div>
+                  )
+                }
+              </div>
+            ) : null}
+              </div>
+            </div>
 
             {editing.id ? (
               <WorkHealthCard
@@ -3212,54 +5406,168 @@ export function WorkArea({
               />
             ) : null}
 
+            {/* 8-STAGE PROCESS TRACKER — always visible above tabs */}
+            {editing.id && selectedServiceCode === 'UDYAM_REGISTRATION' ? (
+              <ProcessTracker
+                health={workHealth}
+                processState={workProcessState}
+                forceTerminalComplete={udyamCompletedTerminal}
+                loading={
+                  workHealthLoading ||
+                  workProcessStateLoading
+                }
+                onOpenDocuments={() => setTab('documents')}
+              />
+            ) : null}
+
             {editing.id ? (
               <div className="cx-toolbar" style={{ marginBottom: 12 }}>
-                {(['details', 'assignment', 'documents', 'qa', 'history'] as const).map((t) => (
+                {(['details', 'documents', 'history'] as const).map((t) => (
                   <button
                     key={t}
                     className={`cx-btn ${t === tab ? '' : 'subtle'}`}
                     onClick={() => setTab(t)}
                   >
-                    {t === 'history' ? 'Timeline' : label(t)}
+                    {t === 'history' ? 'History' : label(t)}
                   </button>
                 ))}
               </div>
             ) : null}
             <ErrorBar error={err} />
+            {/*
+              Correction 2 (V1.4.1): refresh-required safety banner.
+              While workspaceNeedsRefresh is true the workspace has just
+              performed a workflow mutation whose authoritative result could
+              not be confirmed.  The analyst must refresh before acting again.
+              This is frontend-only reconciliation safety - not a business
+              workflow state.
+            */}
+            {workspaceNeedsRefresh ? (
+              <div
+                className="cx-warning"
+                role="alert"
+                data-testid="workspace-refresh-required"
+                style={{ marginBottom: 12 }}
+              >
+                <strong>Refresh required.</strong>{' '}
+                The workflow action completed, but the latest Work state could
+                not be confirmed. Refresh before performing another action.
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className="cx-btn"
+                    onClick={() => { void refreshOpenWorkWorkspace(); }}
+                  >
+                    Refresh Work
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {tab === 'details' && (
               <>
                 {editing.id ? (
                   <div style={{ marginBottom: 12 }}>
-                    <Chip value={String(editing.status)} tone={statusTone(String(editing.status))} />
+                    <Chip
+                      value={workDisplayStatus}
+                      tone={statusTone(String(editing.status))}
+                    />
                     {editing.current_controller_name ? (
                       <span className="cx-controller"> Controller: {String(editing.current_controller_name)}</span>
                     ) : null}
-                    {' '}{reviewButtons(editing)}
                   </div>
                 ) : null}
                 {editing.id && editing.is_locked === true ? (
                   <div className="cx-lock-banner" role="status">
-                    {lockMessage(editing.status, editing.current_controller_name)}
+                    {lockMessage(editing.status, editing.current_controller_name, udyamHasProcessOwnedAction)}
                   </div>
                 ) : null}
-                {pendingAction ? (
+                {pendingAction && selectedServiceCode !== 'UDYAM_REGISTRATION' ? (
                   <div className="cx-warning" role="status" style={{ marginBottom: 12 }}>
-                    Pending workflow action: <strong>{pendingAction.label}</strong>. This will run only when you save.
+                    Pending workflow action: <strong>{pendingAction.label}</strong>. {
+                      editing.can_review === true &&
+                      editing.can_edit !== true
+                        ? 'Confirm the reviewer action below.'
+                        : 'This will run only when you save.'
+                    }
                   </div>
                 ) : null}
+
+                {pendingAction?.kind === 'RETURN_FOR_REWORK' &&
+                  selectedServiceCode !== 'UDYAM_REGISTRATION' ? (
+                  <div className="cx-field" style={{ marginBottom: 12 }}>
+                    <label htmlFor="reviewer-return-justification">
+                      Reviewer return justification *
+                    </label>
+                    <textarea
+                      id="reviewer-return-justification"
+                      value={pendingAction.comment}
+                      onChange={(event) =>
+                        setPendingAction({
+                          ...pendingAction,
+                          comment: event.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                ) : null}
+
+                {
+                  String(editing.review_comment ?? '').trim()
+                    ? (
+                      <div className="cx-field" style={{ marginBottom: 12 }}>
+                        <label htmlFor="reviewer-return-justification-readonly">
+                          Reviewer return justification
+                        </label>
+                        <textarea
+                          id="reviewer-return-justification-readonly"
+                          readOnly
+                          value={String(editing.review_comment)}
+                        />
+                      </div>
+                    )
+                    : null
+                }
                 {fields.map((f) => (
-                  <div className="cx-field" key={f.name}>
-                    <label>{label(f.name.replace(/_id$/, '').replace(/_user$/, ''))}</label>
-                    {f.kind === 'textarea' ? (
-                      <textarea value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)} />
-                    ) : f.kind === 'select' ? (
-                      <select value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)}>
-                        <option value="">""</option>
-                        {(f.options ?? []).map((o) => <option key={o} value={o}>{f.labels ? f.labels(o) : label(o)}</option>)}
-                      </select>
-                    ) : (
-                      <input type={f.kind === 'date' ? 'date' : 'text'} value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)} />
-                    )}
+                  <div key={f.name}>
+                    <div className="cx-field">
+                      <label>{label(f.name.replace(/_id$/, '').replace(/_user$/, ''))}</label>
+                      {f.kind === 'textarea' ? (
+                        <textarea value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)} />
+                      ) : f.kind === 'select' ? (
+                        <select value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)}>
+                          <option value="">""</option>
+                          {(f.options ?? []).map((o) => <option key={o} value={o}>{f.labels ? f.labels(o) : label(o)}</option>)}
+                        </select>
+                      ) : (
+                        <input type={f.kind === 'date' ? 'date' : 'text'} value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)} />
+                      )}
+                    </div>
+
+                    {f.name === 'owner_user_id' ? (
+                      <div className="cx-owner-recommendation">
+                        <AssignmentWorkspace
+                          workItem={editing}
+                          employees={employees.rows}
+                          onAssigned={(result) => {
+                            setEditing((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    owner_user_id:
+                                      result.owner_user_id ||
+                                      current.owner_user_id,
+                                    reviewer_user_id:
+                                      result.reviewer_user_id ||
+                                      current.reviewer_user_id,
+                                  }
+                                : current,
+                            );
+                            setErr('');
+                            work.reload();
+                          }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 ))}
 
@@ -3276,11 +5584,7 @@ export function WorkArea({
                   selectedServiceId={
                     selectedServiceId
                   }
-                  disabled={
-                    editing.id
-                      ? editing.can_edit !== true
-                      : false
-                  }
+                  disabled={Boolean(editing.id)}
                   onVerticalChange={(value) => {
                     setSelectedVerticalId(value);
                     setSelectedDomainId('');
@@ -3324,11 +5628,7 @@ export function WorkArea({
                     loading={
                       operationalFields.loading
                     }
-                    disabled={
-                      editing.id
-                        ? editing.can_edit !== true
-                        : false
-                    }
+                    disabled={Boolean(editing.id)}
                     onChange={
                       updateOperationalField
                     }
@@ -3347,41 +5647,61 @@ export function WorkArea({
                 )}
                 <div className="cx-drawer-actions">
                   <button type="button" className="cx-btn subtle" onClick={closeWorkDrawer}>Close</button>
-                  {(!editing.id || editing.can_edit === true) ? (
-                    <button type="button" className="cx-btn" onClick={submit}>
-                      {pendingAction ? `Save & ${pendingAction.label}` : 'Save'}
-                    </button>
-                  ) : (
-                    <button type="button" className="cx-btn" disabled aria-disabled="true" title="Read-only at this stage">
-                      Save
-                    </button>
+                  {/*
+                    Correction 2: while workspaceNeedsRefresh is active, all
+                    lifecycle controls and Save/Save&Close are suppressed - the
+                    server state is unknown after the failed authoritative refresh.
+                    The analyst must use the "Refresh Work" recovery action above.
+                  */}
+                  {!workspaceNeedsRefresh && !udyamOwnsPrimaryAction && (
+                    (
+                      !editing.id ||
+                    editing.can_edit === true ||
+                    (
+                      editing.can_review === true &&
+                      (
+                        pendingAction?.kind === 'APPROVE' ||
+                        pendingAction?.kind === 'RETURN_FOR_REWORK'
+                      )
+                    )
+                  ) ? (
+                    /*
+                      V1.3: For Udyam, a selected lifecycle action is confirmed in
+                      the TOP workflow zone, so the footer never renders the
+                      lifecycle confirm button.  Non-Udyam keeps the existing
+                      footer save-gated confirm behaviour unchanged.
+                    */
+                    (pendingAction && selectedServiceCode !== 'UDYAM_REGISTRATION') ? (
+                      <button
+                        type="button"
+                        className="cx-btn"
+                        disabled={
+                          pendingAction?.kind === 'RETURN_FOR_REWORK' &&
+                          !pendingAction.comment.trim()
+                        }
+                        onClick={submit}
+                      >
+                        {
+                          editing.can_edit !== true
+                            ? `Confirm ${pendingAction.label}`
+                            : `Save & ${pendingAction.label}`
+                        }
+                      </button>
+                    ) : !pendingAction ? (
+                      <>
+                        <button type="button" className="cx-btn subtle" onClick={submitStayOpen}>
+                          Save
+                        </button>
+                        <button type="button" className="cx-btn" onClick={submit}>
+                          Save &amp; Close
+                        </button>
+                      </>
+                    ) : null
+                  ) : null
                   )}
                 </div>
               </>
             )}
-            {tab === 'assignment' && editing.id ? (
-              <AssignmentWorkspace
-                workItem={editing}
-                employees={employees.rows}
-                onAssigned={(result) => {
-                  setEditing((current) =>
-                    current
-                      ? {
-                          ...current,
-                          owner_user_id:
-                            result.owner_user_id ||
-                            current.owner_user_id,
-                          reviewer_user_id:
-                            result.reviewer_user_id ||
-                            current.reviewer_user_id,
-                        }
-                      : current,
-                  );
-                  setErr('');
-                  work.reload();
-                }}
-              />
-            ) : null}
             {tab === 'documents' && editing.id ? (
               <DocumentsPanel
                 workItemId={String(editing.id)}

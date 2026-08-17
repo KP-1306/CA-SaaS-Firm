@@ -65,6 +65,115 @@ def _to_ready(http, w):
     assert _set(http, w["id"], "READY_FOR_REVIEW").status_code == 200
 
 
+@pytest.mark.django_db
+def test_operational_data_is_locked_after_creation_except_for_platform_admin():
+    import uuid
+
+    from contexts.configuration.models import (
+        Service,
+        ServiceOperationalField,
+    )
+    from contexts.identity.models import (
+        MembershipStatus,
+        ProviderMembership,
+        ProviderRole,
+    )
+    from contexts.work.models import WorkItem
+
+    http = HttpClient()
+
+    service = Service.objects.create(
+        tenant_id=TENANT_A,
+        created_by=OWNER,
+        updated_by=OWNER,
+        domain_id=uuid.uuid4(),
+        name="Operational Lock Service",
+        code="OPERATIONAL_LOCK_TEST",
+        description="Focused operational-data lock test service.",
+        status="ACTIVE",
+    )
+
+    ServiceOperationalField.objects.create(
+        tenant_id=TENANT_A,
+        created_by=OWNER,
+        updated_by=OWNER,
+        service_id=service.id,
+        key="registration_number",
+        label="Registration Number",
+        field_type="TEXT",
+        required=False,
+        options=[],
+        display_order=10,
+        is_active=True,
+    )
+
+    work = _make_work(http)
+    work_item = WorkItem.objects.get(id=work["id"])
+    work_item.service_id = service.id
+    work_item.operational_data = {
+        "registration_number": "ORIGINAL-001",
+    }
+    work_item.save(
+        update_fields=[
+            "service_id",
+            "operational_data",
+            "updated_at",
+            "row_version",
+        ]
+    )
+
+    owner_response = http.patch(
+        f"/api/v1/work-items/{work_item.id}/",
+        data={
+            "operational_data": {
+                "registration_number": "OWNER-CHANGED",
+            }
+        },
+        content_type="application/json",
+        **_headers(principal=OWNER),
+    )
+
+    assert owner_response.status_code == 403, owner_response.content
+    assert (
+        owner_response.json()["detail"]
+        == "Operational details are read-only after Work creation."
+    )
+
+    work_item.refresh_from_db()
+    assert work_item.operational_data == {
+        "registration_number": "ORIGINAL-001",
+    }
+
+    platform_admin = str(uuid.uuid4())
+
+    ProviderMembership.objects.create(
+        tenant_id=TENANT_A,
+        created_by=OWNER,
+        updated_by=OWNER,
+        user_account_id=platform_admin,
+        role=ProviderRole.PLATFORM_ADMIN,
+        status=MembershipStatus.ACTIVE,
+    )
+
+    admin_response = http.patch(
+        f"/api/v1/work-items/{work_item.id}/",
+        data={
+            "operational_data": {
+                "registration_number": "ADMIN-CHANGED",
+            }
+        },
+        content_type="application/json",
+        **_headers(principal=platform_admin),
+    )
+
+    assert admin_response.status_code == 200, admin_response.content
+
+    work_item.refresh_from_db()
+    assert work_item.operational_data == {
+        "registration_number": "ADMIN-CHANGED",
+    }
+
+
 # ---- owner-controlled states ----
 @pytest.mark.django_db
 def test_owner_can_edit_in_not_started():

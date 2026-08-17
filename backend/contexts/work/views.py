@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from rest_framework.permissions import IsAuthenticated
+from contexts.configuration.models import Domain, Service
 from contexts.authorization.permissions import (
     DocumentAttachmentAccessPermission,
     DocumentRequestAccessPermission,
@@ -29,6 +30,7 @@ from contexts.clients.models import ClientContact
 from contexts.configuration.models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
+    ServiceProcessStep,
 )
 from contexts.assignment.models import AssignmentEvent
 from contexts.identity.models import Employee
@@ -53,7 +55,7 @@ from contexts.notifications.services import (
     notify_work_assigned,
     notify_work_transition,
 )
-from contexts.audit.models import AuditAction
+from contexts.audit.models import AuditAction, AuditEvent
 
 from .models import (
     AttachmentReviewStatus,
@@ -62,6 +64,7 @@ from .models import (
     DocumentRequest,
     DocumentRequestStatus,
     WorkItem,
+    WorkProcessState,
     WorkNote,
     WorkStatus,
     document_request_is_complete,
@@ -374,24 +377,6 @@ class WorkItemViewSet(TenantModelViewSet):
 
         contact = self._eligible_document_contact(item)
 
-        if contact is None:
-            if strict:
-                raise ValidationError(
-                    {
-                        "detail": (
-                            "No active client contact is eligible to "
-                            "receive document requests."
-                        )
-                    }
-                )
-
-            return {
-                "created": 0,
-                "existing": 0,
-                "skipped": "NO_ELIGIBLE_CLIENT_CONTACT",
-                "requests": [],
-            }
-
         requirements = list(
             ServiceDocumentRequirement.objects.filter(
                 tenant_id=item.tenant_id,
@@ -459,9 +444,15 @@ class WorkItemViewSet(TenantModelViewSet):
                     ),
                     "requested_date": timezone.now().date(),
                     "due_date": item.due_date,
-                    "requested_from_contact_id": contact.id,
+                    "requested_from_contact_id": (
+                        contact.id if contact is not None else None
+                    ),
                     "request_channel": request_channel,
-                    "sent_at": timezone.now(),
+                    "sent_at": (
+                        timezone.now()
+                        if contact is not None
+                        else None
+                    ),
                     "mandatory": requirement.mandatory,
                     "client_visible": True,
                     "remarks": (
@@ -596,12 +587,28 @@ class WorkItemViewSet(TenantModelViewSet):
         )
 
     def get_queryset(self):
+        vertical_id = self.request.query_params.get(
+            "vertical_id"
+        )
         qs = super().get_queryset()
         params = self.request.query_params
         for field in ("status", "priority", "client_id", "service_id", "owner_user_id", "reviewer_user_id"):
             value = params.get(field)
             if value:
                 qs = qs.filter(**{field: value})
+        if vertical_id:
+            service_ids = Service.objects.filter(
+                tenant_id=self.principal().tenant_id,
+                domain_id__in=Domain.objects.filter(
+                    tenant_id=self.principal().tenant_id,
+                    vertical_id=vertical_id,
+                ).values_list("id", flat=True),
+            ).values_list("id", flat=True)
+
+            qs = qs.filter(
+                service_id__in=service_ids
+            )
+
         return qs
 
     # -- C4 controller guards ------------------------------------------
@@ -617,6 +624,34 @@ class WorkItemViewSet(TenantModelViewSet):
                     "use the dedicated workflow action."
                 )
 
+    def _deny_operational_data_writes(self, item):
+        """Freeze captured operational details after Work creation.
+
+        Generic edits may change operational_data only for the canonical
+        tenant-local operational superuser. Dedicated workflow actions that
+        persist lifecycle evidence do not use this generic update path.
+        """
+        data = getattr(self.request, "data", {}) or {}
+
+        if "operational_data" not in data:
+            return
+
+        incoming = data.get("operational_data")
+        current = item.operational_data or {}
+
+        if incoming == current:
+            return
+
+        if ownership.is_operational_superuser(
+            item.tenant_id,
+            self.principal(),
+        ):
+            return
+
+        raise PermissionDenied(
+            "Operational details are read-only after Work creation."
+        )
+
     def update(self, request, *args, **kwargs):
         item = self.get_object()
         if not ownership.can_edit_work_item(item, self.principal()):
@@ -624,6 +659,14 @@ class WorkItemViewSet(TenantModelViewSet):
                 "This work item is read-only for you at its current stage."
             )
         self._deny_control_field_writes(item)
+
+        # Udyam process-owned lifecycle evidence is protected by the serializer
+        # ownership boundary (WorkItemSerializer.validate): for the Udyam
+        # service the reserved keys are always preserved from the database
+        # instance and incoming values for them are ignored.  No request-level
+        # re-injection workaround is required here.
+
+        self._deny_operational_data_writes(item)
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):
@@ -659,43 +702,48 @@ class WorkItemViewSet(TenantModelViewSet):
 
     def _require_reviewer(self, item):
         principal = self.principal()
-        if not item.reviewer_user_id:
-            raise PermissionDenied("Only the assigned reviewer may perform this action.")
-        linked = Employee.objects.filter(
-            tenant_id=principal.tenant_id,
-            id=item.reviewer_user_id,
-            principal_id=principal.principal_id,
-            is_active=True,
-        ).exists()
-        if not linked:
-            raise PermissionDenied("Only the assigned reviewer may perform this action.")
 
-    @transaction.atomic
+        if not ownership.is_reviewer(
+            item,
+            principal,
+        ):
+            raise PermissionDenied(
+                "Only the assigned reviewer or a platform administrator "
+                "may perform this action."
+            )
+
     def _transition(self, item, target, entry, *, update_fields):
         previous = item.status
-        item.status = target
-        fields = {"status", "updated_by", *update_fields}
-        item.updated_by = self.principal().principal_id
-        item.save(update_fields=list(fields))
-        self._record(item, entry or f"Status changed to {target}.", previous, target)
-        try:
-            record_event(
-                tenant_id=item.tenant_id,
-                principal_id=self.principal().principal_id,
-                action=AuditAction.STATUS_CHANGE,
-                entity_type="WorkItem",
-                entity_id=item.id,
-                summary=f"{previous} -> {target}",
-                previous={"status": previous},
-                new={"status": target},
-                request=self.request,
-            )
-        except Exception as exc:
-            # Raise a DRF APIException from inside the atomic boundary. Django
-            # rolls back the business mutation before DRF renders the controlled
-            # 503 response, so mandatory audit persistence remains fail-closed.
-            raise MandatoryAuditPersistenceError() from exc
 
+        # Business mutation, WorkNote and mandatory audit are one DB unit.
+        # If mandatory audit persistence fails, the business mutation rolls back.
+        with transaction.atomic():
+            item.status = target
+            fields = {"status", "updated_by", *update_fields}
+            item.updated_by = self.principal().principal_id
+            item.save(update_fields=list(fields))
+            self._record(
+                item,
+                entry or f"Status changed to {target}.",
+                previous,
+                target,
+            )
+            try:
+                record_event(
+                    tenant_id=item.tenant_id,
+                    principal_id=self.principal().principal_id,
+                    action=AuditAction.STATUS_CHANGE,
+                    entity_type="WorkItem",
+                    entity_id=item.id,
+                    summary=f"{previous} -> {target}",
+                    previous={"status": previous},
+                    new={"status": target},
+                    request=self.request,
+                )
+            except Exception as exc:
+                raise MandatoryAuditPersistenceError() from exc
+
+        # Notification is not part of mandatory DB consistency.
         notify_work_transition(
             item=item,
             previous_status=previous,
@@ -704,6 +752,940 @@ class WorkItemViewSet(TenantModelViewSet):
         )
 
         return previous
+
+
+    # -- automated service-process helpers -----------------------------
+    def _is_udyam_registration(self, item) -> bool:
+        """Identify the configured Udyam registration service."""
+        if not item.service_id:
+            return False
+
+        return Service.objects.filter(
+            tenant_id=item.tenant_id,
+            id=item.service_id,
+            code="UDYAM_REGISTRATION",
+        ).exists()
+
+    def _udyam_process_step(self, item, code):
+        """Resolve one active configured Udyam process step."""
+        if not item.service_id:
+            return None
+
+        return (
+            ServiceProcessStep.objects
+            .filter(
+                tenant_id=item.tenant_id,
+                service_id=item.service_id,
+                code=code,
+                is_active=True,
+            )
+            .first()
+        )
+
+    def _persist_automated_process_step(
+        self,
+        item,
+        target_step,
+        principal,
+        note,
+    ):
+        """
+        Persist process position derived from an actual workflow action.
+
+        This mirrors the existing process-step persistence semantics without
+        creating a second workflow engine or issuing an internal HTTP request.
+        """
+        state = (
+            WorkProcessState.objects
+            .select_for_update()
+            .filter(
+                tenant_id=principal.tenant_id,
+                work_item_id=item.id,
+            )
+            .first()
+        )
+
+        previous_step = None
+
+        if state is not None and state.current_step_id:
+            previous_step = (
+                ServiceProcessStep.objects
+                .filter(
+                    tenant_id=principal.tenant_id,
+                    service_id=item.service_id,
+                    id=state.current_step_id,
+                )
+                .first()
+            )
+
+        now = timezone.now()
+
+        if state is None:
+            state = WorkProcessState.objects.create(
+                tenant_id=principal.tenant_id,
+                created_by=principal.principal_id,
+                updated_by=principal.principal_id,
+                work_item_id=item.id,
+                current_step_id=target_step.id,
+                entered_at=now,
+                entered_by=principal.principal_id,
+                note=note,
+            )
+        else:
+            state.current_step_id = target_step.id
+            state.entered_at = now
+            state.entered_by = principal.principal_id
+            state.note = note
+            state.updated_by = principal.principal_id
+            state.save(
+                update_fields=[
+                    "current_step_id",
+                    "entered_at",
+                    "entered_by",
+                    "note",
+                    "updated_by",
+                    "row_version",
+                ]
+            )
+
+        previous_payload = {
+            "process_step_id": (
+                str(previous_step.id)
+                if previous_step is not None
+                else ""
+            ),
+            "process_step_code": (
+                previous_step.code
+                if previous_step is not None
+                else ""
+            ),
+        }
+
+        new_payload = {
+            "process_step_id": str(target_step.id),
+            "process_step_code": target_step.code,
+        }
+
+        try:
+            record_event(
+                tenant_id=principal.tenant_id,
+                principal_id=principal.principal_id,
+                action=AuditAction.STATUS_CHANGE,
+                entity_type="WorkProcessState",
+                entity_id=state.id,
+                summary=(
+                    "Process step changed: "
+                    f"{previous_step.code if previous_step else 'NONE'} "
+                    f"-> {target_step.code}"
+                ),
+                previous=previous_payload,
+                new=new_payload,
+                request=self.request,
+            )
+        except Exception as exc:
+            raise MandatoryAuditPersistenceError() from exc
+
+        return state
+
+    # -- service-specific operational process position ----------------
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="process-step",
+    )
+    def process_step(self, request, pk=None):
+        """
+        Set the current service-process step for one WorkItem.
+
+        Process position is intentionally independent from
+        WorkItem.status.
+        """
+        item = self.get_object()
+        principal = self.principal()
+
+        if request.method == "GET":
+            state = (
+                WorkProcessState.objects
+                .filter(
+                    tenant_id=principal.tenant_id,
+                    work_item_id=item.id,
+                )
+                .first()
+            )
+
+            if state is None:
+                return Response(
+                    {
+                        "work_item_id": str(item.id),
+                        "current_step": None,
+                        "entered_at": None,
+                        "entered_by": None,
+                        "note": "",
+                    },
+                    status=http_status.HTTP_200_OK,
+                )
+
+            current_step = (
+                ServiceProcessStep.objects
+                .filter(
+                    tenant_id=principal.tenant_id,
+                    id=state.current_step_id,
+                    service_id=item.service_id,
+                    is_active=True,
+                )
+                .first()
+            )
+
+            return Response(
+                {
+                    "work_item_id": str(item.id),
+                    "current_step": (
+                        {
+                            "id": str(current_step.id),
+                            "code": current_step.code,
+                            "name": current_step.name,
+                            "display_order": (
+                                current_step.display_order
+                            ),
+                        }
+                        if current_step is not None
+                        else None
+                    ),
+                    "entered_at": (
+                        state.entered_at.isoformat()
+                        if state.entered_at
+                        else None
+                    ),
+                    "entered_by": str(state.entered_by),
+                    "note": state.note,
+                },
+                status=http_status.HTTP_200_OK,
+            )
+
+        if not ownership.is_owner(item, principal):
+            raise PermissionDenied(
+                "Only the assigned owner may change the process step "
+                "of this work item."
+            )
+
+        if not item.service_id:
+            return Response(
+                {
+                    "detail": (
+                        "A service is required before a process step "
+                        "can be selected."
+                    ),
+                    "code": "PROCESS_SERVICE_REQUIRED",
+                },
+                status=400,
+            )
+
+        data = request.data or {}
+        raw_step_id = data.get("step_id")
+
+        if not raw_step_id:
+            return Response(
+                {
+                    "detail": "step_id is required.",
+                    "code": "PROCESS_STEP_REQUIRED",
+                },
+                status=400,
+            )
+
+        try:
+            step_uuid = uuid.UUID(str(raw_step_id))
+        except (TypeError, ValueError, AttributeError):
+            return Response(
+                {
+                    "detail": "step_id must be a valid UUID.",
+                    "code": "PROCESS_STEP_INVALID",
+                },
+                status=400,
+            )
+
+        note = str(data.get("note") or "").strip()
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .filter(
+                    tenant_id=principal.tenant_id,
+                    id=item.id,
+                )
+                .first()
+            )
+
+            if locked_item is None:
+                raise PermissionDenied(
+                    "This work item is no longer available."
+                )
+
+            if not ownership.is_owner(
+                locked_item,
+                principal,
+            ):
+                raise PermissionDenied(
+                    "Only the assigned owner may change the process step "
+                    "of this work item."
+                )
+
+            if not locked_item.service_id:
+                return Response(
+                    {
+                        "detail": (
+                            "A service is required before a process step "
+                            "can be selected."
+                        ),
+                        "code": "PROCESS_SERVICE_REQUIRED",
+                    },
+                    status=400,
+                )
+
+            target_step = (
+                ServiceProcessStep.objects
+                .filter(
+                    tenant_id=principal.tenant_id,
+                    id=step_uuid,
+                    service_id=locked_item.service_id,
+                    is_active=True,
+                )
+                .first()
+            )
+
+            if target_step is None:
+                return Response(
+                    {
+                        "detail": (
+                            "The selected process step is not active and "
+                            "valid for this work item's service."
+                        ),
+                        "code": "PROCESS_STEP_NOT_AVAILABLE",
+                    },
+                    status=400,
+                )
+
+            state = (
+                WorkProcessState.objects
+                .select_for_update()
+                .filter(
+                    tenant_id=principal.tenant_id,
+                    work_item_id=locked_item.id,
+                )
+                .first()
+            )
+
+            previous_step = None
+
+            if (
+                state is not None
+                and state.current_step_id
+            ):
+                previous_step = (
+                    ServiceProcessStep.objects
+                    .filter(
+                        tenant_id=principal.tenant_id,
+                        id=state.current_step_id,
+                    )
+                    .first()
+                )
+
+            now = timezone.now()
+
+            if state is None:
+                state = WorkProcessState.objects.create(
+                    tenant_id=principal.tenant_id,
+                    created_by=principal.principal_id,
+                    updated_by=principal.principal_id,
+                    work_item_id=locked_item.id,
+                    current_step_id=target_step.id,
+                    entered_at=now,
+                    entered_by=principal.principal_id,
+                    note=note,
+                )
+            else:
+                state.current_step_id = target_step.id
+                state.entered_at = now
+                state.entered_by = principal.principal_id
+                state.note = note
+                state.updated_by = principal.principal_id
+
+                state.save(
+                    update_fields=[
+                        "current_step_id",
+                        "entered_at",
+                        "entered_by",
+                        "note",
+                        "updated_by",
+                        "row_version",
+                    ]
+                )
+
+            previous_payload = {
+                "process_step_id": (
+                    str(previous_step.id)
+                    if previous_step is not None
+                    else ""
+                ),
+                "process_step_code": (
+                    previous_step.code
+                    if previous_step is not None
+                    else ""
+                ),
+            }
+
+            new_payload = {
+                "process_step_id": str(target_step.id),
+                "process_step_code": target_step.code,
+            }
+
+            try:
+                record_event(
+                    tenant_id=principal.tenant_id,
+                    principal_id=principal.principal_id,
+                    action=AuditAction.STATUS_CHANGE,
+                    entity_type="WorkProcessState",
+                    entity_id=state.id,
+                    summary=(
+                        "Process step changed: "
+                        f"{previous_step.code if previous_step else 'NONE'} "
+                        f"-> {target_step.code}"
+                    ),
+                    previous=previous_payload,
+                    new=new_payload,
+                    request=self.request,
+                )
+            except Exception as exc:
+                raise MandatoryAuditPersistenceError() from exc
+
+        return Response(
+            {
+                "work_item_id": str(locked_item.id),
+                "current_step": {
+                    "id": str(target_step.id),
+                    "code": target_step.code,
+                    "name": target_step.name,
+                    "display_order": target_step.display_order,
+                },
+                "entered_at": state.entered_at.isoformat(),
+                "entered_by": str(state.entered_by),
+                "note": state.note,
+            },
+            status=http_status.HTTP_200_OK,
+        )
+
+    # -- Udyam post-review business milestones -------------------
+
+    def _require_udyam_owner(self, item):
+        principal = self.principal()
+
+        if not self._is_udyam_registration(item):
+            raise ValidationError(
+                {
+                    "detail": "This action is available only for Udyam registration work.",
+                    "code": "UDYAM_SERVICE_REQUIRED",
+                }
+            )
+
+        if not ownership.is_owner(item, principal):
+            raise PermissionDenied(
+                "Only the assigned owner or a platform administrator "
+                "may perform this Udyam action."
+            )
+
+        return principal
+
+    def _locked_udyam_process_state(self, item, expected_code):
+        state = (
+            WorkProcessState.objects
+            .select_for_update()
+            .filter(
+                tenant_id=item.tenant_id,
+                work_item_id=item.id,
+            )
+            .first()
+        )
+
+        expected_step = self._udyam_process_step(
+            item,
+            expected_code,
+        )
+
+        if expected_step is None:
+            raise ValidationError(
+                {
+                    "detail": (
+                        f"Udyam process step {expected_code} "
+                        "is not configured."
+                    ),
+                    "code": "UDYAM_PROCESS_CONFIGURATION_MISSING",
+                }
+            )
+
+        if state is None or state.current_step_id != expected_step.id:
+            raise ValidationError(
+                {
+                    "detail": (
+                        f"This action requires Udyam process step "
+                        f"{expected_code}."
+                    ),
+                    "code": "UDYAM_PROCESS_POSITION_REQUIRED",
+                }
+            )
+
+        return state
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="udyam-submit-application",
+    )
+    def udyam_submit_application(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_udyam_owner(item)
+
+        application_reference = str(
+            (request.data or {}).get("application_reference") or ""
+        ).strip()
+
+        submission_date = str(
+            (request.data or {}).get("submission_date") or ""
+        ).strip()
+
+        submission_time = str(
+            (request.data or {}).get("submission_time") or ""
+        ).strip()
+
+        if not application_reference:
+            return Response(
+                {
+                    "detail": "Application / Reference Number is required.",
+                    "code": "UDYAM_APPLICATION_REFERENCE_REQUIRED",
+                },
+                status=400,
+            )
+
+        if not submission_date:
+            return Response(
+                {
+                    "detail": "Submission Date is required.",
+                    "code": "UDYAM_SUBMISSION_DATE_REQUIRED",
+                },
+                status=400,
+            )
+
+        if not submission_time:
+            return Response(
+                {
+                    "detail": "Submission Time is required.",
+                    "code": "UDYAM_SUBMISSION_TIME_REQUIRED",
+                },
+                status=400,
+            )
+
+        next_step = self._udyam_process_step(
+            item,
+            "APPLICATION_SUBMISSION",
+        )
+
+        if next_step is None:
+            return Response(
+                {
+                    "detail": (
+                        "Udyam application-submission step is not configured."
+                    ),
+                    "code": "UDYAM_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(
+                    tenant_id=principal.tenant_id,
+                    id=item.id,
+                )
+            )
+
+            self._locked_udyam_process_state(
+                locked_item,
+                "SUBMIT_APPLICATION",
+            )
+
+            operational_data = dict(
+                locked_item.operational_data or {}
+            )
+
+            operational_data["udyam_application_reference"] = (
+                application_reference
+            )
+            operational_data["udyam_submission_date"] = (
+                submission_date
+            )
+            operational_data["udyam_submission_time"] = (
+                submission_time
+            )
+
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+
+            locked_item.save(
+                update_fields=[
+                    "operational_data",
+                    "updated_by",
+                    "updated_at",
+                    "row_version",
+                ]
+            )
+
+            note = (
+                "Udyam application submitted. "
+                f"Reference: {application_reference}; "
+                f"Submission date: {submission_date}; "
+                f"Submission time: {submission_time}; "
+                "Stage: Submit Application -> Application Submission."
+            )
+
+            self._persist_automated_process_step(
+                locked_item,
+                next_step,
+                principal,
+                note,
+            )
+
+            self._record(locked_item, note)
+
+        return Response(
+            self.get_serializer(locked_item).data,
+            status=http_status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="udyam-report-query",
+    )
+    def udyam_report_query(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_udyam_owner(item)
+
+        query_type = str(
+            (request.data or {}).get("query_type") or ""
+        ).strip()
+
+        remarks = str(
+            (request.data or {}).get("remarks") or ""
+        ).strip()
+
+        allowed_types = {
+            "PORTAL_QUERY",
+            "OTP_REQUIRED",
+            "TECHNICAL_ISSUE",
+            "ADDITIONAL_INFORMATION",
+            "DOCUMENT_QUERY",
+            "OTHER",
+        }
+
+        if query_type not in allowed_types:
+            return Response(
+                {
+                    "detail": "Query / issue type is required.",
+                    "code": "UDYAM_QUERY_TYPE_REQUIRED",
+                },
+                status=400,
+            )
+
+        if not remarks:
+            return Response(
+                {
+                    "detail": "Remarks are required.",
+                    "code": "UDYAM_QUERY_REMARKS_REQUIRED",
+                },
+                status=400,
+            )
+
+        query_step = self._udyam_process_step(
+            item,
+            "QUERY_RESOLUTION",
+        )
+
+        if query_step is None:
+            return Response(
+                {
+                    "detail": "Udyam query-resolution step is not configured.",
+                    "code": "UDYAM_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(
+                    tenant_id=principal.tenant_id,
+                    id=item.id,
+                )
+            )
+
+            self._locked_udyam_process_state(
+                locked_item,
+                "APPLICATION_SUBMISSION",
+            )
+
+            operational_data = dict(
+                locked_item.operational_data or {}
+            )
+            operational_data["udyam_query_type"] = query_type
+            operational_data["udyam_query_remarks"] = remarks
+            operational_data["udyam_query_resolution_remarks"] = ""
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(
+                update_fields=["operational_data", "updated_by", "updated_at"]
+            )
+
+            note = (
+                f"Udyam query / issue reported. "
+                f"Type: {query_type}; "
+                f"Remarks: {remarks}; "
+                "Stage: Application Submission -> Query Resolution."
+            )
+
+            self._persist_automated_process_step(
+                locked_item,
+                query_step,
+                principal,
+                note,
+            )
+
+            self._record(locked_item, note)
+
+        return Response(
+            self.get_serializer(locked_item).data,
+            status=http_status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="udyam-resolve-query",
+    )
+    def udyam_resolve_query(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_udyam_owner(item)
+
+        remarks = str(
+            (request.data or {}).get("remarks") or ""
+        ).strip()
+
+        if not remarks:
+            return Response(
+                {
+                    "detail": "Resolution remarks are required.",
+                    "code": "UDYAM_RESOLUTION_REMARKS_REQUIRED",
+                },
+                status=400,
+            )
+
+        application_submission_step = self._udyam_process_step(
+            item,
+            "APPLICATION_SUBMISSION",
+        )
+
+        if application_submission_step is None:
+            return Response(
+                {
+                    "detail": (
+                        "Udyam application-submission step is not configured."
+                    ),
+                    "code": "UDYAM_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(
+                    tenant_id=principal.tenant_id,
+                    id=item.id,
+                )
+            )
+
+            self._locked_udyam_process_state(
+                locked_item,
+                "QUERY_RESOLUTION",
+            )
+
+            operational_data = dict(
+                locked_item.operational_data or {}
+            )
+            operational_data["udyam_query_resolution_remarks"] = remarks
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(
+                update_fields=["operational_data", "updated_by", "updated_at"]
+            )
+
+            note = (
+                "Udyam query / issue resolved. "
+                f"Resolution remarks: {remarks}; "
+                "Stage: Query Resolution -> Application Submission."
+            )
+
+            self._persist_automated_process_step(
+                locked_item,
+                application_submission_step,
+                principal,
+                note,
+            )
+
+            self._record(locked_item, note)
+
+        return Response(
+            self.get_serializer(locked_item).data,
+            status=http_status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        parser_classes=[MultiPartParser, FormParser],
+        url_path="udyam-complete-registration",
+    )
+    def udyam_complete_registration(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_udyam_owner(item)
+
+        certificate = (
+            request.FILES.get("certificate")
+            or request.FILES.get("files")
+            or request.FILES.get("file")
+        )
+        remarks = str(
+            request.data.get("remarks") or ""
+        ).strip()
+
+        if certificate is None:
+            return Response(
+                {
+                    "detail": "Udyam certificate is required.",
+                    "code": "UDYAM_CERTIFICATE_REQUIRED",
+                },
+                status=400,
+            )
+
+        completion_step = self._udyam_process_step(
+            item,
+            "COMPLETION",
+        )
+
+        if completion_step is None:
+            return Response(
+                {
+                    "detail": "Udyam completion step is not configured.",
+                    "code": "UDYAM_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(
+                    tenant_id=principal.tenant_id,
+                    id=item.id,
+                )
+            )
+
+            self._locked_udyam_process_state(
+                locked_item,
+                "APPLICATION_SUBMISSION",
+            )
+
+            try:
+                attachment = _create_attachment(
+                    principal=principal,
+                    upload=certificate,
+                    work_item_id=locked_item.id,
+                    source="INTERNAL_TEAM",
+                )
+            except ValueError as exc:
+                return Response(
+                    {"detail": str(exc)},
+                    status=400,
+                )
+
+            operational_data = dict(
+                locked_item.operational_data or {}
+            )
+            operational_data[
+                "udyam_certificate_attachment_id"
+            ] = str(attachment.id)
+
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+
+            locked_item.save(
+                update_fields=[
+                    "operational_data",
+                    "updated_by",
+                    "updated_at",
+                    "row_version",
+                ]
+            )
+
+            self._persist_automated_process_step(
+                locked_item,
+                completion_step,
+                principal,
+                "Udyam registration completed; certificate received.",
+            )
+
+            locked_item.completed_at = timezone.now()
+
+            self._transition(
+                locked_item,
+                WorkStatus.COMPLETED,
+                (
+                    remarks
+                    or "Udyam registration completed; certificate received."
+                ),
+                update_fields={"completed_at"},
+            )
+
+            note = (
+                "Udyam registration completed; certificate received. "
+                f"Certificate: {certificate.name}; "
+                "Stage: Application Submission -> Completion; "
+                "Work completed."
+            )
+
+            if remarks:
+                note += f" Remarks: {remarks}"
+
+            self._record(locked_item, note)
+
+        response_data = self.get_serializer(
+            locked_item
+        ).data
+
+        response_data["certificate_attachment"] = (
+            DocumentAttachmentSerializer(
+                attachment,
+                context={"request": request},
+            ).data
+        )
+
+        return Response(
+            response_data,
+            status=http_status.HTTP_200_OK,
+        )
 
     # -- generic guarded transition (cannot complete review-required) --
     @action(detail=True, methods=["post"])
@@ -893,9 +1875,68 @@ class WorkItemViewSet(TenantModelViewSet):
     )
     def health(self, request, pk=None):
         item = self.get_object()
+        health = calculate_work_health(item)
+
+        # Work Health remains generic. A durable Udyam business-process
+        # position refines only the service-specific next action.
+        if (
+            item.status == WorkStatus.IN_PROGRESS
+            and self._is_udyam_registration(item)
+        ):
+            process_state = (
+                WorkProcessState.objects
+                .filter(
+                    tenant_id=self.principal().tenant_id,
+                    work_item_id=item.id,
+                )
+                .first()
+            )
+
+            if (
+                process_state is not None
+                and process_state.current_step_id
+            ):
+                current_step = (
+                    ServiceProcessStep.objects
+                    .filter(
+                        tenant_id=self.principal().tenant_id,
+                        service_id=item.service_id,
+                        id=process_state.current_step_id,
+                        is_active=True,
+                    )
+                    .first()
+                )
+
+                if current_step is not None:
+                    if current_step.code == "SUBMIT_APPLICATION":
+                        health["next_action"] = {
+                            "code": "SUBMIT_UDYAM_APPLICATION",
+                            "label": "Submit Udyam application",
+                        }
+                    elif current_step.code == "APPLICATION_SUBMISSION":
+                        health["next_action"] = {
+                            "code": "AWAIT_UDYAM_OUTCOME",
+                            "label": "Await registration outcome",
+                        }
+                    elif current_step.code == "QUERY_RESOLUTION":
+                        health["next_action"] = {
+                            "code": "RESOLVE_UDYAM_QUERY",
+                            "label": "Resolve query / OTP / technical issue",
+                        }
+                    elif current_step.code == "COMPLETION":
+                        # Registration completion is terminal.
+                        #
+                        # Do not expose the pre-completion
+                        # AWAIT_UDYAM_OUTCOME action after the
+                        # durable process position has reached
+                        # COMPLETION.
+                        health["next_action"] = {
+                            "code": "NONE",
+                            "label": "Work completed",
+                        }
 
         return Response(
-            calculate_work_health(item),
+            health,
             status=http_status.HTTP_200_OK,
         )
 
@@ -946,6 +1987,64 @@ class WorkItemViewSet(TenantModelViewSet):
                 status=400,
             )
 
+        udyam_internal_review_step = None
+
+        if self._is_udyam_registration(item):
+            udyam_internal_review_step = self._udyam_process_step(
+                item,
+                "INTERNAL_REVIEW",
+            )
+
+            if udyam_internal_review_step is None:
+                return Response(
+                    {
+                        "detail": (
+                            "Udyam Internal Review process configuration "
+                            "is unavailable."
+                        ),
+                        "code": "UDYAM_PROCESS_CONFIGURATION_MISSING",
+                    },
+                    status=409,
+                )
+
+            existing_state = (
+                WorkProcessState.objects
+                .filter(
+                    tenant_id=self.principal().tenant_id,
+                    work_item_id=item.id,
+                )
+                .first()
+            )
+
+            if existing_state is not None and existing_state.current_step_id:
+                existing_step = (
+                    ServiceProcessStep.objects
+                    .filter(
+                        tenant_id=self.principal().tenant_id,
+                        service_id=item.service_id,
+                        id=existing_state.current_step_id,
+                        is_active=True,
+                    )
+                    .first()
+                )
+
+                if (
+                    existing_step is not None
+                    and int(existing_step.display_order or 0) >= 40
+                ):
+                    return Response(
+                        {
+                            "detail": (
+                                "Internal review has already been completed "
+                                "for this Udyam work item."
+                            ),
+                            "code": (
+                                "UDYAM_INTERNAL_REVIEW_ALREADY_COMPLETED"
+                            ),
+                        },
+                        status=409,
+                    )
+
         try:
             qa_prepare_cycle(item, self.principal())
             qa_state = qa_readiness(item)
@@ -974,12 +2073,44 @@ class WorkItemViewSet(TenantModelViewSet):
             )
 
         item.submitted_for_review_at = timezone.now()
-        self._transition(
-            item,
-            WorkStatus.READY_FOR_REVIEW,
-            "Submitted for review.",
-            update_fields={"submitted_for_review_at"},
-        )
+
+        if udyam_internal_review_step is not None:
+            with transaction.atomic():
+                locked_item = (
+                    WorkItem.objects
+                    .select_for_update()
+                    .get(
+                        tenant_id=self.principal().tenant_id,
+                        id=item.id,
+                    )
+                )
+
+                locked_item.submitted_for_review_at = (
+                    item.submitted_for_review_at
+                )
+
+                self._transition(
+                    locked_item,
+                    WorkStatus.READY_FOR_REVIEW,
+                    "Submitted for review.",
+                    update_fields={"submitted_for_review_at"},
+                )
+
+                self._persist_automated_process_step(
+                    locked_item,
+                    udyam_internal_review_step,
+                    self.principal(),
+                    "Submitted for internal review.",
+                )
+
+                item = locked_item
+        else:
+            self._transition(
+                item,
+                WorkStatus.READY_FOR_REVIEW,
+                "Submitted for review.",
+                update_fields={"submitted_for_review_at"},
+            )
 
         data = self.get_serializer(item).data
         data["qa_review"] = qa_cycle_summary(cycle)
@@ -1017,6 +2148,59 @@ class WorkItemViewSet(TenantModelViewSet):
                 status=400,
             )
 
+        udyam_internal_review_step = None
+        udyam_submit_application_step = None
+
+        if self._is_udyam_registration(item):
+            udyam_internal_review_step = self._udyam_process_step(
+                item,
+                "INTERNAL_REVIEW",
+            )
+            udyam_submit_application_step = self._udyam_process_step(
+                item,
+                "SUBMIT_APPLICATION",
+            )
+
+            if (
+                udyam_internal_review_step is None
+                or udyam_submit_application_step is None
+            ):
+                return Response(
+                    {
+                        "detail": (
+                            "Required Udyam review/application process "
+                            "configuration is unavailable."
+                        ),
+                        "code": "UDYAM_PROCESS_CONFIGURATION_MISSING",
+                    },
+                    status=409,
+                )
+
+            process_state = (
+                WorkProcessState.objects
+                .filter(
+                    tenant_id=self.principal().tenant_id,
+                    work_item_id=item.id,
+                )
+                .first()
+            )
+
+            if (
+                process_state is None
+                or process_state.current_step_id
+                != udyam_internal_review_step.id
+            ):
+                return Response(
+                    {
+                        "detail": (
+                            "Udyam may be approved only while its durable "
+                            "process position is Internal Review & Approval."
+                        ),
+                        "code": "UDYAM_INTERNAL_REVIEW_STATE_REQUIRED",
+                    },
+                    status=409,
+                )
+
         comment = (request.data or {}).get("comment", "")
         try:
             cycle = qa_mark_approved(item, self.principal(), comment)
@@ -1031,15 +2215,77 @@ class WorkItemViewSet(TenantModelViewSet):
             )
 
         with transaction.atomic():
-            item.completed_at = timezone.now()
-            if comment:
-                item.review_comment = comment
-            self._transition(
-                item,
-                WorkStatus.COMPLETED,
-                comment or "Approved and completed.",
-                update_fields={"completed_at", "review_comment"},
-            )
+            if udyam_submit_application_step is not None:
+                locked_item = (
+                    WorkItem.objects
+                    .select_for_update()
+                    .get(
+                        tenant_id=self.principal().tenant_id,
+                        id=item.id,
+                    )
+                )
+
+                locked_state = (
+                    WorkProcessState.objects
+                    .select_for_update()
+                    .filter(
+                        tenant_id=self.principal().tenant_id,
+                        work_item_id=locked_item.id,
+                    )
+                    .first()
+                )
+
+                if (
+                    locked_state is None
+                    or locked_state.current_step_id
+                    != udyam_internal_review_step.id
+                ):
+                    raise ValidationError(
+                        {
+                            "detail": (
+                                "Udyam process state changed while approval "
+                                "was being performed."
+                            ),
+                            "code": "UDYAM_PROCESS_STATE_CHANGED",
+                        }
+                    )
+
+                locked_item.completed_at = None
+
+                if comment:
+                    locked_item.review_comment = comment
+
+                self._transition(
+                    locked_item,
+                    WorkStatus.IN_PROGRESS,
+                    comment or "Internal review approved.",
+                    update_fields={"completed_at", "review_comment"},
+                )
+
+                self._persist_automated_process_step(
+                    locked_item,
+                    udyam_submit_application_step,
+                    self.principal(),
+                    (
+                        "Internal review approved; application reviewed. "
+                        "Submitter must now submit the application in the "
+                        "government portal."
+                    ),
+                )
+
+                item = locked_item
+            else:
+                item.completed_at = timezone.now()
+
+                if comment:
+                    item.review_comment = comment
+
+                self._transition(
+                    item,
+                    WorkStatus.COMPLETED,
+                    comment or "Approved and completed.",
+                    update_fields={"completed_at", "review_comment"},
+                )
 
         data = self.get_serializer(item).data
         data["qa_review"] = qa_cycle_summary(cycle)
@@ -1061,6 +2307,46 @@ class WorkItemViewSet(TenantModelViewSet):
                 status=400,
             )
 
+        udyam_rework_step = None
+
+        if self._is_udyam_registration(item):
+            internal_review_step = self._udyam_process_step(
+                item,
+                "INTERNAL_REVIEW",
+            )
+
+            process_state = (
+                WorkProcessState.objects
+                .filter(
+                    tenant_id=self.principal().tenant_id,
+                    work_item_id=item.id,
+                )
+                .first()
+            )
+
+            if (
+                internal_review_step is not None
+                and process_state is not None
+                and process_state.current_step_id
+                == internal_review_step.id
+            ):
+                udyam_rework_step = self._udyam_process_step(
+                    item,
+                    "VERIFICATION_PREPARATION",
+                )
+
+                if udyam_rework_step is None:
+                    return Response(
+                        {
+                            "detail": (
+                                "Udyam Verification & Preparation process "
+                                "configuration is unavailable."
+                            ),
+                            "code": "UDYAM_PROCESS_CONFIGURATION_MISSING",
+                        },
+                        status=409,
+                    )
+
         cycle = qa_mark_changes_requested(item, self.principal(), comment)
         with transaction.atomic():
             item.review_comment = comment
@@ -1071,6 +2357,17 @@ class WorkItemViewSet(TenantModelViewSet):
                 f"Returned for rework: {comment}",
                 update_fields={"review_comment", "completed_at"},
             )
+
+            if udyam_rework_step is not None:
+                self._persist_automated_process_step(
+                    item,
+                    udyam_rework_step,
+                    self.principal(),
+                    (
+                        "Returned from internal review for rework: "
+                        f"{comment}"
+                    ),
+                )
 
         data = self.get_serializer(item).data
         data["qa_review"] = qa_cycle_summary(cycle)
@@ -1364,6 +2661,16 @@ class WorkItemViewSet(TenantModelViewSet):
         # --------------------------------------------------------
 
         for note in notes:
+            # Udyam business-action notes (created by the dedicated Udyam
+            # actions via _record) are represented in this read model by the
+            # typed process-step AuditEvent projection below, with semantic
+            # titles and stage movement.  Suppress the free-text duplicate here
+            # so each Udyam business event appears exactly once.  The durable
+            # WorkNote row is preserved in the database; only this projection
+            # skips it.
+            if (note.entry or "").startswith("Udyam ") and not note.to_status:
+                continue
+
             if note.to_status == WorkStatus.IN_PROGRESS:
                 if note.from_status == WorkStatus.REWORK_REQUIRED:
                     event_type = "WORK_RESUMED"
@@ -1422,6 +2729,147 @@ class WorkItemViewSet(TenantModelViewSet):
             )
 
         # --------------------------------------------------------
+        # Udyam business events from the typed process-step
+        # AuditEvent ledger, correlated with the durable Udyam
+        # WorkNote written by the SAME action.
+        #
+        # The AuditEvent supplies the authoritative typed transition
+        # (previous/new process step, actor, timestamp).  The matched
+        # WorkNote supplies the EVENT-TIME business details (reference,
+        # query type/remarks, resolution remarks, certificate) exactly
+        # as they were at the moment of the action.
+        #
+        # We deliberately do NOT read item.operational_data here: that
+        # holds CURRENT state and would make an older event (e.g. Query 1)
+        # display the values of a newer event (e.g. Query 2).
+        # --------------------------------------------------------
+
+        process_state = (
+            WorkProcessState.objects
+            .filter(
+                tenant_id=tenant_id,
+                work_item_id=item.id,
+            )
+            .first()
+        )
+
+        if process_state is not None:
+            process_events = list(
+                AuditEvent.objects.filter(
+                    tenant_id=tenant_id,
+                    entity_type="WorkProcessState",
+                    entity_id=process_state.id,
+                    action=AuditAction.STATUS_CHANGE,
+                ).order_by("created_at", "id")
+            )
+
+            # Durable Udyam business-action notes, kept in time order.  Each
+            # note is consumed at most once so two events never share detail.
+            udyam_notes = sorted(
+                (
+                    n for n in notes
+                    if (n.entry or "").startswith("Udyam ") and not n.to_status
+                ),
+                key=lambda n: (n.created_at, str(n.id)),
+            )
+            consumed_note_ids = set()
+
+            # Stable prefix per transition type.  These strings are written by
+            # the dedicated Udyam actions and are the reliable correlation key
+            # (combined with nearest timestamp).
+            _SUBMIT_PREFIX = "Udyam application submitted."
+            _QUERY_PREFIX = "Udyam query / issue reported."
+            _RESOLVE_PREFIX = "Udyam query / issue resolved."
+            _COMPLETE_PREFIX = "Udyam registration completed"
+
+            def _match_note(prefix, when):
+                """Nearest not-yet-consumed Udyam note with this prefix.
+
+                Correlation dimensions: same work item + tenant (the notes
+                queryset is already scoped to both), matching business-action
+                prefix, and closest timestamp to the typed event.  Returns the
+                note or None; never guesses across a different prefix.
+                """
+                best = None
+                best_delta = None
+                for candidate in udyam_notes:
+                    if candidate.id in consumed_note_ids:
+                        continue
+                    if not (candidate.entry or "").startswith(prefix):
+                        continue
+                    delta = abs(
+                        (candidate.created_at - when).total_seconds()
+                    )
+                    if best is None or delta < best_delta:
+                        best = candidate
+                        best_delta = delta
+                return best
+
+            for process_event in process_events:
+                prev_code = (process_event.previous_values or {}).get(
+                    "process_step_code", ""
+                )
+                new_code = (process_event.new_values or {}).get(
+                    "process_step_code", ""
+                )
+                when = process_event.created_at
+
+                if prev_code == "QUERY_RESOLUTION" and new_code == "APPLICATION_SUBMISSION":
+                    event_type = "UDYAM_QUERY_RESOLVED"
+                    title = "Query resolved"
+                    matched = _match_note(_RESOLVE_PREFIX, when)
+                elif new_code == "QUERY_RESOLUTION":
+                    event_type = "UDYAM_QUERY_RECEIVED"
+                    title = "Query / issue received"
+                    matched = _match_note(_QUERY_PREFIX, when)
+                elif new_code == "COMPLETION":
+                    event_type = "UDYAM_REGISTRATION_COMPLETED"
+                    title = "Registration completed"
+                    matched = _match_note(_COMPLETE_PREFIX, when)
+                elif new_code == "APPLICATION_SUBMISSION":
+                    # Arrival at APPLICATION_SUBMISSION from SUBMIT_APPLICATION
+                    # (or any non-query origin) is the submission event.
+                    event_type = "UDYAM_APPLICATION_SUBMITTED"
+                    title = "Application submitted"
+                    matched = _match_note(_SUBMIT_PREFIX, when)
+                else:
+                    event_type = "UDYAM_PROCESS_STEP"
+                    title = process_event.summary or "Process step changed"
+                    matched = None
+
+                # Event-time detail comes from the matched WorkNote, never from
+                # current operational_data.  Fallback: the typed event summary.
+                if matched is not None:
+                    consumed_note_ids.add(matched.id)
+                    detail = matched.entry
+                    detail_actor_id = matched.author_user_id
+                else:
+                    detail = process_event.summary
+                    detail_actor_id = process_event.actor_principal_id
+
+                events.append(
+                    {
+                        "id": f"process-{process_event.id}",
+                        "event_type": event_type,
+                        "title": title,
+                        "entry": detail,
+                        "detail": detail,
+                        "created_at": iso(process_event.created_at),
+                        "actor_id": str(
+                            process_event.actor_principal_id
+                            or detail_actor_id
+                            or ""
+                        ),
+                        "actor_name": actor_name(
+                            process_event.actor_principal_id
+                            or detail_actor_id
+                        ),
+                        "from_status": prev_code,
+                        "to_status": new_code,
+                    }
+                )
+
+        # --------------------------------------------------------
         # Existing append-only AssignmentEvent ledger
         # --------------------------------------------------------
 
@@ -1470,7 +2918,7 @@ class WorkItemViewSet(TenantModelViewSet):
                         event_type,
                         "Assignment updated",
                     ),
-                    "entry": " · ".join(detail_parts),
+                    "entry": " Ã‚Â· ".join(detail_parts),
                     "detail": "",
                     "created_at": iso(assignment.created_at),
                     "actor_id": str(

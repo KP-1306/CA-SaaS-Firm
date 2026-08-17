@@ -16,7 +16,15 @@ body { margin: 0; }
 .cx-app {
   display: grid;
   grid-template-columns: 232px 1fr;
-  min-height: 100vh;
+  /*
+   * V1.4 shell scroll architecture (Requirements 4 & 5, designed once):
+   * The shell fills exactly the viewport height and does NOT grow with
+   * content.  The single primary vertical scroll container is .cx-body;
+   * the sidebar and top header stay stable while .cx-body scrolls.  This
+   * removes the second (document/body) scrollbar and anchors the nav.
+   */
+  height: 100vh;
+  overflow: hidden;
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   color: var(--ink);
   background: var(--bg);
@@ -28,6 +36,10 @@ body { margin: 0; }
   display: flex;
   flex-direction: column;
   padding: 18px 12px;
+  /* Stable navigation: full viewport height; scrolls internally only if
+   * its own navigation exceeds the viewport height. */
+  height: 100vh;
+  overflow-y: auto;
 }
 .cx-brand { color: #fff; font-weight: 700; font-size: 16px; padding: 4px 10px 2px; }
 .cx-brand small { display: block; color: #8fb0d0; font-weight: 400; font-size: 11px; margin-top: 2px; }
@@ -39,14 +51,15 @@ body { margin: 0; }
 .cx-nav button:hover { background: #143c68; color: #fff; }
 .cx-nav button.active { background: var(--brand); color: #fff; font-weight: 600; }
 .cx-side-foot { margin-top: auto; padding: 10px; color: #8fb0d0; font-size: 12px; border-top: 1px solid #1c456f; }
-.cx-main { display: flex; flex-direction: column; min-width: 0; }
+.cx-main { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow: hidden; }
 .cx-top {
   background: var(--panel); border-bottom: 1px solid var(--line);
   padding: 12px 22px; display: flex; align-items: center; justify-content: space-between;
+  flex: 0 0 auto;
 }
 .cx-top h2 { margin: 0; font-size: 17px; }
 .cx-top .cx-user { color: var(--muted); font-size: 13px; }
-.cx-body { padding: 22px; overflow: auto; }
+.cx-body { padding: 22px; overflow-y: auto; overflow-x: hidden; flex: 1 1 auto; min-height: 0; }
 .cx-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
 .cx-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
 .cx-card .n { font-size: 26px; font-weight: 700; }
@@ -207,7 +220,7 @@ button.cx-btn.pending { box-shadow: 0 0 0 2px #f59e0b; }
 .cx-document-metadata span + span::before {
   margin-right: 10px;
   color: #c4ccd7;
-  content: 'â€¢';
+  content: '·';
 }
 
 .cx-document-intelligence-strip {
@@ -4220,4 +4233,1098 @@ button.cx-mission-deadline:focus-visible {
 .cx-quick-create-menu > button span {
   color: #64748b;
   font-size: 12px;
+}
+
+
+/* ==========================================================
+   Vertical Operations
+   ========================================================== */
+
+.cx-vertical-section-copy {
+  margin: 5px 0 0;
+  color: var(--cx-muted, #667085);
+  font-size: 13px;
+}
+
+.cx-vertical-card-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cx-vertical-card {
+  appearance: none;
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 15px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04);
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.cx-vertical-card:hover {
+  transform: translateY(-2px);
+  border-color: #9bb9ff;
+  box-shadow:
+    0 10px 30px rgba(16, 24, 40, 0.08);
+}
+
+.cx-vertical-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.cx-vertical-label {
+  display: block;
+  margin-bottom: 4px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cx-vertical-card h3 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.cx-vertical-open-pill {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #2457c5;
+  padding: 6px 9px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.cx-vertical-card-metrics {
+  display: grid;
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 13px;
+}
+
+.cx-vertical-card-metrics > div {
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 8px 10px;
+}
+
+.cx-vertical-card-metrics span {
+  display: block;
+  color: #667085;
+  font-size: 11px;
+}
+
+.cx-vertical-card-metrics strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 15px;
+}
+
+.cx-vertical-card-metrics .cx-vertical-primary {
+  background: #f2f6fc;
+}
+
+.cx-vertical-card-metrics .cx-vertical-primary strong {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.cx-vertical-staff {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #edf0f3;
+}
+
+.cx-vertical-staff-title {
+  display: block;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cx-vertical-staff-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.cx-vertical-staff-list > span {
+  border-radius: 999px;
+  background: #f4f6f8;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.cx-vertical-no-staff {
+  display: block;
+  margin-top: 8px;
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+.cx-vertical-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #edf0f3;
+  font-size: 12px;
+}
+
+.cx-vertical-card-bottom > span {
+  color: #667085;
+}
+
+.cx-vertical-card-bottom > strong {
+  color: #2563eb;
+}
+
+.cx-vertical-distribution-panel {
+  margin-top: 16px;
+}
+
+.cx-vertical-distribution {
+  display: grid;
+  grid-template-columns:
+    240px minmax(320px, 430px);
+  align-items: center;
+  justify-content: start;
+  gap: 26px;
+}
+
+.cx-vertical-donut-shell {
+  position: relative;
+  width: 225px;
+  height: 225px;
+  margin: 0;
+}
+
+.cx-vertical-donut {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.cx-vertical-donut-track,
+.cx-vertical-donut-segment {
+  fill: none;
+  stroke-width: 24;
+}
+
+.cx-vertical-donut-track {
+  stroke: #edf1f5;
+}
+
+.cx-vertical-donut-segment {
+  cursor: pointer;
+  transition:
+    stroke-width 120ms ease,
+    opacity 120ms ease;
+}
+
+.cx-vertical-donut-segment:hover {
+  stroke-width: 29;
+  opacity: 0.9;
+}
+
+.cx-vertical-donut-centre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.cx-vertical-donut-centre strong {
+  font-size: 31px;
+  line-height: 1;
+}
+
+.cx-vertical-donut-centre span {
+  margin-top: 7px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.cx-vertical-legend {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  max-width: 430px;
+}
+
+.cx-vertical-legend-row {
+  display: grid;
+  grid-template-columns:
+    12px minmax(0, 1fr) auto 54px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  padding: 10px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cx-vertical-legend-row:hover {
+  background: #f8fafc;
+}
+
+.cx-vertical-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.cx-vertical-legend-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-vertical-legend-percent {
+  color: #667085;
+  text-align: right;
+  font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .cx-vertical-card-grid,
+  .cx-vertical-distribution {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .cx-vertical-card-metrics {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .cx-vertical-donut-shell {
+    width: 220px;
+    height: 220px;
+  }
+}
+
+/* D2.2 - workload snapshot */
+
+.cx-vertical-distribution {
+  grid-template-columns:
+    225px minmax(300px, 430px) minmax(300px, 1fr);
+  gap: 32px;
+}
+
+.cx-workload-snapshot {
+  align-self: stretch;
+  border-left: 1px solid #edf0f3;
+  padding-left: 32px;
+}
+
+.cx-workload-snapshot-head h3 {
+  margin: 4px 0 0;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.cx-workload-snapshot-head p {
+  margin: 6px 0 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cx-workload-snapshot-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.cx-workload-snapshot-stat {
+  min-width: 0;
+  border: 1px solid #edf0f3;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px 14px;
+}
+
+.cx-workload-snapshot-stat strong {
+  display: block;
+  color: #101828;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.cx-workload-snapshot-stat span {
+  display: block;
+  margin-top: 5px;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.cx-workload-snapshot-leader {
+  margin-top: 10px;
+  border-radius: 12px;
+  background: #eef4ff;
+  padding: 12px 14px;
+}
+
+.cx-workload-snapshot-leader span {
+  display: block;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cx-workload-snapshot-leader strong {
+  display: block;
+  margin-top: 4px;
+  color: #2457c5;
+  font-size: 14px;
+}
+
+@media (max-width: 1180px) {
+  .cx-vertical-distribution {
+    grid-template-columns:
+      225px minmax(300px, 1fr);
+  }
+
+  .cx-workload-snapshot {
+    grid-column: 1 / -1;
+    border-top: 1px solid #edf0f3;
+    border-left: 0;
+    padding-top: 20px;
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .cx-vertical-distribution {
+    grid-template-columns: 1fr;
+  }
+
+  .cx-workload-snapshot {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .cx-workload-snapshot-grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* Udyam / service process tracker */
+.cx-process-tracker {
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid var(--cx-border, #e5e7eb);
+  border-radius: 12px;
+  background: var(--cx-surface, #fff);
+}
+
+.cx-process-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.cx-process-heading h4 {
+  margin: 0 0 4px;
+}
+
+.cx-process-heading p {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.cx-process-current {
+  max-width: 260px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.cx-process-steps {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.cx-process-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 9px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cx-process-step:hover:not(:disabled) {
+  border-color: #a5b4fc;
+  background: #f8faff;
+}
+
+.cx-process-step.current {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.cx-process-step:disabled {
+  cursor: default;
+  opacity: 0.68;
+}
+
+.cx-process-number {
+  display: inline-flex;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f3f4f6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cx-process-step.current .cx-process-number {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.cx-process-label {
+  line-height: 1.25;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cx-process-note {
+  margin-top: 12px;
+}
+
+.cx-process-note label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cx-process-note label span {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.cx-process-note input {
+  width: 100%;
+}
+
+.cx-process-error {
+  margin-top: 10px;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.cx-process-loading {
+  padding: 12px 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .cx-process-heading {
+    flex-direction: column;
+  }
+
+  .cx-process-current {
+    max-width: none;
+    text-align: left;
+  }
+
+  .cx-process-steps {
+    grid-template-columns: 1fr;
+  }
+}
+.cx-process-step.completed {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.cx-process-step.completed .cx-process-number {
+  background: #16a34a;
+  color: #fff;
+}
+
+.cx-process-step-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cx-process-state-label {
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.cx-process-step.current .cx-process-state-label {
+  color: #4338ca;
+}
+
+.cx-process-step.completed .cx-process-state-label {
+  color: #15803d;
+}
+.cx-process-static {
+  cursor: default;
+}
+
+.cx-process-static:hover {
+  background: inherit;
+}
+
+.cx-process-guidance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+}
+
+.cx-process-guidance > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cx-process-guidance span {
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.cx-process-guidance strong {
+  font-size: 13px;
+}
+
+.cx-process-help {
+  margin: 10px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .cx-process-guidance {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+.cx-owner-recommendation {
+  margin: -2px 0 14px;
+}
+
+.cx-owner-recommendation .cx-panel {
+  margin: 0;
+  background: #f8fafc;
+}
+
+/* UDYAM PRIMARY ACTION UX V3 */
+
+.cx-udyam-primary-action {
+  width: auto;
+  min-width: 210px;
+  min-height: 44px;
+  padding: 10px 22px;
+  border: 1px solid #12395b;
+  border-radius: 7px;
+  background: #12395b;
+  color: #ffffff;
+  font-weight: 650;
+  text-align: center;
+  box-shadow: 0 2px 4px rgb(15 47 82 / 18%);
+}
+
+.cx-udyam-primary-action:hover:not(:disabled) {
+  background: #0f2f52;
+  border-color: #0f2f52;
+  color: #ffffff;
+}
+
+.cx-udyam-primary-action:focus-visible {
+  outline: 3px solid rgb(18 57 91 / 22%);
+  outline-offset: 2px;
+}
+
+.cx-udyam-primary-action:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.cx-udyam-outcome-option,
+.cx-udyam-outcome-selected {
+  min-height: 64px;
+  border-radius: 7px;
+  text-align: left;
+}
+
+.cx-udyam-outcome-selected {
+  border: 2px solid #12395b;
+  background: #eef4f9;
+  color: #12395b;
+  font-weight: 650;
+}
+
+/* Udyam 8-stage guidance popover (Requirement 2) */
+.cx-process-tracker-8stage .cx-process-step-guided {
+  position: relative;
+}
+.cx-process-guidance-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: 300px;
+  max-width: min(300px, 90vw);
+  padding: 12px 14px;
+  border: 1px solid #d9def0;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(15,23,42,0.12);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 0s 120ms;
+  pointer-events: none;
+}
+.cx-process-step-guided:hover .cx-process-guidance-pop,
+.cx-process-step-guided:focus .cx-process-guidance-pop,
+.cx-process-step-guided:focus-within .cx-process-guidance-pop {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: opacity 120ms ease, transform 120ms ease;
+  pointer-events: auto;
+}
+.cx-process-guidance-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+.cx-process-guidance-pop dl { margin: 0; }
+.cx-process-guidance-pop dt {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #6366f1;
+  margin-top: 6px;
+}
+.cx-process-guidance-pop dd {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #334155;
+}
+
+/* Current stage / next action panel (Requirement 2) */
+.cx-process-currentstage {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-left: 3px solid #6366f1;
+  border-radius: 8px;
+  background: #f8faff;
+  display: grid;
+  gap: 8px;
+}
+.cx-process-currentstage-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6366f1;
+  margin-bottom: 1px;
+}
+.cx-process-currentstage-name { font-size: 15px; color: #0f172a; }
+.cx-process-currentstage-meaning {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #475569;
+}
+.cx-process-currentstage-next strong { font-size: 14px; color: #0f172a; }
+
+/* Top workflow action zone (Requirement 2 - one consistent action area) */
+.cx-workflow-zone {
+  margin: 10px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fafafa;
+}
+.cx-workflow-zone-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.cx-workflow-zone-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  margin-right: 8px;
+}
+
+/* V1.3 top-zone workflow confirmation (Requirement 2/3) */
+.cx-workflow-confirm {
+  flex-basis: 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+  display: grid;
+  gap: 10px;
+}
+.cx-workflow-confirm-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 4px;
+}
+.cx-workflow-confirm-field textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font: inherit;
+  resize: vertical;
+}
+.cx-workflow-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* V1.4 Requirement 4: single scroll when the Work Workspace overlay is open.
+ * The workspace (.cx-workspace-backdrop) is a fixed full-viewport overlay with
+ * its own vertical scroll.  While it is open we lock the underlying shell body
+ * scroll so the analyst sees exactly ONE scrollbar (the overlay's), instead of
+ * the overlay plus the shell content scrolling behind it.  The class is toggled
+ * on <body> from WorkArea while a record is open. */
+body.cx-workspace-open .cx-body {
+  overflow: hidden;
+}
+
+/* V1.4 Requirement 2: always-visible primary workflow action.
+ * The workflow zone sticks to the top of the workspace scroll container, just
+ * below the sticky page header, so the primary lifecycle action stays visible
+ * while the analyst scrolls a long record.  position: sticky is used against the
+ * real scroll container (.cx-workspace-backdrop) rather than viewport-fixed, so
+ * it cannot overlap the application header or the browser scrollbar.  The
+ * workspace tab bar uses .cx-toolbar (not the sticky .cx-tabs), so there is no
+ * sticky-stacking conflict. */
+.cx-workspace-page .cx-workflow-zone {
+  position: sticky;
+  top: 72px;
+  z-index: 9;
+  background: #fafcff;
+  box-shadow: 0 1px 6px rgba(15, 30, 50, 0.06);
+}
+
+/* =========================================================
+   VRIDHI WORKSPACE TOP-RIGHT OPERATIONAL COMMAND V1
+
+   Presentation only.
+   The existing validated workflow-zone DOM and handlers are
+   composed inside this sticky Work-specific command header.
+   ========================================================= */
+
+.cx-workspace-commandbar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 680px);
+  align-items: start;
+  gap: 20px;
+
+  margin: -24px -32px 20px;
+  padding: 16px 32px;
+
+  background: rgba(255, 255, 255, 0.98);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 8px rgba(15, 30, 50, 0.05);
+  backdrop-filter: blur(8px);
+}
+
+.cx-workspace-commandbar-title {
+  min-width: 0;
+  align-self: center;
+}
+
+.cx-workspace-commandbar-title h3 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-workspace-commandbar-action {
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+/*
+ * The workflow zone used to be a separate sticky card lower down.
+ * Inside the command bar it becomes a transparent action surface.
+ * Its EXISTING JSX/handlers remain unchanged.
+ */
+.cx-workspace-commandbar .cx-workflow-zone {
+  position: static;
+  top: auto;
+  z-index: auto;
+
+  width: 100%;
+  margin: 0;
+  padding: 0;
+
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cx-workspace-commandbar .cx-workflow-zone-inner {
+  justify-content: flex-end;
+}
+
+/* Make the operational action visually unmistakable without
+   changing its semantic handler or action ownership. */
+.cx-workspace-commandbar-action .cx-btn {
+  min-height: 38px;
+  padding-left: 16px;
+  padding-right: 16px;
+  font-weight: 650;
+}
+
+/* Confirmation / justification stays usable. When an action needs
+   more information it expands below the button within the command area. */
+.cx-workspace-commandbar .cx-workflow-confirm {
+  width: 100%;
+  text-align: left;
+}
+
+/* The old standalone sticky-zone rule must not create a second
+   sticky layer once the same zone lives inside this sticky header. */
+.cx-workspace-commandbar .cx-workflow-zone {
+  position: static !important;
+}
+
+/* Responsive fallback: title first, operational action directly below.
+   No workflow behavior changes. */
+@media (max-width: 900px) {
+  .cx-workspace-commandbar {
+    grid-template-columns: 1fr;
+    gap: 10px;
+
+    margin: -16px -16px 16px;
+    padding: 14px 16px;
+  }
+
+  .cx-workspace-commandbar-action {
+    justify-content: stretch;
+  }
+
+  .cx-workspace-commandbar .cx-workflow-zone {
+    width: 100%;
+  }
+
+  .cx-workspace-commandbar .cx-workflow-zone-inner {
+    justify-content: flex-start;
+  }
+}
+
+/* =========================================================
+   VRIDHI UDYAM COMPACT TOP ACTION BUTTONS V1
+
+   Presentation only.
+   No workflow handler, action, API or state semantics changed.
+
+   The government-outcome choices and final Complete Registration
+   action use the same compact operational-button language as the
+   other top-right workflow commands.
+   ========================================================= */
+
+.cx-workspace-commandbar .cx-udyam-outcome-option,
+.cx-workspace-commandbar .cx-udyam-outcome-selected,
+.cx-workspace-commandbar .cx-udyam-primary-action {
+  min-height: 38px !important;
+  height: auto !important;
+
+  padding: 9px 16px !important;
+
+  text-align: center !important;
+  white-space: normal;
+
+  border-radius: 7px !important;
+
+  font-size: 13px;
+  font-weight: 650 !important;
+
+  line-height: 1.25;
+}
+
+/*
+ * Outcome choices are operational commands, not large cards.
+ * Keep both choices visually clear while preserving the existing
+ * selected/unselected state classes and existing onClick handlers.
+ */
+.cx-workspace-commandbar .cx-udyam-outcome-option {
+  background: #ffffff !important;
+  border: 1px solid var(--line) !important;
+}
+
+/*
+ * Selected outcome receives the same stronger visual hierarchy
+ * as the current primary workflow action.
+ */
+.cx-workspace-commandbar .cx-udyam-outcome-selected,
+.cx-workspace-commandbar .cx-udyam-primary-action {
+  box-shadow: 0 1px 3px rgba(15, 30, 50, 0.10);
+}
+
+/*
+ * The outcome-choice container currently uses a card-style grid.
+ * Inside the top command bar, keep it compact and button-oriented.
+ */
+.cx-workspace-commandbar .cx-process-guidance > div > div:has(.cx-udyam-outcome-option),
+.cx-workspace-commandbar .cx-process-guidance > div > div:has(.cx-udyam-outcome-selected) {
+  align-items: center;
+}
+
+/* Mobile remains stacked and touch friendly. */
+@media (max-width: 900px) {
+  .cx-workspace-commandbar .cx-udyam-outcome-option,
+  .cx-workspace-commandbar .cx-udyam-outcome-selected,
+  .cx-workspace-commandbar .cx-udyam-primary-action {
+    width: 100%;
+    min-height: 40px !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Phase 1 GREEN (Change A + B): read-only Work Identity + current      */
+/* responsibility in the sticky command bar.  Presentation only.        */
+/* All selectors are scoped under .cx-work-identity, which is rendered   */
+/* only inside the workspace command bar title slot, so these rules      */
+/* cannot affect other screens or workflows.                            */
+/* ------------------------------------------------------------------ */
+.cx-work-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cx-work-identity-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cx-work-identity-title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-work-identity-meta {
+  font-size: 13px;
+  color: var(--cx-muted, #64748b);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-work-identity-client {
+  font-weight: 600;
+}
+
+.cx-work-identity-sep {
+  opacity: 0.6;
+}
+
+.cx-work-identity-responsibility {
+  font-size: 12px;
+  color: var(--cx-muted, #64748b);
+}
+
+.cx-work-identity-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.cx-work-identity-owner {
+  font-weight: 600;
+  color: var(--cx-text, #0f172a);
 }

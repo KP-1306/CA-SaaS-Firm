@@ -116,10 +116,255 @@ function missionTime(value: unknown): string {
   return raw.slice(0, 16).replace('T', ' ');
 }
 
+type VerticalSummaryRow = {
+  vertical_id: string;
+  vertical_name: string;
+  total_work: number;
+  open_work: number;
+  completed_work: number;
+  overdue: number;
+  due_soon: number;
+  waiting_on_client: number;
+  needs_review: number;
+  high_risk: number;
+  assigned_staff_count: number;
+  staff_workload: Array<{
+    employee_id: string;
+    employee_name: string;
+    open_work: number;
+    overdue: number;
+  }>;
+};
+
+const VERTICAL_DONUT_COLOURS = [
+  '#2563eb',
+  '#14b8a6',
+  '#f59e0b',
+  '#8b5cf6',
+  '#ef4444',
+  '#06b6d4',
+  '#84cc16',
+  '#f97316',
+];
+
+function VerticalDistributionDonut({
+  rows,
+  onOpenVertical,
+}: {
+  rows: VerticalSummaryRow[];
+  onOpenVertical?: ((verticalId: string) => void) | undefined;
+}): React.JSX.Element {
+  const chartRows = rows.filter(
+    (row) => row.open_work > 0,
+  );
+
+  const total = chartRows.reduce(
+    (sum, row) => sum + row.open_work,
+    0,
+  );
+
+  const largestVertical = chartRows.reduce<
+    VerticalSummaryRow | undefined
+  >(
+    (largest, row) =>
+      largest === undefined ||
+      row.open_work > largest.open_work
+        ? row
+        : largest,
+    undefined,
+  );
+
+  const largestShare =
+    largestVertical !== undefined && total > 0
+      ? (
+          (largestVertical.open_work / total)
+          * 100
+        ).toFixed(1)
+      : '0.0';
+
+  const activeVerticalCount = chartRows.length;
+
+  const radius = 66;
+  const circumference = 2 * Math.PI * radius;
+
+  let consumed = 0;
+
+  return (
+    <div className="cx-vertical-distribution">
+      <div className="cx-vertical-donut-shell">
+        <svg
+          className="cx-vertical-donut"
+          viewBox="0 0 180 180"
+          role="img"
+          aria-label="Open work distribution by vertical"
+        >
+          <circle
+            className="cx-vertical-donut-track"
+            cx="90"
+            cy="90"
+            r={radius}
+          />
+
+          {chartRows.map((row, index) => {
+            const ratio =
+              total > 0
+                ? row.open_work / total
+                : 0;
+
+            const segment =
+              ratio * circumference;
+
+            const offset =
+              -consumed * circumference;
+
+            consumed += ratio;
+
+            return (
+              <circle
+                key={row.vertical_id}
+                className="cx-vertical-donut-segment"
+                cx="90"
+                cy="90"
+                r={radius}
+                stroke={
+                  VERTICAL_DONUT_COLOURS[
+                    index %
+                      VERTICAL_DONUT_COLOURS.length
+                  ]
+                }
+                strokeDasharray={
+                  `${segment} ${
+                    circumference - segment
+                  }`
+                }
+                strokeDashoffset={offset}
+                onClick={() =>
+                  onOpenVertical?.(
+                    row.vertical_id,
+                  )
+                }
+              >
+                <title>
+                  {`${row.vertical_name}: ${
+                    row.open_work
+                  } open (${(
+                    ratio * 100
+                  ).toFixed(1)}%)`}
+                </title>
+              </circle>
+            );
+          })}
+        </svg>
+
+        <div className="cx-vertical-donut-centre">
+          <strong>{total}</strong>
+          <span>Open Work</span>
+        </div>
+      </div>
+
+      <div className="cx-vertical-legend">
+        {rows.map((row, index) => {
+          const percentage =
+            total > 0
+              ? (
+                  (row.open_work / total)
+                  * 100
+                ).toFixed(1)
+              : '0.0';
+
+          return (
+            <button
+              type="button"
+              className="cx-vertical-legend-row"
+              key={row.vertical_id}
+              onClick={() =>
+                onOpenVertical?.(
+                  row.vertical_id,
+                )
+              }
+            >
+              <span
+                className="cx-vertical-legend-dot"
+                style={{
+                  backgroundColor:
+                    VERTICAL_DONUT_COLOURS[
+                      index %
+                        VERTICAL_DONUT_COLOURS.length
+                    ],
+                }}
+              />
+
+              <span className="cx-vertical-legend-name">
+                {row.vertical_name}
+              </span>
+
+              <strong>{row.open_work}</strong>
+
+              <span className="cx-vertical-legend-percent">
+                {percentage}%
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <aside
+        className="cx-workload-snapshot"
+        aria-label="Workload snapshot"
+      >
+        <div className="cx-workload-snapshot-head">
+          <span className="cx-panel-kicker">
+            Snapshot
+          </span>
+          <h3>Workload Snapshot</h3>
+          <p>
+            Current open-work position across active
+            verticals.
+          </p>
+        </div>
+
+        <div className="cx-workload-snapshot-grid">
+          <div className="cx-workload-snapshot-stat">
+            <strong>{total}</strong>
+            <span>Open Work</span>
+          </div>
+
+          <div className="cx-workload-snapshot-stat">
+            <strong>
+              {largestVertical?.open_work ?? 0}
+            </strong>
+            <span>Largest Vertical Workload</span>
+          </div>
+
+          <div className="cx-workload-snapshot-stat">
+            <strong>{largestShare}%</strong>
+            <span>Largest Workload Share</span>
+          </div>
+
+          <div className="cx-workload-snapshot-stat">
+            <strong>{activeVerticalCount}</strong>
+            <span>Active Verticals with Work</span>
+          </div>
+        </div>
+
+        <div className="cx-workload-snapshot-leader">
+          <span>Largest current workload</span>
+          <strong>
+            {largestVertical?.vertical_name ?? 'No open work'}
+          </strong>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+
 export function Dashboard({
   onOpenWork,
+  onOpenVertical,
 }: {
   onOpenWork?: (workItemId: string) => void;
+  onOpenVertical?: (verticalId: string) => void;
 } = {}): React.JSX.Element {
   const [employeeData, setEmployeeData] = useState<Row>({});
   const [firmData, setFirmData] = useState<Row>({});
@@ -185,7 +430,7 @@ export function Dashboard({
     capabilities.can_view_firm_operations === true;
 
   // ----------------------------------------------------------
-  // Row 1 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ALWAYS PERSONAL
+  // Row 1 — ALWAYS PERSONAL
   // ----------------------------------------------------------
 
   const myWork = asMissionDict(employeeData.my_work);
@@ -202,6 +447,14 @@ export function Dashboard({
   const firmOperations = asMissionDict(firmData.operations);
   const actionCentre = asMissionDict(firmData.action_centre);
   const employeeWorkload = asMissionDict(firmData.employee_workload);
+
+  const verticalSummary = canViewFirmOperations
+    ? (
+        asMissionRows(
+          firmData.vertical_summary,
+        ) as VerticalSummaryRow[]
+      )
+    : [];
 
   const displayHealth = canViewFirmOperations
     ? firmHealth
@@ -319,7 +572,7 @@ export function Dashboard({
       </section>
 
       {/* ====================================================
-          ROW 1 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â MY WORK TODAY
+          ROW 1 — MY WORK TODAY
          ==================================================== */}
 
       <section className="cx-mission-panel cx-mission-today">
@@ -364,7 +617,7 @@ export function Dashboard({
       </section>
 
       {/* ====================================================
-          ROW 2 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â IMMEDIATE ACTIONS
+          ROW 2 — IMMEDIATE ACTIONS
          ==================================================== */}
 
       <section className="cx-mission-panel cx-mission-actions-panel">
@@ -475,7 +728,7 @@ export function Dashboard({
       </section>
 
       {/* ====================================================
-          ROW 3 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â OPERATIONAL HEALTH
+          ROW 3 — OPERATIONAL HEALTH
          ==================================================== */}
 
       <section className="cx-mission-grid">
@@ -563,8 +816,170 @@ export function Dashboard({
         </article>
       </section>
 
+      {canViewFirmOperations && verticalSummary.length > 0 ? (
+        <>
+          <section className="cx-mission-panel cx-vertical-operations-panel">
+            <div className="cx-mission-section-head">
+              <div>
+                <span className="cx-panel-kicker">
+                  Firm Operations
+                </span>
+                <h2>Vertical Operations</h2>
+                <p className="cx-vertical-section-copy">
+                  Current workload, risk and staffing across
+                  every active vertical.
+                </p>
+              </div>
+
+              <span className="cx-panel-count">
+                {verticalSummary.length}
+              </span>
+            </div>
+
+            <div className="cx-vertical-card-grid">
+              {verticalSummary.map((vertical) => (
+                <button
+                  type="button"
+                  className="cx-vertical-card"
+                  key={vertical.vertical_id}
+                  onClick={() =>
+                    onOpenVertical?.(
+                      vertical.vertical_id,
+                    )
+                  }
+                >
+                  <div className="cx-vertical-card-top">
+                    <div>
+                      
+
+                      <h3>
+                        {vertical.vertical_name}
+                      </h3>
+                    </div>
+
+                    <span className="cx-vertical-open-pill">
+                      {vertical.open_work} open
+                    </span>
+                  </div>
+
+                  <div className="cx-vertical-card-metrics">
+                    <div className="cx-vertical-primary">
+                      <span>Overdue</span>
+                      <strong>
+                        {vertical.overdue}
+                      </strong>
+                    </div>
+
+                    <div className="cx-vertical-primary">
+                      <span>High Risk</span>
+                      <strong>
+                        {vertical.high_risk}
+                      </strong>
+                    </div>
+
+                    <div className="cx-vertical-primary">
+                      <span>Staff</span>
+                      <strong>
+                        {
+                          vertical.assigned_staff_count
+                        }
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Due Soon</span>
+                      <strong>
+                        {vertical.due_soon}
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Waiting on Client</span>
+                      <strong>
+                        {
+                          vertical.waiting_on_client
+                        }
+                      </strong>
+                    </div>
+
+                    <div>
+                      <span>Needs Review</span>
+                      <strong>
+                        {vertical.needs_review}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="cx-vertical-staff">
+                    <span className="cx-vertical-staff-title">
+                      Work by staff
+                    </span>
+
+                    {vertical.staff_workload.length > 0 ? (
+                      <div className="cx-vertical-staff-list">
+                        {vertical.staff_workload
+                          .slice(0, 3)
+                          .map((staff) => (
+                            <span
+                              key={
+                                staff.employee_id
+                              }
+                            >
+                              {
+                                staff.employee_name
+                              }{' '}
+                              <strong>
+                                {staff.open_work}
+                              </strong>
+                            </span>
+                          ))}
+                      </div>
+                    ) : (
+                      <span className="cx-vertical-no-staff">
+                        No active assigned work
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="cx-vertical-card-bottom">
+                    <span>
+                      {vertical.total_work} total
+                      {' / '}
+                      {vertical.completed_work} completed
+                    </span>
+
+                    <strong>View Work</strong>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="cx-mission-panel cx-vertical-distribution-panel">
+            <div className="cx-mission-section-head">
+              <div>
+                <span className="cx-panel-kicker">
+                  Workload
+                </span>
+                <h2>Work Distribution by Vertical</h2>
+                <p className="cx-vertical-section-copy">
+                  Open work split across every active
+                  vertical. Select any vertical to open its
+                  Work view.
+                </p>
+              </div>
+            </div>
+
+            <VerticalDistributionDonut
+              rows={verticalSummary}
+              onOpenVertical={onOpenVertical}
+            />
+          </section>
+        </>
+      ) : null}
+
       {/* ====================================================
-          ROW 4 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â TEAM SNAPSHOT
+          ROW 4 — TEAM SNAPSHOT
          ==================================================== */}
 
       {canViewFirmOperations ? (
@@ -626,7 +1041,7 @@ export function Dashboard({
       ) : null}
 
       {/* ====================================================
-          ROW 5 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â CLIENT ACTIVITY
+          ROW 5 — CLIENT ACTIVITY
          ==================================================== */}
 
       {canViewFirmOperations ? (
@@ -688,7 +1103,7 @@ export function Dashboard({
 
                   <small>
                     {String(activity.title ?? 'Work item')}
-                    {' ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· '}
+                    {' · '}
                     {missionTime(activity.created_at)}
                   </small>
                 </article>
@@ -699,7 +1114,7 @@ export function Dashboard({
       ) : null}
 
       {/* ====================================================
-          ROW 6 + UPCOMING ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â TIMELINE / DEADLINES
+          ROW 6 + UPCOMING — TIMELINE / DEADLINES
          ==================================================== */}
 
       <section className="cx-mission-grid cx-mission-bottom-grid">
@@ -838,7 +1253,7 @@ export function Dashboard({
       ) ? (
         <p className="cx-mission-footnote">
           {missionCount(actionCentre.unassigned)} unassigned
-          {' ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· '}
+          {' · '}
           {missionCount(actionCentre.review_backlog)} review backlog
         </p>
       ) : null}
@@ -1227,10 +1642,27 @@ function OperationalConsole(): React.JSX.Element {
     setEmployeeOpsInitialSection,
   ] = useState<'assignment' | null>(null);
 
+  const [
+    dashboardVerticalId,
+    setDashboardVerticalId,
+  ] = useState<string | null>(null);
+
   const openWorkItem = (workItemId: string): void => {
     if (!workItemId) return;
 
+    setDashboardVerticalId(null);
     setWorkItemToOpen(workItemId);
+    setArea('work');
+  };
+
+  const openVerticalWork = (
+    verticalId: string,
+  ): void => {
+    if (!verticalId) return;
+
+    setWorkItemToOpen(null);
+    setWorkQuickAction(null);
+    setDashboardVerticalId(verticalId);
     setArea('work');
   };
 
@@ -1281,6 +1713,7 @@ function OperationalConsole(): React.JSX.Element {
         return (
           <Dashboard
             onOpenWork={openWorkItem}
+            onOpenVertical={openVerticalWork}
           />
         );
 
@@ -1371,6 +1804,9 @@ case 'my-dashboard':
       case 'work':
         return (
           <WorkArea
+            initialVerticalId={
+              dashboardVerticalId ?? undefined
+            }
             initialWorkItemId={
               workItemToOpen ?? undefined
             }

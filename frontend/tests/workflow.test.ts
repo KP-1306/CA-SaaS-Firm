@@ -90,6 +90,25 @@ describe('console api client', () => {
       'Only the assigned reviewer may perform this action.',
     );
   });
+
+  it('translates nested operational data errors into readable field messages', () => {
+    expect(
+      translateError(
+        JSON.stringify({
+          operational_data: {
+            requested_loan_amount: [
+              'This field is required.',
+            ],
+            business_name: [
+              'This field is required.',
+            ],
+          },
+        }),
+      ),
+    ).toBe(
+      'Operational data: Requested loan amount: This field is required.; Business name: This field is required.',
+    );
+  });
 });
 
 

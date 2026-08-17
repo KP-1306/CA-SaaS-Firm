@@ -43,8 +43,6 @@ export function AssignmentWorkspace({
   };
 
   const recommend = (): void => {
-    if (!workItemId) return;
-
     setLoading(true);
     setError('');
     setCandidates([]);
@@ -53,7 +51,8 @@ export function AssignmentWorkspace({
       'assignment-recommendations',
       'recommend',
       {
-        work_item_id: workItemId,
+        work_item_id:
+          workItemId || undefined,
         service_id: workItem.service_id || undefined,
         estimated_hours: workItem.estimated_hours || undefined,
       },
@@ -84,7 +83,23 @@ export function AssignmentWorkspace({
     candidate: Row,
     index: number,
   ): void => {
-    if (!workItemId || candidate.eligible !== true) return;
+    if (candidate.eligible !== true) return;
+
+    const employeeId = String(
+      candidate.employee_id ?? '',
+    );
+
+    if (!workItemId) {
+      onAssigned({
+        owner_user_id: employeeId,
+        reviewer_user_id:
+          workItem.reviewer_user_id || undefined,
+      });
+      setCandidates([]);
+      setExplanation(null);
+      setError('');
+      return;
+    }
 
     const isOverride = index !== 0;
 
@@ -98,10 +113,6 @@ export function AssignmentWorkspace({
 
       if (!overrideReason) return;
     }
-
-    const employeeId = String(
-      candidate.employee_id ?? '',
-    );
 
     const body: Row = {
       work_item_id: workItemId,

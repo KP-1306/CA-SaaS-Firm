@@ -11,6 +11,7 @@ from contexts.configuration.models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
     ServiceOperationalField,
+    ServiceProcessStep,
     Vertical,
 )
 
@@ -246,3 +247,69 @@ def test_compliance_services_belong_only_to_compliances_vertical():
     ).exclude(
         domain_id__in=domain_ids,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_udyam_process_steps_are_seeded_in_order():
+    _seed()
+
+    service = Service.objects.get(
+        tenant_id=TENANT,
+        code="UDYAM_REGISTRATION",
+    )
+
+    rows = list(
+        ServiceProcessStep.objects.filter(
+            tenant_id=TENANT,
+            service_id=service.id,
+            is_active=True,
+        ).order_by(
+            "display_order",
+            "name",
+            "id",
+        )
+    )
+
+    assert [
+        row.code
+        for row in rows
+    ] == [
+        "CLIENT_INFORMATION",
+        "VERIFICATION_PREPARATION",
+        "INTERNAL_REVIEW",
+        "APPLICATION_SUBMISSION",
+        "QUERY_RESOLUTION",
+        "COMPLETION",
+    ]
+
+    assert [
+        row.display_order
+        for row in rows
+    ] == [
+        10,
+        20,
+        30,
+        40,
+        50,
+        60,
+    ]
+
+    assert rows[0].name == "Client Information & Documents"
+    assert rows[-1].name == "Registration Completion & Certificate"
+
+
+@pytest.mark.django_db
+def test_udyam_process_seed_is_idempotent():
+    _seed()
+    _seed()
+
+    service = Service.objects.get(
+        tenant_id=TENANT,
+        code="UDYAM_REGISTRATION",
+    )
+
+    assert ServiceProcessStep.objects.filter(
+        tenant_id=TENANT,
+        service_id=service.id,
+        is_active=True,
+    ).count() == 6

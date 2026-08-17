@@ -16,6 +16,7 @@ from contexts.configuration.models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
     ServiceOperationalField,
+    ServiceProcessStep,
     Vertical,
 )
 
@@ -144,7 +145,280 @@ SERVICES = {'MSY_LOAN': {'name': 'M.S.Y. Loan',
                              100))},
  'MUDRA_LOAN': {'name': 'Mudra Loan',
                 'description': 'Mudra loan documentation and processing.',
-                'fields': (),
+                # Mudra Phase 1 (configuration foundation only): operational
+                # field definitions. Values are stored on
+                # WorkItem.operational_data at runtime; no runtime workflow,
+                # transition, or WorkProcessState behaviour is implemented here.
+                # 'required' below is the generic field-validation flag only.
+                # Conditional business rules (e.g. CIBIL score gating
+                # eligibility, mandatory rejection reason) belong to later
+                # phases and are intentionally NOT encoded as universal
+                # required=True here.
+                'fields': ({'key': 'requested_loan_amount',
+                            'label': 'Requested Loan Amount',
+                            'field_type': 'NUMBER',
+                            'required': True,
+                            'options': [],
+                            'display_order': 10},
+                           {'key': 'loan_purpose',
+                            'label': 'Loan Purpose',
+                            'field_type': 'TEXT',
+                            'required': True,
+                            'options': [],
+                            'display_order': 20},
+                           {'key': 'business_activity',
+                            'label': 'Business / Activity',
+                            'field_type': 'TEXT',
+                            'required': True,
+                            'options': [],
+                            'display_order': 30},
+                           {'key': 'application_reference',
+                            'label': 'Application Reference Number',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 40},
+                           {'key': 'application_date',
+                            'label': 'Application Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 50},
+                           {'key': 'cibil_score',
+                            'label': 'CIBIL Score',
+                            'field_type': 'NUMBER',
+                            'required': False,
+                            'options': [],
+                            'display_order': 60},
+                           {'key': 'cibil_bureau',
+                            'label': 'Credit Bureau',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 70},
+                           {'key': 'cibil_check_date',
+                            'label': 'CIBIL Check Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 80},
+                           {'key': 'cibil_result',
+                            'label': 'CIBIL Result',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 90},
+                           {'key': 'cibil_report_reference',
+                            'label': 'CIBIL Report Reference',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 100},
+                           {'key': 'cibil_remarks',
+                            'label': 'CIBIL Remarks',
+                            'field_type': 'LONG_TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 110},
+                           {'key': 'eligibility_result',
+                            'label': 'Eligibility Result',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 120},
+                           {'key': 'eligibility_date',
+                            'label': 'Eligibility Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 130},
+                           {'key': 'rejection_reason',
+                            'label': 'Rejection Reason',
+                            'field_type': 'LONG_TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 140},
+                           {'key': 'project_report_prepared',
+                            'label': 'Project Report Prepared',
+                            'field_type': 'BOOLEAN',
+                            'required': False,
+                            'options': [],
+                            'display_order': 150},
+                           {'key': 'project_report_date',
+                            'label': 'Project Report Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 160},
+                           {'key': 'bank_name',
+                            'label': 'Bank Name',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 170},
+                           {'key': 'bank_branch',
+                            'label': 'Bank Branch',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 180},
+                           {'key': 'bank_file_transfer_date',
+                            'label': 'File Transfer Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 190},
+                           {'key': 'bank_reference',
+                            'label': 'Bank Reference',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 200},
+                           {'key': 'bank_acknowledgement_date',
+                            'label': 'Bank Acknowledgement Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 210},
+                           {'key': 'bank_verification_status',
+                            'label': 'Bank Verification Status',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 220},
+                           {'key': 'bank_verification_date',
+                            'label': 'Bank Verification Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 230},
+                           {'key': 'bank_verification_remarks',
+                            'label': 'Bank Verification Remarks',
+                            'field_type': 'LONG_TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 240},
+                           {'key': 'ro_name',
+                            'label': 'RO Name / Reference',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 250},
+                           {'key': 'ro_review_status',
+                            'label': 'RO Review Status',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 260},
+                           {'key': 'ro_review_date',
+                            'label': 'RO Review Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 270},
+                           {'key': 'ro_review_remarks',
+                            'label': 'RO Review Remarks',
+                            'field_type': 'LONG_TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 280},
+                           {'key': 'sanctioned_amount',
+                            'label': 'Sanctioned Amount',
+                            'field_type': 'NUMBER',
+                            'required': False,
+                            'options': [],
+                            'display_order': 290},
+                           {'key': 'sanction_date',
+                            'label': 'Sanction Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 300},
+                           {'key': 'sanction_reference',
+                            'label': 'Sanction Reference',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 310},
+                           {'key': 'sanction_remarks',
+                            'label': 'Sanction Remarks',
+                            'field_type': 'LONG_TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 320},
+                           {'key': 'sanction_conditions_status',
+                            'label': 'Sanction Conditions Status',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 330},
+                           {'key': 'sanction_conditions_completed_date',
+                            'label': 'Sanction Conditions Completed Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 340},
+                           {'key': 'disbursement_ready_date',
+                            'label': 'Disbursement Ready Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 350},
+                           {'key': 'disbursed_amount',
+                            'label': 'Disbursed Amount',
+                            'field_type': 'NUMBER',
+                            'required': False,
+                            'options': [],
+                            'display_order': 360},
+                           {'key': 'disbursement_date',
+                            'label': 'Disbursement Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 370},
+                           {'key': 'disbursement_reference',
+                            'label': 'Disbursement Reference',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 380},
+                           {'key': 'mudra_outcome',
+                            'label': 'Mudra Outcome',
+                            'field_type': 'TEXT',
+                            'required': False,
+                            'options': [],
+                            'display_order': 390},
+                           {'key': 'closure_date',
+                            'label': 'Closure Date',
+                            'field_type': 'DATE',
+                            'required': False,
+                            'options': [],
+                            'display_order': 400}),
+                # Mudra Phase 1: authoritative service process-step
+                # DEFINITIONS only (configuration.ServiceProcessStep). These
+                # are the 10 locked Mudra process positions. They do NOT create
+                # runtime WorkProcessState rows and do NOT implement any
+                # transition. Client 18-stage -> 10-step mapping:
+                #   Lead/Application/KYC/Checklist/Document Tagging -> APPLICATION
+                #   CIBIL/Eligibility                               -> CREDIT_ELIGIBILITY
+                #   Project Report                                  -> FILE_PREPARATION
+                #   Bank Transfer/Bank Received                     -> BANK_SUBMITTED
+                #   Bank Verification                               -> BANK_VERIFICATION
+                #   Pending Task / Re-QC loop                       -> BANK_PENDING
+                #   RO Review                                       -> RO_REVIEW
+                #   Sanction/Sanction Conditions                    -> SANCTIONED
+                #   Disbursement Ready/Disbursement                 -> DISBURSEMENT
+                #   Closed                                          -> CLOSED
+                'process_steps': (('APPLICATION', 'Application & KYC', 10),
+                                  ('CREDIT_ELIGIBILITY', 'Credit & Eligibility', 20),
+                                  ('FILE_PREPARATION', 'File Preparation', 30),
+                                  ('BANK_SUBMITTED', 'Bank Submitted', 40),
+                                  ('BANK_VERIFICATION', 'Bank Verification', 50),
+                                  ('BANK_PENDING', 'Bank Pending', 60),
+                                  ('RO_REVIEW', 'RO Review', 70),
+                                  ('SANCTIONED', 'Sanctioned', 80),
+                                  ('DISBURSEMENT', 'Disbursement', 90),
+                                  ('CLOSED', 'Closed', 100)),
                 'documents': (('AADHAAR_CARD',
                                'Aadhaar Card',
                                '',
@@ -179,7 +453,36 @@ SERVICES = {'MSY_LOAN': {'name': 'M.S.Y. Loan',
                                '',
                                'REGISTRATION',
                                True,
-                               100))},
+                               100),
+                              # Mudra Phase 1: architecture-approved later-stage
+                              # documents. Marked non-mandatory so they do not
+                              # block generic completion of every Mudra file up
+                              # front; stage-specific enforcement belongs to
+                              # later phases.
+                              ('CIBIL_REPORT',
+                               'CIBIL / Credit Report',
+                               '',
+                               'BANKING',
+                               False,
+                               110),
+                              ('SANCTION_LETTER',
+                               'Sanction Letter',
+                               '',
+                               'BANKING',
+                               False,
+                               120),
+                              ('SANCTION_CONDITIONS_EVIDENCE',
+                               'Sanction Conditions Evidence',
+                               '',
+                               'BANKING',
+                               False,
+                               130),
+                              ('DISBURSEMENT_EVIDENCE',
+                               'Disbursement Evidence',
+                               '',
+                               'BANKING',
+                               False,
+                               140))},
  'CAR_LOAN': {'name': 'Car Loan',
               'description': 'Car loan documentation and processing.',
               'fields': ({'key': 'requested_loan_amount',
@@ -695,6 +998,85 @@ def _seed_service(
             ]
         )
 
+    # Mudra Phase 1: EXPLICITLY MANAGED CONFIGURATION contract.
+    # ServiceProcessStep rows are synchronized ONLY for a service definition
+    # that explicitly declares ownership via a "process_steps" key. A service
+    # WITHOUT that key is UNMANAGED here: this seed must not query, create,
+    # update, deactivate, or reorder its ServiceProcessStep rows in any way.
+    # This guard makes cross-service process-step deactivation impossible
+    # (an unmanaged service never reaches the reconciliation query, so an empty
+    # expected-set can never deactivate another service's active steps).
+    # Idempotent and service-scoped: keyed on (tenant_id, service_id, code).
+    # No runtime WorkProcessState is created here.
+    process_step_created = 0
+    process_step_existing = 0
+    process_step_managed = "process_steps" in definition
+
+    if process_step_managed:
+        expected_step_codes = set()
+
+        for (
+            step_code,
+            step_name,
+            step_display_order,
+        ) in definition["process_steps"]:
+            expected_step_codes.add(step_code)
+
+            step_business_defaults = {
+                "name": step_name,
+                "description": "",
+                "display_order": step_display_order,
+                "is_active": True,
+            }
+
+            _step, step_created = (
+                ServiceProcessStep.objects.update_or_create(
+                    tenant_id=tenant_id,
+                    service_id=service.id,
+                    code=step_code,
+                    defaults={
+                        **step_business_defaults,
+                        "updated_by": principal_id,
+                    },
+                    create_defaults={
+                        **step_business_defaults,
+                        "created_by": principal_id,
+                        "updated_by": principal_id,
+                    },
+                )
+            )
+
+            if step_created:
+                process_step_created += 1
+            else:
+                process_step_existing += 1
+
+        # Preserve historical rows but deactivate obsolete MUDRA-OWNED steps.
+        # Scoped to this service AND reached only for a managed service, so it
+        # can never affect another service. Guarded against an empty expected
+        # set as an extra safety net: with no expected codes we still only
+        # reach here for a service that declared an (empty) process_steps
+        # contract, and we intentionally skip mass-deactivation in that case.
+        if expected_step_codes:
+            obsolete_steps = ServiceProcessStep.objects.filter(
+                tenant_id=tenant_id,
+                service_id=service.id,
+                is_active=True,
+            ).exclude(
+                code__in=expected_step_codes,
+            )
+
+            for step in obsolete_steps:
+                step.is_active = False
+                step.updated_by = principal_id
+                step.save(
+                    update_fields=[
+                        "is_active",
+                        "updated_by",
+                        "updated_at",
+                    ]
+                )
+
     requirement_set, set_created = (
         ServiceDocumentRequirementSet.objects.get_or_create(
             tenant_id=tenant_id,
@@ -803,6 +1185,8 @@ def _seed_service(
         "service_created": service_created,
         "field_created": field_created,
         "field_existing": field_existing,
+        "process_step_created": process_step_created,
+        "process_step_existing": process_step_existing,
         "set_created": set_created,
         "requirement_created": requirement_created,
         "requirement_existing": requirement_existing,

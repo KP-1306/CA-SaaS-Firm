@@ -27,7 +27,7 @@ PRINCIPAL = uuid.UUID(
 EXPECTED = {
     "MSY_LOAN": ("M.S.Y. Loan", 17),
     "BRE_LOAN": ("B.R.E. Loan", 10),
-    "MUDRA_LOAN": ("Mudra Loan", 10),
+    "MUDRA_LOAN": ("Mudra Loan", 14),
     "CAR_LOAN": ("Car Loan", 7),
     "HOME_LOAN": ("Home Loan", 7),
     "LAP_LOAN": ("Loan Against Property (LAP)", 7),
@@ -218,7 +218,6 @@ def test_unprovided_operational_fields_are_not_invented():
     codes = {
         "MSY_LOAN",
         "BRE_LOAN",
-        "MUDRA_LOAN",
         "LAP_LOAN",
         "LOAN_TAKE_OVER",
         "OD_LIMIT",

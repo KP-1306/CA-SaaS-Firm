@@ -9,7 +9,11 @@ from core.api.viewsets import TenantModelViewSet
 from contexts.audit.models import AuditAction
 from contexts.audit.recording import record_event
 from contexts.notifications.services import notify_work_assigned
-from contexts.identity.access import caller_role, is_executive
+from contexts.identity.access import (
+    caller_role,
+    is_executive,
+    is_platform_admin,
+)
 
 from . import recommendation as recommendation_service
 from . import reviewer_resolution
@@ -35,7 +39,20 @@ class MandatoryAuditPersistenceError(APIException):
 
 
 def _is_manager(principal) -> bool:
-    return is_executive(principal.tenant_id, principal) or caller_role(principal.tenant_id, principal) in _MANAGER_ROLES
+    return (
+        is_platform_admin(
+            principal.tenant_id,
+            principal,
+        )
+        or is_executive(
+            principal.tenant_id,
+            principal,
+        )
+        or caller_role(
+            principal.tenant_id,
+            principal,
+        ) in _MANAGER_ROLES
+    )
 
 
 class ReviewerRuleViewSet(TenantModelViewSet):

@@ -512,7 +512,7 @@ export function ConsultantAdministration(): React.JSX.Element {
             <option value="">Link employee later</option>
             {employees.map((employee) => (
               <option key={String(employee.id)} value={String(employee.id)}>
-                {String(employee.name)} Ã‚Â· {String(employee.email)}
+                {String(employee.name)} · {String(employee.email)}
               </option>
             ))}
           </select>
@@ -535,7 +535,7 @@ export function ConsultantAdministration(): React.JSX.Element {
 
           {temporaryPassword ? (
             <div className="cx-warning">
-              <strong>Temporary password Ã¢â‚¬â€ shown once</strong>
+              <strong>Temporary password — shown once</strong>
               <code>{temporaryPassword}</code>
             </div>
           ) : null}

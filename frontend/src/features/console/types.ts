@@ -66,7 +66,11 @@ export interface WorkItemPermissions {
   can_upload_internal?: boolean;
 }
 
-export function lockMessage(status: unknown, controllerName: unknown): string {
+export function lockMessage(
+  status: unknown,
+  controllerName: unknown,
+  hasProcessOwnedAction = false,
+): string {
   switch (String(status)) {
     case 'READY_FOR_REVIEW':
       return controllerName
@@ -79,7 +83,13 @@ export function lockMessage(status: unknown, controllerName: unknown): string {
     case 'CANCELLED':
       return 'This work is cancelled and read-only.';
     default:
-      return 'This work item is read-only for you at its current stage.';
+      // When generic Work fields are locked but a stage-owned workflow action
+      // is still available (e.g. Udyam external stages), the banner must not
+      // imply that nothing can be done.  Permissions are unchanged; only the
+      // presentation is clarified.
+      return hasProcessOwnedAction
+        ? 'Work details are locked at this stage. Continue using the workflow action above.'
+        : 'This work item is read-only for you at its current stage.';
   }
 }
 

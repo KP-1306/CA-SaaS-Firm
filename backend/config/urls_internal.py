@@ -11,6 +11,7 @@ from contexts.configuration.views import (
     ServiceViewSet,
     VerticalViewSet,
     ServiceOperationalFieldViewSet,
+    ServiceProcessStepViewSet,
 )
 from contexts.identity.views import EmployeeExpertiseViewSet, EmployeeViewSet
 from contexts.identity.auth_views import (
@@ -104,6 +105,11 @@ router.register(
     "service-operational-fields",
     ServiceOperationalFieldViewSet,
     basename="service-operational-field",
+)
+router.register(
+    "service-process-steps",
+    ServiceProcessStepViewSet,
+    basename="service-process-step",
 )
 router.register(
     "service-document-requirement-sets",

@@ -455,10 +455,13 @@ def test_missing_eligible_contact_does_not_break_work_creation():
 
     assert work["id"]
 
-    assert not DocumentRequest.objects.filter(
+    request = DocumentRequest.objects.get(
         tenant_id=TENANT,
         work_item_id=work["id"],
-    ).exists()
+    )
+
+    assert request.requested_from_contact_id is None
+    assert request.sent_at is None
 
 
 @pytest.mark.django_db

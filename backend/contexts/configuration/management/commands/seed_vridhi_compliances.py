@@ -13,6 +13,7 @@ from contexts.configuration.models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
     ServiceOperationalField,
+    ServiceProcessStep,
     Vertical,
 )
 
@@ -50,6 +51,64 @@ DOMAINS = {
         ),
     },
 }
+
+
+UDYAM_PROCESS_STEPS = (
+    (
+        "CLIENT_INFORMATION",
+        "Client Information & Documents",
+        (
+            "Collect the client's required identity, contact, "
+            "business, banking and address information."
+        ),
+        10,
+    ),
+    (
+        "VERIFICATION_PREPARATION",
+        "Verification & Preparation",
+        (
+            "Verify submitted information and documents and "
+            "prepare the Udyam registration application."
+        ),
+        20,
+    ),
+    (
+        "INTERNAL_REVIEW",
+        "Internal Review & Approval",
+        (
+            "Complete Vridhi internal review and resolve any "
+            "changes before portal submission."
+        ),
+        30,
+    ),
+    (
+        "APPLICATION_SUBMISSION",
+        "Application Submission",
+        (
+            "Submit the approved Udyam registration application "
+            "through the applicable portal."
+        ),
+        40,
+    ),
+    (
+        "QUERY_RESOLUTION",
+        "Query / OTP / Technical Resolution",
+        (
+            "Resolve portal issues, OTP dependencies, queries "
+            "or additional client information requirements."
+        ),
+        50,
+    ),
+    (
+        "COMPLETION",
+        "Registration Completion & Certificate",
+        (
+            "Confirm registration completion, obtain the Udyam "
+            "certificate and complete delivery to the client."
+        ),
+        60,
+    ),
+)
 
 
 SERVICES = {
@@ -1447,6 +1506,60 @@ def _seed_domain(
     return domain
 
 
+def _seed_process_steps(
+    *,
+    tenant_id,
+    principal_id,
+    service,
+    steps,
+):
+    expected_codes = set()
+
+    for code, name, description, display_order in steps:
+        expected_codes.add(code)
+
+        values = {
+            "name": name,
+            "description": description,
+            "display_order": display_order,
+            "is_active": True,
+        }
+
+        ServiceProcessStep.objects.update_or_create(
+            tenant_id=tenant_id,
+            service_id=service.id,
+            code=code,
+            defaults={
+                **values,
+                "updated_by": principal_id,
+            },
+            create_defaults={
+                **values,
+                "created_by": principal_id,
+                "updated_by": principal_id,
+            },
+        )
+
+    obsolete = ServiceProcessStep.objects.filter(
+        tenant_id=tenant_id,
+        service_id=service.id,
+        is_active=True,
+    ).exclude(
+        code__in=expected_codes,
+    )
+
+    for row in obsolete:
+        row.is_active = False
+        row.updated_by = principal_id
+        row.save(
+            update_fields=[
+                "is_active",
+                "updated_by",
+                "updated_at",
+            ]
+        )
+
+
 def _seed_service(
     *,
     tenant_id,
@@ -1683,13 +1796,21 @@ class Command(BaseCommand):
         }
 
         for code, definition in SERVICES.items():
-            _seed_service(
+            service = _seed_service(
                 tenant_id=tenant_id,
                 principal_id=principal_id,
                 domain=domains[definition["domain"]],
                 code=code,
                 definition=definition,
             )
+
+            if code == "UDYAM_REGISTRATION":
+                _seed_process_steps(
+                    tenant_id=tenant_id,
+                    principal_id=principal_id,
+                    service=service,
+                    steps=UDYAM_PROCESS_STEPS,
+                )
 
         self.stdout.write("")
         self.stdout.write(

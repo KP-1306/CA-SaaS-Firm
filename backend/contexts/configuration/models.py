@@ -311,6 +311,45 @@ class ServiceDocumentRequirement(TenantModel):
         ]
 
 
+class ServiceProcessStep(TenantModel):
+    """
+    Ordered, reusable operational process definition for a Service.
+
+    This model defines service-specific steps only. It intentionally
+    does not track a WorkItem's current step or implement transitions.
+    """
+
+    service_id = models.UUIDField(db_index=True)
+    code = models.CharField(max_length=100)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default="")
+    display_order = models.PositiveIntegerField(default=10)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = (
+            "service_id",
+            "display_order",
+            "name",
+            "id",
+        )
+        constraints = [
+            models.UniqueConstraint(
+                fields=("tenant_id", "service_id", "code"),
+                name="uniq_service_process_step_code",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=("tenant_id", "service_id", "is_active"),
+                name="cfg_procstep_service_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.service_id}: {self.name}"
+
+
 class ServiceOperationalField(TenantModel):
     """
     One operational field shown for work belonging to a service.

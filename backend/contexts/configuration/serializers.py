@@ -9,6 +9,7 @@ from .models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
     Vertical,
+    ServiceProcessStep,
     ServiceOperationalField,
 )
 
@@ -267,6 +268,20 @@ class ServiceDocumentRequirementSerializer(
             requirement_set.version_number
             if requirement_set
             else None
+        )
+
+
+class ServiceProcessStepSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceProcessStep
+        fields = "__all__"
+        read_only_fields = (
+            "tenant_id",
+            "created_at",
+            "created_by",
+            "updated_at",
+            "updated_by",
+            "row_version",
         )
 
 

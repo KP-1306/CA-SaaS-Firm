@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 from django.utils import timezone
 
 from contexts.clients.models import Client
+from contexts.configuration.models import Domain, Service, Vertical
 from contexts.identity.models import Employee
 from contexts.work.models import DocumentAttachment, DocumentRequest, WorkItem, WorkNote
 from contexts.work.work_health import calculate_work_health
@@ -515,6 +516,119 @@ def client_workspace(tenant_id, client_id):
         ),
     }
 
+
+def _vertical_summary(tenant_id, items):
+    """
+    Current operational workload grouped by active configured vertical.
+
+    This introduces no new Work Health rules. Vertical health numbers are
+    summaries of the existing certified Work Health engine.
+    """
+    verticals = list(
+        Vertical.objects.filter(
+            tenant_id=tenant_id,
+            status="ACTIVE",
+        ).order_by("name")
+    )
+
+    domains = list(
+        Domain.objects.filter(
+            tenant_id=tenant_id,
+            vertical_id__in=[row.id for row in verticals],
+        )
+    )
+
+    services = list(
+        Service.objects.filter(
+            tenant_id=tenant_id,
+            domain_id__in=[row.id for row in domains],
+        )
+    )
+
+    domain_to_vertical = {
+        row.id: row.vertical_id
+        for row in domains
+    }
+
+    service_to_vertical = {
+        row.id: domain_to_vertical.get(row.domain_id)
+        for row in services
+    }
+
+    identity_map = _employee_identity_map(tenant_id)
+
+    rows = []
+
+    for vertical in verticals:
+        vertical_items = [
+            item
+            for item in items
+            if service_to_vertical.get(item.service_id)
+            == vertical.id
+        ]
+
+        open_items = _open_items(vertical_items)
+        completed_items = [
+            item
+            for item in vertical_items
+            if item.status == "COMPLETED"
+        ]
+
+        health = _executive_work_health(open_items)
+
+        staff_rows = []
+
+        for employee_id, (employee_name, identity_ids) in (
+            identity_map.items()
+        ):
+            owned_open = [
+                item
+                for item in open_items
+                if item.owner_user_id in identity_ids
+            ]
+
+            if not owned_open:
+                continue
+
+            staff_rows.append({
+                "employee_id": str(employee_id),
+                "employee_name": employee_name,
+                "open_work": len(owned_open),
+                "overdue": len(
+                    _overdue_items(owned_open)
+                ),
+            })
+
+        staff_rows.sort(
+            key=lambda row: (
+                row["open_work"],
+                row["overdue"],
+                row["employee_name"],
+            ),
+            reverse=True,
+        )
+
+        rows.append({
+            "vertical_id": str(vertical.id),
+            "vertical_name": vertical.name,
+            "total_work": len(vertical_items),
+            "open_work": len(open_items),
+            "completed_work": len(completed_items),
+            "overdue": health["overdue"],
+            "due_soon": health["due_soon"],
+            "waiting_on_client": health[
+                "waiting_on_client"
+            ],
+            "needs_review": health[
+                "waiting_on_reviewer"
+            ],
+            "high_risk": health["high_risk"],
+            "assigned_staff_count": len(staff_rows),
+            "staff_workload": staff_rows,
+        })
+
+    return rows
+
 def executive_dashboard(tenant_id, period="month"):
     start, end = _period_bounds(period)
     items = list(_work_qs(tenant_id))
@@ -611,6 +725,10 @@ def executive_dashboard(tenant_id, period="month"):
         "heatmap_priority_status": status_by_priority,
         "action_centre": action_centre,
         "work_health": _executive_work_health(open_items),
+        "vertical_summary": _vertical_summary(
+            tenant_id,
+            items,
+        ),
 
         # Phase 5.1 Mission Control projections.
         "recent_activity": _mission_recent_activity(

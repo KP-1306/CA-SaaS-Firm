@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
@@ -284,6 +284,14 @@ class WorkItemAccessPermission(ActionAccessPermission):
         "prepare_qa": "work.submit",
         "save_preparer_checklist": "work.submit",
         "resolve_qa_issue_action": "work.submit",
+
+        # Udyam post-review execution remains owner-controlled.
+        # Service/process-position guards in WorkItemViewSet remain the
+        # final business controls for these service-specific actions.
+        "udyam_submit_application": "work.submit",
+        "udyam_report_query": "work.submit",
+        "udyam_resolve_query": "work.submit",
+        "udyam_complete_registration": "work.submit",
 
         # Read-only QA information attached to a work item.
         "qa_readiness_action": "work.view",

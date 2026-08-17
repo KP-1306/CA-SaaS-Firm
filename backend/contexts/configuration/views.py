@@ -7,6 +7,7 @@ from .models import (
     ServiceDocumentRequirement,
     ServiceDocumentRequirementSet,
     Vertical,
+    ServiceProcessStep,
     ServiceOperationalField,
 )
 from .serializers import (
@@ -15,8 +16,34 @@ from .serializers import (
     ServiceDocumentRequirementSetSerializer,
     ServiceSerializer,
     VerticalSerializer,
+    ServiceProcessStepSerializer,
     ServiceOperationalFieldSerializer,
 )
+
+
+
+def _query_bool(value):
+    """
+    Convert an HTTP query-string boolean to a Python bool.
+
+    Returns None when the value is absent/blank.
+    Raises ValueError for unsupported values so callers can
+    avoid silently applying an incorrect filter.
+    """
+    if value in (None, ""):
+        return None
+
+    normalized = str(value).strip().lower()
+
+    if normalized in {"true", "1"}:
+        return True
+
+    if normalized in {"false", "0"}:
+        return False
+
+    raise ValueError(
+        "Boolean query parameter must be true, false, 1, or 0."
+    )
 
 class VerticalViewSet(TenantModelViewSet):
     queryset = Vertical.objects.all(); serializer_class = VerticalSerializer; search_fields = ["name", "code", "description"]
@@ -105,13 +132,46 @@ class ServiceDocumentRequirementViewSet(
             "requirement_set_id",
             "service_id",
             "category",
-            "mandatory",
-            "is_active",
         ):
             value = params.get(field)
 
             if value not in (None, ""):
                 qs = qs.filter(**{field: value})
+
+        for field in (
+            "mandatory",
+            "is_active",
+        ):
+            value = _query_bool(params.get(field))
+
+            if value is not None:
+                qs = qs.filter(**{field: value})
+
+        return qs
+
+
+class ServiceProcessStepViewSet(TenantModelViewSet):
+    serializer_class = ServiceProcessStepSerializer
+
+    queryset = ServiceProcessStep.objects.all()
+
+    def get_queryset(self):
+        qs = super().get_queryset().order_by(
+            "service_id",
+            "display_order",
+            "name",
+            "id",
+        )
+
+        params = self.request.query_params
+
+        service_id = params.get("service_id")
+        if service_id not in (None, ""):
+            qs = qs.filter(service_id=service_id)
+
+        is_active = _query_bool(params.get("is_active"))
+        if is_active is not None:
+            qs = qs.filter(is_active=is_active)
 
         return qs
 
@@ -142,12 +202,19 @@ class ServiceOperationalFieldViewSet(TenantModelViewSet):
         for field in (
             "service_id",
             "field_type",
-            "required",
-            "is_active",
         ):
             value = params.get(field)
 
             if value not in (None, ""):
+                qs = qs.filter(**{field: value})
+
+        for field in (
+            "required",
+            "is_active",
+        ):
+            value = _query_bool(params.get(field))
+
+            if value is not None:
                 qs = qs.filter(**{field: value})
 
         return qs

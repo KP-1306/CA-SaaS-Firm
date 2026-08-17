@@ -16,7 +16,7 @@ import type { Column, Field } from './ui';
 
 // Employee Operations V1 console area. Reuses the shared UI kit and API client.
 // Every UUID reference is chosen from a selector whose options are existing row
-// ids with a human-readable label lookup â€” no raw-UUID inputs anywhere.
+// ids with a human-readable label lookup — no raw-UUID inputs anywhere.
 
 type Section =
   | 'directory'
@@ -682,7 +682,7 @@ function AssignmentSection(): React.JSX.Element {
           </select>
         </div>
         <button type="button" className="cx-btn" disabled={busy} onClick={recommend}>
-          {busy ? 'Computingâ€¦' : 'Get recommendations'}
+          {busy ? 'Computing…' : 'Get recommendations'}
         </button>
       </div>
       <ErrorBar error={work.error || err} />
