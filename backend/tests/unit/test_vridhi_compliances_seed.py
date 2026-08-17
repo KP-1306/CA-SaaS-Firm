@@ -277,6 +277,8 @@ def test_udyam_process_steps_are_seeded_in_order():
         "CLIENT_INFORMATION",
         "VERIFICATION_PREPARATION",
         "INTERNAL_REVIEW",
+        "APPLICATION_REVIEWED",
+        "SUBMIT_APPLICATION",
         "APPLICATION_SUBMISSION",
         "QUERY_RESOLUTION",
         "COMPLETION",
@@ -292,6 +294,8 @@ def test_udyam_process_steps_are_seeded_in_order():
         40,
         50,
         60,
+        70,
+        80,
     ]
 
     assert rows[0].name == "Client Information & Documents"
@@ -312,4 +316,4 @@ def test_udyam_process_seed_is_idempotent():
         tenant_id=TENANT,
         service_id=service.id,
         is_active=True,
-    ).count() == 6
+    ).count() == 8

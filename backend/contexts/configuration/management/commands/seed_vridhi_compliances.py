@@ -82,13 +82,32 @@ UDYAM_PROCESS_STEPS = (
         30,
     ),
     (
+        "APPLICATION_REVIEWED",
+        "Application Reviewed",
+        (
+            "Internal review approved; ready for government "
+            "portal submission."
+        ),
+        40,
+    ),
+    (
+        "SUBMIT_APPLICATION",
+        "Submit Application",
+        (
+            "Application has been reviewed and approved. "
+            "The submitter must submit it in the government "
+            "portal and record the mandatory submission details."
+        ),
+        50,
+    ),
+    (
         "APPLICATION_SUBMISSION",
-        "Application Submission",
+        "Application Submitted",
         (
             "Submit the approved Udyam registration application "
             "through the applicable portal."
         ),
-        40,
+        60,
     ),
     (
         "QUERY_RESOLUTION",
@@ -97,7 +116,7 @@ UDYAM_PROCESS_STEPS = (
             "Resolve portal issues, OTP dependencies, queries "
             "or additional client information requirements."
         ),
-        50,
+        70,
     ),
     (
         "COMPLETION",
@@ -106,7 +125,7 @@ UDYAM_PROCESS_STEPS = (
             "Confirm registration completion, obtain the Udyam "
             "certificate and complete delivery to the client."
         ),
-        60,
+        80,
     ),
 )
 
