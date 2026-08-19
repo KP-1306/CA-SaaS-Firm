@@ -5328,3 +5328,135 @@ body.cx-workspace-open .cx-body {
   font-weight: 600;
   color: var(--cx-text, #0f172a);
 }
+
+/* ==================================================================
+   UX5 Change 2: searchable client selector + Add New Client
+   ================================================================== */
+.cx-client-select {
+  position: relative;
+  width: 100%;
+}
+.cx-client-select-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.cx-client-select-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 6px;
+  background: var(--card, #fff);
+}
+.cx-client-select-name {
+  font-weight: 500;
+  color: var(--ink, #0f172a);
+}
+.cx-client-select-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--card, #fff);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  padding: 4px;
+}
+.cx-client-select-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--ink, #0f172a);
+  font-size: 13px;
+}
+.cx-client-select-option:hover,
+.cx-client-select-option[aria-selected="true"] {
+  background: var(--chip, #f1f5f9);
+}
+.cx-client-select-empty {
+  padding: 8px 10px;
+  color: var(--muted, #64748b);
+  font-size: 13px;
+}
+.cx-client-select-add {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-top: 4px;
+  border: none;
+  border-top: 1px solid var(--line, #e2e8f0);
+  background: transparent;
+  cursor: pointer;
+  color: var(--accent, #2563eb);
+  font-weight: 600;
+  font-size: 13px;
+}
+.cx-client-select-add:hover {
+  background: var(--chip, #f1f5f9);
+}
+.cx-client-select-newform {
+  padding: 8px;
+  border-top: 1px solid var(--line, #e2e8f0);
+  margin-top: 4px;
+}
+.cx-client-select-error {
+  color: var(--danger, #dc2626);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.cx-client-select-newactions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* ==================================================================
+   UX5 Changes 3/4: Udyam selected-action confirmation label
+   ================================================================== */
+.cx-udyam-selected-label {
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  font-size: 13px;
+}
+
+/* ==================================================================
+   UX5 Change 5: collapsible Udyam action panel
+   ================================================================== */
+.cx-udyam-action-shell-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.cx-udyam-action-shell-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cx-udyam-action-shell-summary {
+  font-size: 12px;
+  color: var(--muted, #64748b);
+}
+.cx-udyam-action-shell-toggle {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 96px;
+}
+.cx-udyam-action-shell-body {
+  margin-top: 12px;
+  width: 100%;
+}

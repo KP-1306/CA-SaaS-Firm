@@ -49,6 +49,11 @@ class WorkItem(TenantModel):
     )
     review_comment = models.TextField(blank=True)
     notes = models.TextField(blank=True)
+    # NEW (Change 1 - "Reference By"): records who referred / introduced /
+    # sourced this work item. Generic Work metadata (not service-specific,
+    # so it is a first-class column, never an operational_data key).
+    # Optional and blank by default so existing Work rows remain valid.
+    reference_by = models.CharField(max_length=200, blank=True, default="")
     submitted_for_review_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     estimated_hours = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)

@@ -36,10 +36,10 @@ def install_vridhi_compliances(apps, schema_editor):
         )
 
         if existing_service is None:
-            raise RuntimeError(
-                "Cannot install Vridhi compliances: "
-                "no existing tenant configuration was found."
-            )
+            # A fresh database (including Django's test database) has no
+            # tenant configuration to attach the Vridhi catalogue to yet.
+            # There is therefore nothing for this installer to seed.
+            return
 
         tenant_id = existing_service.tenant_id
         principal_id = (

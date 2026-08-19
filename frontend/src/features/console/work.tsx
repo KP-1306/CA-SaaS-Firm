@@ -1480,7 +1480,66 @@ type UdyamExternalActionsProps = {
   onError: (message: string) => void;
 };
 
-function UdyamExternalActions({
+/*
+ * Change 5: collapsible Udyam action panel wrapper.
+ *
+ * Presentation-only. It renders a header with the current stage title, a short
+ * context-aware summary, and an accessible Collapse/Expand control. When
+ * collapsed it shows only the summary; when expanded it shows the full action
+ * body (its children). It holds NO business state, makes NO API calls, and does
+ * not touch draft values - the draft field state lives in the parent component
+ * and is untouched by collapsing, so expanding again shows the same drafts.
+ */
+type UdyamActionShellProps = {
+  title: string;
+  summary: string;
+  collapsed: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+};
+
+export function UdyamActionShell({
+  title,
+  summary,
+  collapsed,
+  onToggle,
+  children,
+}: UdyamActionShellProps): React.JSX.Element {
+  return (
+    <section className="cx-process-guidance cx-udyam-action-shell">
+      <div style={{ width: '100%' }}>
+        <div className="cx-udyam-action-shell-header">
+          <div className="cx-udyam-action-shell-heading">
+            <strong>{title}</strong>
+            {collapsed && summary ? (
+              <span className="cx-udyam-action-shell-summary">
+                {summary}
+              </span>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="cx-btn subtle cx-udyam-action-shell-toggle"
+            aria-expanded={!collapsed}
+            aria-label={
+              collapsed
+                ? `Expand ${title} panel`
+                : `Collapse ${title} panel`
+            }
+            onClick={onToggle}
+          >
+            {collapsed ? 'Expand' : 'Collapse'}
+          </button>
+        </div>
+        {!collapsed ? (
+          <div className="cx-udyam-action-shell-body">{children}</div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+export function UdyamExternalActions({
   workItem,
   processState,
   health,
@@ -1586,6 +1645,23 @@ function UdyamExternalActions({
 
   const [busy, setBusy] = useState(false);
 
+  // Changes 3 & 4: explicit selected-action confirmation for stage-changing
+  // Udyam actions. This is UX-only presentation state layered on top of the
+  // existing authoritative backend actions - it never changes which backend
+  // action runs, only defers it until the analyst confirms. Selecting an action
+  // sets this; Cancel clears it (draft field values are preserved because they
+  // live in their own state). The actual backend call still goes through
+  // runAction exactly once, from the confirm handler.
+  const [udyamPendingAction, setUdyamPendingAction] = useState<
+    'SUBMIT_APPLICATION' | 'REPORT_QUERY' | 'RESOLVE_QUERY' | ''
+  >('');
+
+  // Change 5: collapsible action panel (presentation state only). Defaults to
+  // expanded so an action needing input is immediately visible; the analyst can
+  // collapse it. Collapsing never calls the backend, never clears drafts, and
+  // never clears a pending action - it only hides the body.
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+
   const workCompleted =
     String(workItem.status ?? '') === 'COMPLETED';
 
@@ -1615,6 +1691,11 @@ function UdyamExternalActions({
 
       setRemarks('');
       setQueryType('');
+      // Changes 3/4: clear any selected-action confirmation state after the
+      // backend action has succeeded so the confirmed action does not remain
+      // visibly "selected"; authoritative reconciliation drives the next stage.
+      setUdyamPendingAction('');
+      setGovernmentOutcome('');
       await onChanged();
     } catch (error) {
       // Show the original business error first, and keep it visible.
@@ -1896,13 +1977,14 @@ function UdyamExternalActions({
 
   if (stepCode === 'SUBMIT_APPLICATION') {
     return (
-      <section className="cx-process-guidance">
+      <UdyamActionShell
+        title="Submit Application"
+        summary="Record submission reference, date and time"
+        collapsed={panelCollapsed}
+        onToggle={() => setPanelCollapsed((value) => !value)}
+      >
         <div style={{ width: '100%' }}>
           <div style={{ marginBottom: 14 }}>
-            <strong style={{ fontSize: 15 }}>
-              Submit Application
-            </strong>
-
             <div
               style={{
                 marginTop: 4,
@@ -1928,8 +2010,9 @@ function UdyamExternalActions({
               className="cx-field"
               style={{ marginBottom: 0 }}
             >
-              <label>Application / Reference Number *</label>
+              <label htmlFor="udyam-submission-reference">Application / Reference Number *</label>
               <input
+                id="udyam-submission-reference"
                 type="text"
                 value={reference}
                 disabled={
@@ -1945,8 +2028,9 @@ function UdyamExternalActions({
               className="cx-field"
               style={{ marginBottom: 0 }}
             >
-              <label>Submission Date *</label>
+              <label htmlFor="udyam-submission-date">Submission Date *</label>
               <input
+                id="udyam-submission-date"
                 type="date"
                 value={submissionDate}
                 disabled={
@@ -1962,8 +2046,9 @@ function UdyamExternalActions({
               className="cx-field"
               style={{ marginBottom: 0 }}
             >
-              <label>Submission Time *</label>
+              <label htmlFor="udyam-submission-time">Submission Time *</label>
               <input
+                id="udyam-submission-time"
                 type="time"
                 value={submissionTime}
                 disabled={
@@ -1981,52 +2066,103 @@ function UdyamExternalActions({
               display: 'flex',
               justifyContent: 'flex-end',
               marginTop: 14,
+              gap: 10,
             }}
           >
-            <button
-              type="button"
-              className="cx-btn cx-udyam-primary-action"
-              style={{
-                width: 'auto',
-                minWidth: 190,
-                paddingLeft: 18,
-                paddingRight: 18,
-              }}
-              disabled={
-                busy ||
-                !canSubmitApplication ||
-                !reference.trim() ||
-                !submissionDate ||
-                !submissionTime
-              }
-              onClick={() => {
-                void runAction(
-                  'udyam-submit-application',
-                  {
-                    application_reference: reference.trim(),
-                    submission_date: submissionDate,
-                    submission_time: submissionTime,
-                  },
-                );
-              }}
-            >
-              {busy
-                ? 'Submitting...'
-                : 'Submit Udyam application'}
-            </button>
+            {udyamPendingAction === 'SUBMIT_APPLICATION' ? (
+              <>
+                <span
+                  className="cx-udyam-selected-label"
+                  role="status"
+                  style={{ alignSelf: 'center', marginRight: 'auto' }}
+                >
+                  Submit Application selected
+                </span>
+                <button
+                  type="button"
+                  className="cx-btn subtle"
+                  disabled={busy}
+                  onClick={() => setUdyamPendingAction('')}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="cx-btn cx-udyam-primary-action"
+                  style={{
+                    width: 'auto',
+                    minWidth: 190,
+                    paddingLeft: 18,
+                    paddingRight: 18,
+                  }}
+                  disabled={
+                    busy ||
+                    !canSubmitApplication ||
+                    !reference.trim() ||
+                    !submissionDate ||
+                    !submissionTime
+                  }
+                  onClick={() => {
+                    void runAction(
+                      'udyam-submit-application',
+                      {
+                        application_reference: reference.trim(),
+                        submission_date: submissionDate,
+                        submission_time: submissionTime,
+                      },
+                    );
+                  }}
+                >
+                  {busy
+                    ? 'Submitting...'
+                    : 'Save & Submit Application'}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="cx-btn cx-udyam-primary-action"
+                style={{
+                  width: 'auto',
+                  minWidth: 190,
+                  paddingLeft: 18,
+                  paddingRight: 18,
+                }}
+                disabled={
+                  busy ||
+                  !canSubmitApplication ||
+                  !reference.trim() ||
+                  !submissionDate ||
+                  !submissionTime
+                }
+                aria-pressed={false}
+                onClick={() => {
+                  // Select only - does NOT call the backend yet.
+                  setUdyamPendingAction('SUBMIT_APPLICATION');
+                }}
+              >
+                Submit Udyam application
+              </button>
+            )}
           </div>
         </div>
-      </section>
+      </UdyamActionShell>
     );
   }
 
   if (stepCode === 'QUERY_RESOLUTION') {
     return (
-      <section className="cx-process-guidance">
+      <UdyamActionShell
+        title="Query / OTP / Technical Resolution"
+        summary={
+          persistedQueryType
+            ? `Resolving: ${persistedQueryType}`
+            : 'Resolve the recorded government query'
+        }
+        collapsed={panelCollapsed}
+        onToggle={() => setPanelCollapsed((value) => !value)}
+      >
         <div style={{ width: '100%' }}>
-          <strong>
-            Query / OTP / Technical Resolution
-          </strong>
 
           <div
             style={{
@@ -2115,34 +2251,81 @@ function UdyamExternalActions({
             />
           </div>
 
-          <button
-            type="button"
-            className="cx-btn cx-udyam-primary-action"
-            disabled={busy || !remarks.trim()}
-            onClick={() => {
-              void runAction(
-                'udyam-resolve-query',
-                {
-                  remarks: remarks.trim(),
-                },
-              );
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 10,
             }}
           >
-            {busy
-              ? 'Saving...'
-              : 'Respond to Application Query'}
-          </button>
+            {udyamPendingAction === 'RESOLVE_QUERY' ? (
+              <>
+                <span
+                  className="cx-udyam-selected-label"
+                  role="status"
+                  style={{ alignSelf: 'center', marginRight: 'auto' }}
+                >
+                  Resolve Query selected
+                </span>
+                <button
+                  type="button"
+                  className="cx-btn subtle"
+                  disabled={busy}
+                  onClick={() => setUdyamPendingAction('')}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="cx-btn cx-udyam-primary-action"
+                  disabled={busy || !remarks.trim()}
+                  onClick={() => {
+                    void runAction(
+                      'udyam-resolve-query',
+                      {
+                        remarks: remarks.trim(),
+                      },
+                    );
+                  }}
+                >
+                  {busy ? 'Saving...' : 'Save & Resolve Query'}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="cx-btn cx-udyam-primary-action"
+                disabled={busy || !remarks.trim()}
+                aria-pressed={false}
+                onClick={() => {
+                  // Select only - does NOT call the backend yet.
+                  setUdyamPendingAction('RESOLVE_QUERY');
+                }}
+              >
+                Respond to Application Query
+              </button>
+            )}
+          </div>
         </div>
-      </section>
+      </UdyamActionShell>
     );
   }
 
   return (
-    <section className="cx-process-guidance">
+    <UdyamActionShell
+      title="Application Submitted"
+      summary={
+        governmentOutcome === 'QUERY'
+          ? 'Recording a government query'
+          : governmentOutcome === 'REGISTERED'
+            ? 'Recording registration success'
+            : 'Awaiting government outcome'
+      }
+      collapsed={panelCollapsed}
+      onToggle={() => setPanelCollapsed((value) => !value)}
+    >
       <div style={{ width: '100%' }}>
         <div style={{ marginBottom: 16 }}>
-          <strong>Application Submitted</strong>
-
           <p style={{ marginBottom: 0 }}>
             The application has been submitted to the government
             portal. Record the registration outcome when it becomes
@@ -2253,6 +2436,7 @@ function UdyamExternalActions({
             onClick={() => {
               setGovernmentOutcome('QUERY');
               setCertificate(null);
+              setUdyamPendingAction('');
             }}
             style={{
               textAlign: 'left',
@@ -2274,6 +2458,7 @@ function UdyamExternalActions({
               setGovernmentOutcome('REGISTERED');
               setQueryType('');
               setRemarks('');
+              setUdyamPendingAction('');
             }}
             style={{
               textAlign: 'left',
@@ -2353,30 +2538,67 @@ function UdyamExternalActions({
                 display: 'flex',
                 justifyContent: 'flex-end',
                 marginTop: 10,
+                gap: 10,
               }}
             >
-              <button
-                type="button"
-                className="cx-btn cx-udyam-primary-action"
-                disabled={
-                  busy ||
-                  !queryType ||
-                  !remarks.trim()
-                }
-                onClick={() => {
-                  void runAction(
-                    'udyam-report-query',
-                    {
-                      query_type: queryType,
-                      remarks: remarks.trim(),
-                    },
-                  );
-                }}
-              >
-                {busy
-                  ? 'Saving...'
-                  : 'Move to Query Resolution'}
-              </button>
+              {udyamPendingAction === 'REPORT_QUERY' ? (
+                <>
+                  <span
+                    className="cx-udyam-selected-label"
+                    role="status"
+                    style={{ alignSelf: 'center', marginRight: 'auto' }}
+                  >
+                    Query / OTP / Technical Issue selected
+                  </span>
+                  <button
+                    type="button"
+                    className="cx-btn subtle"
+                    disabled={busy}
+                    onClick={() => setUdyamPendingAction('')}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="cx-btn cx-udyam-primary-action"
+                    disabled={
+                      busy ||
+                      !queryType ||
+                      !remarks.trim()
+                    }
+                    onClick={() => {
+                      void runAction(
+                        'udyam-report-query',
+                        {
+                          query_type: queryType,
+                          remarks: remarks.trim(),
+                        },
+                      );
+                    }}
+                  >
+                    {busy
+                      ? 'Saving...'
+                      : 'Save & Move to Query Resolution'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="cx-btn cx-udyam-primary-action"
+                  disabled={
+                    busy ||
+                    !queryType ||
+                    !remarks.trim()
+                  }
+                  aria-pressed={false}
+                  onClick={() => {
+                    // Select only - does NOT call the backend yet.
+                    setUdyamPendingAction('REPORT_QUERY');
+                  }}
+                >
+                  Move to Query Resolution
+                </button>
+              )}
             </div>
           </div>
         ) : null}
@@ -2448,7 +2670,7 @@ function UdyamExternalActions({
           </div>
         ) : null}
       </div>
-    </section>
+    </UdyamActionShell>
   );}
 
 
@@ -4363,6 +4585,284 @@ export function UdyamWorkflowConfirm({
 }
 
 
+/*
+ * Change 2: scalable searchable Client selector with inline "Add New Client".
+ *
+ * Reuses the existing Client contracts:
+ *  - reads the already-loaded client rows (no second Client model / no second
+ *    list endpoint) and filters them by name as the analyst types, rendering
+ *    only the matching subset (capped) instead of hundreds of <option>s;
+ *  - creates a client through the existing `save('clients', ...)` API, which
+ *    goes through the authoritative ClientSerializer + ClientAccessPermission.
+ *
+ * It never mutates the parent Work draft except through `onChange(client_id)`,
+ * so partially-entered Work Item data is preserved across search, open/close of
+ * the add-client form, and successful/failed client creation. On successful
+ * creation it calls `onClientCreated` so the parent can reload the client list
+ * and select the new client.
+ */
+type SearchableClientSelectProps = {
+  clients: Row[];
+  value: string;
+  onChange: (clientId: string) => void;
+  onClientCreated: (client: Row) => void;
+  disabled?: boolean;
+};
+
+function clientDisplayName(row: Row | undefined | null): string {
+  if (!row) return '';
+  return String(
+    row.trade_name ||
+    row.display_name ||
+    row.legal_name ||
+    row.business_name ||
+    row.client_name ||
+    row.name ||
+    '',
+  ).trim();
+}
+
+const CLIENT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'INDIVIDUAL', label: 'Individual' },
+  { value: 'PROPRIETORSHIP', label: 'Proprietorship' },
+  { value: 'PARTNERSHIP', label: 'Partnership' },
+  { value: 'LLP', label: 'LLP' },
+  { value: 'PRIVATE_LIMITED', label: 'Private Limited Company' },
+  { value: 'PUBLIC_LIMITED', label: 'Public Limited Company' },
+  { value: 'TRUST', label: 'Trust' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+const CLIENT_RESULT_LIMIT = 20;
+
+export function SearchableClientSelect({
+  clients,
+  value,
+  onChange,
+  onClientCreated,
+  disabled = false,
+}: SearchableClientSelectProps): React.JSX.Element {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newLegalName, setNewLegalName] = useState('');
+  const [newClientType, setNewClientType] = useState('INDIVIDUAL');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  // Clients created via "+ Add New Client" during this session. The parent's
+  // reload() of the shared client list is asynchronous, so until it resolves a
+  // just-created client would not yet be in `clients`. Merging it here makes the
+  // new client immediately searchable and selectable (and keeps the selected
+  // label resolvable) without waiting on the network round-trip. Once reload
+  // resolves, the same client also arrives in `clients`; de-duplication by id
+  // keeps it appearing once.
+  const [locallyCreated, setLocallyCreated] = useState<Row[]>([]);
+
+  const mergedClients = (() => {
+    if (locallyCreated.length === 0) return clients;
+    const existingIds = new Set(clients.map((row) => String(row.id ?? '')));
+    const extras = locallyCreated.filter(
+      (row) => !existingIds.has(String(row.id ?? '')),
+    );
+    return extras.length ? [...clients, ...extras] : clients;
+  })();
+
+  const selectedRow =
+    mergedClients.find((row) => String(row.id ?? '') === String(value ?? '')) ??
+    null;
+
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const matches = (
+    normalizedQuery
+      ? mergedClients.filter((row) =>
+          clientDisplayName(row).toLowerCase().includes(normalizedQuery) ||
+          String(row.legal_name ?? '').toLowerCase().includes(normalizedQuery) ||
+          String(row.pan ?? '').toLowerCase().includes(normalizedQuery),
+        )
+      : mergedClients
+  ).slice(0, CLIENT_RESULT_LIMIT);
+
+  const selectExisting = (clientId: string): void => {
+    onChange(clientId);
+    setOpen(false);
+    setQuery('');
+  };
+
+  const clearSelection = (): void => {
+    onChange('');
+    setQuery('');
+    setOpen(true);
+  };
+
+  const submitNewClient = async (): Promise<void> => {
+    const legalName = newLegalName.trim();
+    if (!legalName) {
+      setCreateError('Client legal name is required.');
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      // Uses the existing Client API + serializer. lifecycle_status defaults to
+      // PROSPECT server-side, so PAN is not required for this minimal create.
+      const created = await save('clients', {
+        legal_name: legalName,
+        client_type: newClientType,
+      });
+      const createdId = String(created.id ?? '');
+      // Make the new client available in THIS selector immediately (before the
+      // parent's async reload resolves), then notify the parent so it can reload
+      // the shared list and select the client. The Work draft is untouched.
+      if (createdId) {
+        setLocallyCreated((prev) => [
+          ...prev.filter((row) => String(row.id ?? '') !== createdId),
+          created,
+        ]);
+      }
+      onClientCreated(created);
+      setAdding(false);
+      setNewLegalName('');
+      setNewClientType('INDIVIDUAL');
+      setOpen(false);
+      setQuery('');
+    } catch (error) {
+      setCreateError(
+        error instanceof Error ? error.message : 'Failed to create client.',
+      );
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className="cx-client-select">
+      {selectedRow && !open ? (
+        <div className="cx-client-select-selected">
+          <span className="cx-client-select-name">
+            {clientDisplayName(selectedRow)}
+          </span>
+          {!disabled ? (
+            <button
+              type="button"
+              className="cx-btn subtle"
+              onClick={clearSelection}
+            >
+              Change
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <input
+            type="text"
+            className="cx-client-select-input"
+            placeholder="Search clients by name..."
+            value={query}
+            disabled={disabled}
+            aria-label="Search clients"
+            onFocus={() => setOpen(true)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setOpen(true);
+            }}
+          />
+          {open && !disabled ? (
+            <div className="cx-client-select-menu" role="listbox">
+              {matches.length > 0 ? (
+                matches.map((row) => (
+                  <button
+                    type="button"
+                    key={String(row.id)}
+                    className="cx-client-select-option"
+                    role="option"
+                    aria-selected={String(row.id ?? '') === String(value ?? '')}
+                    onClick={() => selectExisting(String(row.id))}
+                  >
+                    {clientDisplayName(row)}
+                  </button>
+                ))
+              ) : (
+                <div className="cx-client-select-empty">
+                  No matching clients.
+                </div>
+              )}
+
+              {!adding ? (
+                <button
+                  type="button"
+                  className="cx-client-select-add"
+                  onClick={() => {
+                    setAdding(true);
+                    setCreateError('');
+                    if (normalizedQuery) setNewLegalName(query.trim());
+                  }}
+                >
+                  + Add New Client
+                </button>
+              ) : (
+                <div className="cx-client-select-newform">
+                  <div className="cx-field">
+                    <label>Legal name *</label>
+                    <input
+                      type="text"
+                      value={newLegalName}
+                      onChange={(event) => setNewLegalName(event.target.value)}
+                      aria-label="New client legal name"
+                    />
+                  </div>
+                  <div className="cx-field">
+                    <label>Client type</label>
+                    <select
+                      value={newClientType}
+                      onChange={(event) => setNewClientType(event.target.value)}
+                      aria-label="New client type"
+                    >
+                      {CLIENT_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {createError ? (
+                    <div className="cx-client-select-error" role="alert">
+                      {createError}
+                    </div>
+                  ) : null}
+                  <div className="cx-client-select-newactions">
+                    <button
+                      type="button"
+                      className="cx-btn subtle"
+                      disabled={creating}
+                      onClick={() => {
+                        setAdding(false);
+                        setCreateError('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="cx-btn"
+                      disabled={creating || !newLegalName.trim()}
+                      onClick={() => {
+                        void submitNewClient();
+                      }}
+                    >
+                      {creating ? 'Creating...' : 'Create & Select Client'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function WorkArea({
   initialVerticalId,
   initialWorkItemId,
@@ -5120,6 +5620,7 @@ export function WorkArea({
     { name: 'owner_user_id', kind: 'select', options: employees.rows.filter((e) => e.is_active).map((e) => String(e.id)), labels: (v) => String(employees.rows.find((e) => e.id === v)?.name ?? v) },
     { name: 'reviewer_user_id', kind: 'select', options: employees.rows.filter((e) => e.is_active).map((e) => String(e.id)), labels: (v) => String(employees.rows.find((e) => e.id === v)?.name ?? v) },
     { name: 'period' },
+    { name: 'reference_by' },
     { name: 'due_date', kind: 'date' },
     { name: 'priority', kind: 'select', options: WORK_PRIORITY },
     { name: 'description', kind: 'textarea' },
@@ -5531,7 +6032,25 @@ export function WorkArea({
                   <div key={f.name}>
                     <div className="cx-field">
                       <label>{label(f.name.replace(/_id$/, '').replace(/_user$/, ''))}</label>
-                      {f.kind === 'textarea' ? (
+                      {f.name === 'client_id' ? (
+                        <SearchableClientSelect
+                          clients={clients.rows}
+                          value={String(editing[f.name] ?? '')}
+                          disabled={Boolean(editing.id)}
+                          onChange={(clientId) =>
+                            updateWorkField('client_id', clientId)
+                          }
+                          onClientCreated={(client) => {
+                            // Reload the shared client list so the new client is
+                            // available everywhere, and select it immediately by
+                            // id. The Work draft in `editing` is preserved (only
+                            // client_id changes). The selector also keeps the new
+                            // client locally so it shows before reload resolves.
+                            clients.reload();
+                            updateWorkField('client_id', String(client.id ?? ''));
+                          }}
+                        />
+                      ) : f.kind === 'textarea' ? (
                         <textarea value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)} />
                       ) : f.kind === 'select' ? (
                         <select value={String(editing[f.name] ?? '')} onChange={(e) => updateWorkField(f.name, e.target.value)}>
