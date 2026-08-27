@@ -6295,11 +6295,17 @@ export function WorkArea({
         return {
           ...current,
           service_id: value,
-          operational_data: clientName
-            ? {
-                enterprise_name: clientName,
-              }
-            : {},
+          operational_data:
+            clientName &&
+            operationalFields.rows.some(
+              (field) =>
+                String(field.service_id ?? '') === String(value ?? '') &&
+                String(field.key ?? field.code ?? '') === 'enterprise_name',
+            )
+              ? {
+                  enterprise_name: clientName,
+                }
+              : {},
         };
       }
 
@@ -6337,7 +6343,14 @@ export function WorkArea({
           operational_data: {
             ...operationalData,
             ...(
-              !existingEnterpriseName && clientName
+              !existingEnterpriseName &&
+              clientName &&
+              operationalFields.rows.some(
+                (field) =>
+                  String(field.service_id ?? '') ===
+                    String(current.service_id ?? '') &&
+                  String(field.key ?? field.code ?? '') === 'enterprise_name',
+              )
                 ? {
                     enterprise_name: clientName,
                   }
