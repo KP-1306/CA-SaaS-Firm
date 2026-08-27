@@ -208,9 +208,18 @@ class ActionAccessPermission(BasePermission):
     Existing header-principal requests remain available only when the explicit
     test/development compatibility setting is enabled. Production session
     requests always use the certified AccessProfile resolver.
+
+    Most actions require exactly one capability regardless of HTTP method, so
+    action_access_map values are normally a single access-code string. A
+    single DRF @action can legitimately expose two semantically different
+    operations under one action name via methods=[...] - for example a
+    read-only GET alongside a mutating POST. For those, and only those, the
+    map value may instead be a dict keyed by uppercase HTTP method (e.g.
+    {"GET": "work.view", "POST": "work.submit"}). This is a pure additive
+    extension: every existing single-string entry resolves exactly as before.
     """
 
-    action_access_map: dict[str, str] = {}
+    action_access_map: dict[str, str | dict[str, str]] = {}
 
     def has_permission(self, request: Any, view: Any) -> bool:
         from django.conf import settings
@@ -233,7 +242,13 @@ class ActionAccessPermission(BasePermission):
             )
 
         action = str(getattr(view, "action", "") or "")
-        access_code = self.action_access_map.get(action)
+        mapped = self.action_access_map.get(action)
+
+        access_code = (
+            mapped.get(str(getattr(request, "method", "") or "").upper())
+            if isinstance(mapped, dict)
+            else mapped
+        )
 
         if not access_code:
             raise RuntimeError(
@@ -269,6 +284,22 @@ class WorkItemAccessPermission(ActionAccessPermission):
         "list": "work.view",
         "retrieve": "work.view",
         "health": "work.view",
+
+        # Process position (service-specific business stage). GET reads the
+        # current position; POST mutates it. These are semantically
+        # different operations sharing one DRF action name (process_step,
+        # methods=["get", "post"]), so this uses the method-sensitive map
+        # form ActionAccessPermission supports. Existing owner, tenant,
+        # service-match, and active-step guards in WorkItemViewSet.
+        # process_step remain the final business controls for the POST
+        # mutation - this entry only restores the missing capability-gate
+        # entry itself.
+        "process_step": {
+            "GET": "work.view",
+            "HEAD": "work.view",
+            "OPTIONS": "work.view",
+            "POST": "work.submit",
+        },
         "history": "work.view",
         "create": "work.create",
         "update": "work.submit",
@@ -292,6 +323,26 @@ class WorkItemAccessPermission(ActionAccessPermission):
         "udyam_report_query": "work.submit",
         "udyam_resolve_query": "work.submit",
         "udyam_complete_registration": "work.submit",
+
+        # Mudra loan runtime execution remains owner-controlled. Service and
+        # process-position guards in WorkItemViewSet remain the final business
+        # controls for these service-specific actions (NEW).
+        "mudra_complete_application": "work.submit",
+        "mudra_record_cibil": "work.submit",
+        "mudra_decide_eligibility": "work.submit",
+        "mudra_complete_file_preparation": "work.submit",
+        "mudra_record_bank_submission": "work.submit",
+        "mudra_record_bank_verification": "work.submit",
+        "mudra_raise_pending_task": "work.submit",
+        "mudra_reassign_pending_task": "work.submit",
+        "mudra_record_pending_evidence": "work.submit",
+        "mudra_complete_reqc": "work.submit",
+        "mudra_complete_ro_review": "work.submit",
+        "mudra_record_sanction": "work.submit",
+        "mudra_complete_sanction_conditions": "work.submit",
+        "mudra_mark_disbursement_ready": "work.submit",
+        "mudra_record_disbursement": "work.submit",
+        "mudra_state": "work.view",
 
         # Read-only QA information attached to a work item.
         "qa_readiness_action": "work.view",

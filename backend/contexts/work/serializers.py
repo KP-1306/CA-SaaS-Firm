@@ -241,9 +241,14 @@ class WorkItemSerializer(serializers.ModelSerializer):
             obj.tenant_id,
         )
 
+        # Both UDYAM_REGISTRATION and MUDRA_LOAN use this same generic,
+        # already service-agnostic mechanism below (WorkProcessState +
+        # ServiceProcessStep name lookup) to display the durable business
+        # stage once the generic control states no longer apply. Every
+        # other service is unaffected and still returns raw_status here.
         if (
             service_codes.get(obj.service_id)
-            != "UDYAM_REGISTRATION"
+            not in ("UDYAM_REGISTRATION", "MUDRA_LOAN")
         ):
             return raw_status
 

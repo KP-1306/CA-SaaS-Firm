@@ -274,3 +274,201 @@ def test_legacy_header_workflow_compatibility_remains_test_only():
     )
 
     assert response.status_code == 200
+
+
+# ====================================================================
+# process_step RBAC (real session authentication)
+#
+# process_step is a single DRF @action(methods=["get", "post"]) exposing two
+# semantically different operations: GET reads the current business process
+# position, POST mutates it. Prior to this correction, WorkItemAccessPermission
+# had no entry for "process_step" at all, so every real session-authenticated
+# request (GET or POST) raised RuntimeError("No access capability is
+# configured for action: process_step.") - existing test_u3_process_steps.py
+# coverage never caught this because it authenticates via the legacy
+# HTTP_X_TENANT_ID/HTTP_X_PRINCIPAL_ID header-compatibility path, which
+# bypasses ActionAccessPermission's capability-map lookup entirely. These
+# tests use the same real session-authentication pattern as the rest of this
+# file, and therefore exercise the actual capability-map lookup that was
+# missing this entry.
+# ====================================================================
+
+def _service_with_step():
+    import uuid as _uuid
+
+    from contexts.configuration.models import Service, ServiceProcessStep
+
+    service = Service.objects.create(
+        tenant_id=TENANT,
+        created_by=ADMIN_PRINCIPAL,
+        updated_by=ADMIN_PRINCIPAL,
+        domain_id=_uuid.uuid4(),
+        code="RBAC_TEST_SERVICE",
+        name="RBAC Test Service",
+        description="Authorization RBAC test service.",
+    )
+    step = ServiceProcessStep.objects.create(
+        tenant_id=TENANT,
+        created_by=ADMIN_PRINCIPAL,
+        updated_by=ADMIN_PRINCIPAL,
+        service_id=service.id,
+        code="FIRST_STEP",
+        name="First Step",
+        description="RBAC test step.",
+        display_order=10,
+        is_active=True,
+    )
+    return service, step
+
+
+def test_A1_session_user_with_work_view_can_get_process_step():
+    account, _, employee = _identity(
+        email="process-step-view@vridhi.example",
+        principal=OTHER_PRINCIPAL,
+        role=ProviderRole.IMPLEMENTATION_CONSULTANT,
+    )
+    _grant(account, "work.view")
+
+    item = _work_item(owner_id=employee.id)
+
+    http = HttpClient()
+    _login(http, account)
+
+    response = http.get(f"/api/v1/work-items/{item.id}/process-step/")
+
+    assert response.status_code == 200, response.content
+    assert response.json()["work_item_id"] == str(item.id)
+
+
+def test_A2_session_user_without_work_view_is_denied_process_step_get():
+    account, _, employee = _identity(
+        email="process-step-view-denied@vridhi.example",
+        principal=OTHER_PRINCIPAL,
+        role=ProviderRole.IMPLEMENTATION_CONSULTANT,
+    )
+    # Deliberately no work.view grant at all.
+
+    item = _work_item(owner_id=employee.id)
+
+    http = HttpClient()
+    _login(http, account)
+
+    response = http.get(f"/api/v1/work-items/{item.id}/process-step/")
+
+    assert response.status_code == 403
+    assert "work.view" in response.content.decode()
+
+
+def test_A3_work_view_alone_cannot_post_process_step():
+    from contexts.work.models import WorkProcessState
+
+    account, _, employee = _identity(
+        email="process-step-submit-denied@vridhi.example",
+        principal=OTHER_PRINCIPAL,
+        role=ProviderRole.IMPLEMENTATION_CONSULTANT,
+    )
+    _grant(account, "work.view")
+
+    service, step = _service_with_step()
+    item = WorkItem.objects.create(
+        tenant_id=TENANT,
+        created_by=ADMIN_PRINCIPAL,
+        updated_by=ADMIN_PRINCIPAL,
+        title="RBAC Process Step Work",
+        client_id=_client().id,
+        service_id=service.id,
+        owner_user_id=employee.id,
+    )
+
+    http = HttpClient()
+    _login(http, account)
+
+    response = http.post(
+        f"/api/v1/work-items/{item.id}/process-step/",
+        data={"step_id": str(step.id)},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 403
+    assert "work.submit" in response.content.decode()
+    assert not WorkProcessState.objects.filter(
+        tenant_id=TENANT, work_item_id=item.id,
+    ).exists()
+
+
+def test_A4_owner_with_work_submit_can_post_process_step():
+    account, _, employee = _identity(
+        email="process-step-submit-owner@vridhi.example",
+        principal=OTHER_PRINCIPAL,
+        role=ProviderRole.IMPLEMENTATION_CONSULTANT,
+    )
+    _grant(account, "work.view", "work.submit")
+
+    service, step = _service_with_step()
+    item = WorkItem.objects.create(
+        tenant_id=TENANT,
+        created_by=ADMIN_PRINCIPAL,
+        updated_by=ADMIN_PRINCIPAL,
+        title="RBAC Process Step Owner Work",
+        client_id=_client().id,
+        service_id=service.id,
+        owner_user_id=employee.id,
+    )
+
+    http = HttpClient()
+    _login(http, account)
+
+    response = http.post(
+        f"/api/v1/work-items/{item.id}/process-step/",
+        data={"step_id": str(step.id)},
+        content_type="application/json",
+    )
+
+    # RBAC allows it (not 403); the existing business contract (validation,
+    # locking, audit) determines the final outcome, unmodified by this
+    # correction.
+    assert response.status_code != 403, response.content
+    assert response.status_code == 200, response.content
+    assert response.json()["current_step"]["code"] == "FIRST_STEP"
+
+
+def test_A5_non_owner_with_work_submit_still_blocked_by_business_guard():
+    account, _, employee = _identity(
+        email="process-step-submit-nonowner@vridhi.example",
+        principal=OTHER_PRINCIPAL,
+        role=ProviderRole.IMPLEMENTATION_CONSULTANT,
+    )
+    _grant(account, "work.view", "work.submit")
+
+    other_owner, _, other_employee = _identity(
+        email="process-step-actual-owner@vridhi.example",
+        principal=ADMIN_PRINCIPAL,
+        role=ProviderRole.IMPLEMENTATION_CONSULTANT,
+    )
+
+    service, step = _service_with_step()
+    item = WorkItem.objects.create(
+        tenant_id=TENANT,
+        created_by=ADMIN_PRINCIPAL,
+        updated_by=ADMIN_PRINCIPAL,
+        title="RBAC Process Step Non-Owner Work",
+        client_id=_client().id,
+        service_id=service.id,
+        # Owned by someone else - the RBAC-granted account is not the owner.
+        owner_user_id=other_employee.id,
+    )
+
+    http = HttpClient()
+    _login(http, account)
+
+    response = http.post(
+        f"/api/v1/work-items/{item.id}/process-step/",
+        data={"step_id": str(step.id)},
+        content_type="application/json",
+    )
+
+    # RBAC capability is present (work.submit), proving this is the
+    # pre-existing business ownership guard, not the capability gate - RBAC
+    # does not replace business authorization.
+    assert response.status_code == 403
+    assert "owner" in response.content.decode().lower()

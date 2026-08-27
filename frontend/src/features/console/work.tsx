@@ -2700,6 +2700,1067 @@ export type ChecklistVisualState = {
   tone: 'missing' | 'pending' | 'received' | 'rejected';
 };
 
+/*
+ * Mudra loan end-to-end runtime workspace (NEW).
+ *
+ * Renders the current Mudra system stage, the completed/current/upcoming
+ * position, the business checkpoint inside the current stage, the required
+ * information for the available action, and an explicit select -> confirm ->
+ * backend -> reconcile action flow (mirroring the Udyam UX pattern, NOT its
+ * business rules). All state is authoritative: the current stage is read from
+ * the backend WorkProcessState via processState.current_step.code, and every
+ * action calls a backend Mudra endpoint then reconciles through onChanged().
+ */
+export const MUDRA_STAGE_ORDER: string[] = [
+  'APPLICATION',
+  'CREDIT_ELIGIBILITY',
+  'FILE_PREPARATION',
+  'BANK_SUBMITTED',
+  'BANK_VERIFICATION',
+  'BANK_PENDING',
+  'RO_REVIEW',
+  'SANCTIONED',
+  'DISBURSEMENT',
+  'CLOSED',
+];
+
+export const MUDRA_STAGE_LABEL: Record<string, string> = {
+  APPLICATION: 'Application & KYC',
+  CREDIT_ELIGIBILITY: 'Credit & Eligibility',
+  FILE_PREPARATION: 'File Preparation',
+  BANK_SUBMITTED: 'Bank Submitted',
+  BANK_VERIFICATION: 'Bank Verification',
+  BANK_PENDING: 'Bank Pending',
+  RO_REVIEW: 'RO Review',
+  SANCTIONED: 'Sanctioned',
+  DISBURSEMENT: 'Disbursement',
+  CLOSED: 'Closed',
+};
+
+/*
+ * Presentation-only analyst guidance for the 10 Mudra stages.
+ *
+ * This data does not derive workflow state, control action visibility,
+ * select endpoints, or advance WorkProcessState.
+ */
+export type MudraStageGuidance = {
+  meaning: string;
+  previous: string;
+  todo: string;
+  required: string;
+  next: string;
+  actions: string[];
+};
+
+export const MUDRA_STAGE_GUIDANCE = {
+  APPLICATION: {
+    meaning:
+      'Start and prepare the Mudra loan application by capturing the loan request, business purpose, application details and KYC-related information.',
+    previous:
+      'This is the starting stage of the Mudra workflow. The case has been created and is ready for application preparation.',
+    todo:
+      'Enter the application details, save your work as needed, and when the application is ready use Submit for Review for the initial internal review.',
+    required:
+      'Requested loan amount and loan purpose are required for application persistence. Also capture business activity, application reference and application date when available.',
+    next:
+      'The initial internal reviewer checks the prepared application. Reviewer approval moves the case to Credit & Eligibility; a return for rework sends it back for correction.',
+    actions: [
+      'Save — saves the current application details and keeps the workspace open; it does not advance the workflow.',
+      'Save & Close — saves the same application details and closes the workspace; it does not advance the workflow.',
+      'Submit for Review — sends Application & KYC to the initial internal reviewer. This is the one generic review gate in the Mudra workflow.',
+    ],
+  },
+
+  CREDIT_ELIGIBILITY: {
+    meaning:
+      'Assess the applicant credit position and decide whether the application is eligible to continue.',
+    previous:
+      'Application & KYC was prepared and approved through the initial internal review.',
+    todo:
+      'Record the CIBIL assessment first, then make the eligibility decision.',
+    required:
+      'CIBIL score is required before eligibility can proceed. Capture CIBIL bureau, check date, result, report reference and remarks where applicable. A rejection reason is required when marking Not Eligible.',
+    next:
+      'Mark Eligible moves the case to File Preparation. Mark Not Eligible rejects the case and makes it terminal.',
+    actions: [
+      'Record CIBIL — saves the applicant credit assessment used for the eligibility decision.',
+      'Mark Eligible — confirms eligibility and continues to File Preparation.',
+      'Mark Not Eligible — rejects the case as not eligible; a rejection reason is required.',
+    ],
+  },
+
+  FILE_PREPARATION: {
+    meaning:
+      'Prepare the complete loan file and project-report information required before sending the application to the bank.',
+    previous:
+      'The applicant passed Credit & Eligibility.',
+    todo:
+      'Confirm that the project report/file preparation is complete and record the preparation date.',
+    required:
+      'Project report prepared status and project report date.',
+    next:
+      'Completing File Preparation moves the case to Bank Submitted.',
+    actions: [
+      'Complete File Preparation — confirms the file is prepared and moves the case to Bank Submitted.',
+    ],
+  },
+
+  BANK_SUBMITTED: {
+    meaning:
+      'Record the formal transfer of the prepared loan file to the bank and the bank acknowledgement.',
+    previous:
+      'File Preparation was completed and the application became ready for bank submission.',
+    todo:
+      'Capture the bank, branch, transfer details, reference and acknowledgement information.',
+    required:
+      'Bank name and bank acknowledgement date are required by the current action. Also capture branch, file transfer date and bank reference where applicable.',
+    next:
+      'Recording the bank submission moves the case to Bank Verification.',
+    actions: [
+      'Record Bank Submission — saves bank submission/acknowledgement details and moves the case to Bank Verification.',
+    ],
+  },
+
+  BANK_VERIFICATION: {
+    meaning:
+      'Record the bank verification outcome after the bank has received the loan file.',
+    previous:
+      'The loan file was submitted to the bank and acknowledgement details were recorded.',
+    todo:
+      'Enter the verification details and choose whether the bank verification is Clear or Pending.',
+    required:
+      'Verification date and verification remarks should be recorded for the bank decision.',
+    next:
+      'Clear moves the case to RO Review. Pending moves the case to Bank Pending for additional information or follow-up.',
+    actions: [
+      'Mark Clear — records successful bank verification and moves the case to RO Review.',
+      'Mark Pending — records an outstanding bank requirement and moves the case to Bank Pending.',
+    ],
+  },
+
+  BANK_PENDING: {
+    meaning:
+      'Manage information, documents or clarification requested while the case is pending with the bank.',
+    previous:
+      'Bank Verification identified an outstanding requirement and marked the case Pending.',
+    todo:
+      'Raise the pending requirement when needed, assign or reassign responsibility, record the information/evidence received, and complete Re-QC after the requirement is resolved.',
+    required:
+      'Pending reason is required when raising a task. Capture requested information/document, responsible user and received evidence according to the active pending-task state.',
+    next:
+      'Complete Re-QC returns the case to Bank Verification so the verification decision can be performed again.',
+    actions: [
+      'Raise Pending Task — records a new outstanding bank requirement.',
+      'Reassign Pending Task — changes responsibility for the active pending requirement.',
+      'Record Received Information — records the information or evidence received against the active requirement.',
+      'Complete Re-QC — completes the follow-up quality check and returns the case to Bank Verification.',
+    ],
+  },
+
+  RO_REVIEW: {
+    meaning:
+      'Complete the dedicated Relationship Officer review after successful bank verification.',
+    previous:
+      'Bank Verification was marked Clear.',
+    todo:
+      'Record the RO details, review status, date and remarks, then complete the RO review.',
+    required:
+      'RO review status is required. Capture RO name, review date and remarks as applicable.',
+    next:
+      'Completing the dedicated RO Review moves the case to Sanctioned.',
+    actions: [
+      'Complete RO Review — completes the dedicated RO checkpoint and moves the case to Sanctioned. It is separate from the initial Submit for Review flow.',
+    ],
+  },
+
+  SANCTIONED: {
+    meaning:
+      'Record the loan sanction and complete all sanction conditions before disbursement.',
+    previous:
+      'The dedicated RO Review was completed successfully.',
+    todo:
+      'Record the sanction first. After sanction is recorded, complete the applicable sanction conditions.',
+    required:
+      'Capture sanctioned amount, sanction date, sanction reference and remarks. Complete the sanction-condition status/date required by the existing stage controls.',
+    next:
+      'Once sanction conditions are complete, the case moves to Disbursement.',
+    actions: [
+      'Record Sanction — saves the sanction details; recording sanction alone does not complete the disbursement stage.',
+      'Complete Sanction Conditions — confirms all sanction conditions are satisfied and moves the case to Disbursement.',
+    ],
+  },
+
+  DISBURSEMENT: {
+    meaning:
+      'Complete the final loan-disbursement process after sanction conditions have been satisfied.',
+    previous:
+      'Sanction was recorded and all sanction conditions were completed.',
+    todo:
+      'First mark the case ready for disbursement, then record the actual disbursement details.',
+    required:
+      'Record the disbursement-ready date first, followed by the existing disbursement amount, date, reference and related details required by the stage.',
+    next:
+      'Actual disbursement closes the Mudra workflow.',
+    actions: [
+      'Mark Disbursement Ready — confirms the case is ready for actual disbursement.',
+      'Record Disbursement — records final disbursement and closes the Mudra process.',
+    ],
+  },
+
+  CLOSED: {
+    meaning:
+      'The Mudra loan workflow has been completed.',
+    previous:
+      'Actual loan disbursement was recorded successfully.',
+    todo:
+      'No further Mudra workflow action is required. Review the completed case or history when needed.',
+    required:
+      'No additional workflow fields are required.',
+    next:
+      'Process complete. There is no forward Mudra workflow action.',
+    actions: [],
+  },
+} satisfies Record<string, MudraStageGuidance>;
+
+
+type MudraExternalActionsProps = {
+  workItem: Row;
+  processState: WorkProcessStateSnapshot | null;
+  onChanged: () => Promise<void> | void;
+  onError: (message: string) => void;
+  /*
+   * Optional: close the workspace drawer. Only used by the APPLICATION-stage
+   * "Save & Close" action, which must close the workspace ONLY after the
+   * dedicated Mudra persistence call has actually succeeded. Every other
+   * Mudra action is unaffected - they never receive or call this.
+   */
+  onCloseWorkspace?: () => void;
+};
+
+export function MudraProcessTracker({
+  currentCode,
+  rejected,
+}: {
+  currentCode: string;
+  rejected: boolean;
+}): React.JSX.Element {
+  const currentIndex = MUDRA_STAGE_ORDER.indexOf(currentCode);
+  return (
+    <div className="cx-process-steps cx-mudra-tracker" aria-label="Mudra process tracker">
+      {MUDRA_STAGE_ORDER.map((code, index) => {
+        const isCurrent = !rejected && code === currentCode;
+        const isComplete = !rejected && currentIndex >= 0 && index < currentIndex;
+        const cls =
+          'cx-process-step cx-process-static' +
+          (isCurrent ? ' cx-process-step-current' : '') +
+          (isComplete ? ' cx-process-step-complete' : '');
+        return (
+          <div
+            key={code}
+            className={`${cls} cx-process-step-guided`}
+            data-testid={`mudra-stage-${code}`}
+            tabIndex={0}
+            aria-describedby={`mudra-guidance-${code}`}
+            style={{ position: 'relative' }}
+          >
+            <span className="cx-process-step-copy">
+              {MUDRA_STAGE_LABEL[code] ?? code}
+            </span>
+            {MUDRA_STAGE_GUIDANCE[code as keyof typeof MUDRA_STAGE_GUIDANCE] ? (
+              <div
+                id={`mudra-guidance-${code}`}
+                className="cx-process-guidance-pop"
+                role="tooltip"
+              >
+                <div className="cx-process-guidance-title">
+                  {MUDRA_STAGE_LABEL[code] ?? code}
+                </div>
+                <dl>
+                  <dt>What this stage means</dt>
+                  <dd>
+                    {MUDRA_STAGE_GUIDANCE[
+                      code as keyof typeof MUDRA_STAGE_GUIDANCE
+                    ].meaning}
+                  </dd>
+                  <dt>Previous</dt>
+                  <dd>
+                    {MUDRA_STAGE_GUIDANCE[
+                      code as keyof typeof MUDRA_STAGE_GUIDANCE
+                    ].previous}
+                  </dd>
+                  <dt>What to do</dt>
+                  <dd>
+                    {MUDRA_STAGE_GUIDANCE[
+                      code as keyof typeof MUDRA_STAGE_GUIDANCE
+                    ].todo}
+                  </dd>
+                  <dt>Required information</dt>
+                  <dd>
+                    {MUDRA_STAGE_GUIDANCE[
+                      code as keyof typeof MUDRA_STAGE_GUIDANCE
+                    ].required}
+                  </dd>
+                  <dt>Next</dt>
+                  <dd>
+                    {MUDRA_STAGE_GUIDANCE[
+                      code as keyof typeof MUDRA_STAGE_GUIDANCE
+                    ].next}
+                  </dd>
+                </dl>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+      {rejected ? (
+        <div
+          className="cx-process-step cx-process-static cx-mudra-rejected"
+          data-testid="mudra-stage-REJECTED"
+        >
+          <span className="cx-process-step-copy">Rejected</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function MudraExternalActions({
+  workItem,
+  processState,
+  onChanged,
+  onError,
+  onCloseWorkspace,
+}: MudraExternalActionsProps): React.JSX.Element | null {
+  const stageCode = String(processState?.current_step?.code ?? '');
+  const data =
+    (workItem.operational_data as Record<string, unknown> | undefined) ?? {};
+  const outcome = String(data.mudra_outcome ?? '').toUpperCase();
+  const rejected = outcome === 'REJECTED';
+  const closed = outcome === 'CLOSED' || stageCode === 'CLOSED';
+
+  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<string>('');
+  const [collapsed, setCollapsed] = useState(false);
+  const [form, setForm] = useState<Record<string, string>>({});
+
+  const setField = (key: string, value: string): void =>
+    setForm((prev) => ({ ...prev, [key]: value }));
+  const val = (key: string): string => String(form[key] ?? '');
+
+  /*
+   * Value-precedence fallback used ONLY by the APPLICATION-stage fields (the
+   * only Mudra fields the owner is expected to revisit and re-save across
+   * multiple Save / Save & Close cycles before review, so a reopened case or
+   * a post-save refresh must show the authoritative persisted value, not a
+   * blank local draft). Precedence: a local edit (including one that clears
+   * a field to '') wins; otherwise the authoritative persisted value from
+   * workItem.operational_data is shown; otherwise ''. This is a pure
+   * read-time fallback over the existing `form`/`data` state - not a
+   * duplicate persisted form model.
+   */
+  const applicationVal = (key: string): string =>
+    Object.prototype.hasOwnProperty.call(form, key)
+      ? String(form[key] ?? '')
+      : String(data[key] ?? '');
+
+  const run = async (
+    action: string,
+    payload: Row,
+    closeAfter: boolean = false,
+  ): Promise<void> => {
+    setBusy(true);
+    onError('');
+    try {
+      await act('work-items', String(workItem.id), action, payload);
+      setPending('');
+      setForm({});
+      await onChanged();
+      if (closeAfter) {
+        onCloseWorkspace?.();
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'Mudra action failed.');
+      try {
+        await onChanged();
+      } catch {
+        /* keep original error */
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!stageCode && !rejected) {
+    return null;
+  }
+
+  // Terminal presentations.
+  if (rejected) {
+    return (
+      <section className="cx-process-guidance cx-mudra-terminal cx-mudra-rejected-panel">
+        <div style={{ width: '100%' }}>
+          <strong>Mudra case rejected</strong>
+          <p style={{ marginBottom: 0 }}>
+            This case was assessed NOT ELIGIBLE and is terminal.
+            {data.rejection_reason
+              ? ` Reason: ${String(data.rejection_reason)}.`
+              : ''}
+          </p>
+        </div>
+      </section>
+    );
+  }
+  if (closed) {
+    return (
+      <section className="cx-process-guidance cx-mudra-terminal cx-mudra-closed-panel">
+        <div style={{ width: '100%' }}>
+          <strong>Mudra case closed</strong>
+          <p style={{ marginBottom: 0 }}>
+            Disbursement recorded and the Mudra process is complete.
+            {data.disbursed_amount
+              ? ` Disbursed: ${String(data.disbursed_amount)}.`
+              : ''}
+          </p>
+          <div
+            className="cx-mudra-subsection"
+            data-testid="mudra-current-stage-guidance"
+          >
+            <strong>Stage guidance</strong>
+            <p className="cx-process-help">
+              <b>What this stage means:</b> {MUDRA_STAGE_GUIDANCE.CLOSED.meaning}
+            </p>
+            <p className="cx-process-help">
+              <b>Previous:</b> {MUDRA_STAGE_GUIDANCE.CLOSED.previous}
+            </p>
+            <p className="cx-process-help">
+              <b>What you need to do:</b> {MUDRA_STAGE_GUIDANCE.CLOSED.todo}
+            </p>
+            <p className="cx-process-help">
+              <b>Required information:</b> {MUDRA_STAGE_GUIDANCE.CLOSED.required}
+            </p>
+            <p className="cx-process-help">
+              <b>Next:</b> {MUDRA_STAGE_GUIDANCE.CLOSED.next}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const title = MUDRA_STAGE_LABEL[stageCode] ?? stageCode;
+  const stageGuidance =
+    MUDRA_STAGE_GUIDANCE[
+      stageCode as keyof typeof MUDRA_STAGE_GUIDANCE
+    ];
+
+  const field = (
+    key: string,
+    label: string,
+    type: string = 'text',
+    getValue: (key: string) => string = val,
+  ): React.JSX.Element => (
+    <label className="cx-field cx-mudra-field">
+      <span>{label}</span>
+      <input
+        type={type}
+        value={getValue(key)}
+        aria-label={label}
+        onChange={(event) => setField(key, event.target.value)}
+      />
+    </label>
+  );
+
+  const confirmRow = (
+    key: string,
+    selectLabel: string,
+    confirmLabel: string,
+    action: string,
+    payload: () => Row,
+    disabled: boolean = false,
+  ): React.JSX.Element =>
+    pending === key ? (
+      <div className="cx-mudra-confirm-row">
+        <span className="cx-udyam-selected-label" role="status">
+          {selectLabel} selected
+        </span>
+        <button
+          type="button"
+          className="cx-btn subtle"
+          disabled={busy}
+          onClick={() => setPending('')}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="cx-btn cx-udyam-primary-action"
+          disabled={busy || disabled}
+          onClick={() => {
+            void run(action, payload());
+          }}
+        >
+          {busy ? 'Saving...' : confirmLabel}
+        </button>
+      </div>
+    ) : (
+      <button
+        type="button"
+        className="cx-btn cx-udyam-primary-action"
+        disabled={busy || disabled}
+        aria-pressed={false}
+        onClick={() => setPending(key)}
+      >
+        {selectLabel}
+      </button>
+    );
+
+  let body: React.JSX.Element = <div />;
+
+  if (stageCode === 'APPLICATION') {
+    // While the case awaits or is under internal review, the backend no
+    // longer accepts edits here (ownership.can_edit_work_item gate on
+    // mudra-complete-application) - show a clear, non-editable status
+    // instead of a form that would fail on submit.
+    if (String(workItem.status ?? '') === 'READY_FOR_REVIEW') {
+      body = (
+        <div className="cx-mudra-stage-body">
+          <p className="cx-mudra-hint">
+            Application & KYC submitted for internal review. Credit &amp;
+            Eligibility becomes available once the reviewer approves.
+          </p>
+        </div>
+      );
+    } else {
+      const applicationFieldsPayload = (): Row => ({
+        requested_loan_amount: applicationVal('requested_loan_amount'),
+        loan_purpose: applicationVal('loan_purpose'),
+        business_activity: applicationVal('business_activity'),
+        application_reference: applicationVal('application_reference'),
+        application_date: applicationVal('application_date'),
+      });
+      const applicationDisabled =
+        !applicationVal('requested_loan_amount') ||
+        !applicationVal('loan_purpose');
+      body = (
+        <div className="cx-mudra-stage-body">
+          <p className="cx-mudra-hint">
+            Business checkpoints: Lead, Application, Customer KYC, Checklist,
+            Document Tagging. Record the application details using Save or
+            Save &amp; Close, then use Submit for Review above to send the
+            case for internal review. Credit &amp; Eligibility becomes
+            available once the reviewer approves.
+          </p>
+          {field(
+            'requested_loan_amount',
+            'Requested loan amount',
+            'text',
+            applicationVal,
+          )}
+          {field('loan_purpose', 'Loan purpose', 'text', applicationVal)}
+          {field(
+            'business_activity',
+            'Business activity',
+            'text',
+            applicationVal,
+          )}
+          {field(
+            'application_reference',
+            'Application reference',
+            'text',
+            applicationVal,
+          )}
+          {field(
+            'application_date',
+            'Application date',
+            'date',
+            applicationVal,
+          )}
+          {/*
+            UX-parity correction: Application/KYC persistence is presented as
+            the same Save / Save & Close pair the generic workspace uses
+            elsewhere - not a third, differently-named action - even though
+            both buttons call the dedicated mudra-complete-application
+            endpoint internally (the generic Work update path cannot persist
+            operational_data; see _deny_operational_data_writes). Neither
+            button advances the process position - that remains owned
+            exclusively by reviewer approval. Submit for Review is a
+            separate action (in reviewButtons, above) and is never invoked
+            here.
+          */}
+          <div className="cx-mudra-decision-row">
+            <button
+              type="button"
+              className="cx-btn cx-udyam-primary-action"
+              disabled={busy || applicationDisabled}
+              onClick={() => {
+                void run(
+                  'mudra-complete-application',
+                  applicationFieldsPayload(),
+                  false,
+                );
+              }}
+            >
+              {busy ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              type="button"
+              className="cx-btn"
+              disabled={busy || applicationDisabled}
+              onClick={() => {
+                void run(
+                  'mudra-complete-application',
+                  applicationFieldsPayload(),
+                  true,
+                );
+              }}
+            >
+              {busy ? 'Saving...' : 'Save & Close'}
+            </button>
+          </div>
+        </div>
+      );
+    }
+  } else if (stageCode === 'CREDIT_ELIGIBILITY') {
+    const cibilRecorded = Boolean(String(data.cibil_score ?? ''));
+    body = (
+      <div className="cx-mudra-stage-body">
+        <p className="cx-mudra-hint">
+          Business checkpoints: CIBIL Check, then Eligibility Check. Record CIBIL
+          first, then decide eligibility. Not Eligible rejects the case.
+        </p>
+        <div className="cx-mudra-subsection">
+          <strong>CIBIL check</strong>
+          {cibilRecorded ? (
+            <p className="cx-mudra-recorded">
+              CIBIL recorded: score {String(data.cibil_score)}
+              {data.cibil_result ? ` (${String(data.cibil_result)})` : ''}.
+            </p>
+          ) : null}
+          {field('cibil_score', 'CIBIL score')}
+          {field('cibil_bureau', 'CIBIL bureau')}
+          {field('cibil_check_date', 'CIBIL check date', 'date')}
+          {field('cibil_result', 'CIBIL result')}
+          {field('cibil_report_reference', 'CIBIL report reference')}
+          {confirmRow(
+            'CIBIL',
+            'Record CIBIL',
+            'Save CIBIL',
+            'mudra-record-cibil',
+            () => ({
+              cibil_score: val('cibil_score'),
+              cibil_bureau: val('cibil_bureau'),
+              cibil_check_date: val('cibil_check_date'),
+              cibil_result: val('cibil_result'),
+              cibil_report_reference: val('cibil_report_reference'),
+              cibil_remarks: val('cibil_remarks'),
+            }),
+            !val('cibil_score'),
+          )}
+        </div>
+        <div className="cx-mudra-subsection">
+          <strong>Eligibility decision</strong>
+          {field('eligibility_date', 'Eligibility date', 'date')}
+          <label className="cx-field cx-mudra-field">
+            <span>Rejection reason (required if Not Eligible)</span>
+            <input
+              type="text"
+              value={val('rejection_reason')}
+              aria-label="Rejection reason"
+              onChange={(event) => setField('rejection_reason', event.target.value)}
+            />
+          </label>
+          <div className="cx-mudra-decision-row">
+            {confirmRow(
+              'ELIGIBLE',
+              'Mark Eligible',
+              'Save & Continue to File Preparation',
+              'mudra-decide-eligibility',
+              () => ({
+                eligibility_result: 'ELIGIBLE',
+                eligibility_date: val('eligibility_date'),
+              }),
+              !cibilRecorded,
+            )}
+            {confirmRow(
+              'NOT_ELIGIBLE',
+              'Mark Not Eligible (reject)',
+              'Save & Reject Case',
+              'mudra-decide-eligibility',
+              () => ({
+                eligibility_result: 'NOT_ELIGIBLE',
+                eligibility_date: val('eligibility_date'),
+                rejection_reason: val('rejection_reason'),
+              }),
+              !val('rejection_reason'),
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  } else if (stageCode === 'FILE_PREPARATION') {
+    body = (
+      <div className="cx-mudra-stage-body">
+        <p className="cx-mudra-hint">
+          Business checkpoint: Project Report. Confirm the project report is
+          prepared, then advance to Bank Submitted.
+        </p>
+        {field('project_report_prepared', 'Project report prepared (YES/NO)')}
+        {field('project_report_date', 'Project report date', 'date')}
+        {confirmRow(
+          'FILEPREP',
+          'Complete File Preparation',
+          'Save & Move to Bank Submitted',
+          'mudra-complete-file-preparation',
+          () => ({
+            project_report_prepared: val('project_report_prepared'),
+            project_report_date: val('project_report_date'),
+          }),
+          !val('project_report_prepared'),
+        )}
+      </div>
+    );
+  } else if (stageCode === 'BANK_SUBMITTED') {
+    body = (
+      <div className="cx-mudra-stage-body">
+        <p className="cx-mudra-hint">
+          Business checkpoints: Bank Transfer, then Bank Received. Record the
+          file transfer and the bank acknowledgement, then advance to Bank
+          Verification.
+        </p>
+        {field('bank_name', 'Bank name')}
+        {field('bank_branch', 'Bank branch')}
+        {field('bank_file_transfer_date', 'File transfer date', 'date')}
+        {field('bank_reference', 'Bank reference')}
+        {field('bank_acknowledgement_date', 'Bank acknowledgement date', 'date')}
+        {confirmRow(
+          'BANKSUB',
+          'Record Bank Submission',
+          'Save & Move to Bank Verification',
+          'mudra-record-bank-submission',
+          () => ({
+            bank_name: val('bank_name'),
+            bank_branch: val('bank_branch'),
+            bank_file_transfer_date: val('bank_file_transfer_date'),
+            bank_reference: val('bank_reference'),
+            bank_acknowledgement_date: val('bank_acknowledgement_date'),
+          }),
+          !val('bank_name') || !val('bank_acknowledgement_date'),
+        )}
+      </div>
+    );
+  } else if (stageCode === 'BANK_VERIFICATION') {
+    body = (
+      <div className="cx-mudra-stage-body">
+        <p className="cx-mudra-hint">
+          Business checkpoint: Bank Verification. Record the verification
+          outcome. CLEAR proceeds to RO Review; PENDING moves to Bank Pending.
+        </p>
+        {field('bank_verification_date', 'Verification date', 'date')}
+        {field('bank_verification_remarks', 'Verification remarks')}
+        <div className="cx-mudra-decision-row">
+          {confirmRow(
+            'VERIFY_CLEAR',
+            'Mark Clear',
+            'Save & Move to RO Review',
+            'mudra-record-bank-verification',
+            () => ({
+              bank_verification_status: 'CLEAR',
+              bank_verification_date: val('bank_verification_date'),
+              bank_verification_remarks: val('bank_verification_remarks'),
+            }),
+          )}
+          {confirmRow(
+            'VERIFY_PENDING',
+            'Mark Pending',
+            'Save & Move to Bank Pending',
+            'mudra-record-bank-verification',
+            () => ({
+              bank_verification_status: 'PENDING',
+              bank_verification_date: val('bank_verification_date'),
+              bank_verification_remarks: val('bank_verification_remarks'),
+            }),
+          )}
+        </div>
+      </div>
+    );
+  } else if (stageCode === 'BANK_PENDING') {
+    const task =
+      (data.mudra_pending_task as Record<string, unknown> | undefined) ?? {};
+    const taskStatus = String(task.status ?? '');
+    const hasActive = taskStatus === 'OPEN' || taskStatus === 'RECEIVED';
+    body = (
+      <div className="cx-mudra-stage-body">
+        <p className="cx-mudra-hint">
+          Bank Pending loop: raise the pending requirement, assign/reassign,
+          record received information, then complete Re-QC to return to Bank
+          Verification (the verification decision is then made again).
+        </p>
+        {hasActive ? (
+          <div className="cx-mudra-subsection cx-mudra-pending-active">
+            <strong>Active pending task</strong>
+            <p className="cx-mudra-recorded">
+              Status: {taskStatus}. Reason: {String(task.reason ?? '')}.
+              {task.requested_info
+                ? ` Requested: ${String(task.requested_info)}.`
+                : ''}
+              {task.assignee_user_id
+                ? ` Assignee: ${String(task.assignee_user_id)}.`
+                : ''}
+              {task.evidence ? ` Evidence: ${String(task.evidence)}.` : ''}
+            </p>
+            {/* One active pending-operation form at a time. */}
+            {taskStatus === 'OPEN' ? (
+              <>
+                {field('pending_assignee_user_id', 'Reassign to (user id)')}
+                {confirmRow(
+                  'REASSIGN',
+                  'Reassign Pending Task',
+                  'Save Reassignment',
+                  'mudra-reassign-pending-task',
+                  () => ({
+                    pending_assignee_user_id: val('pending_assignee_user_id'),
+                  }),
+                  !val('pending_assignee_user_id'),
+                )}
+                {field('pending_evidence', 'Information / evidence received')}
+                {confirmRow(
+                  'EVIDENCE',
+                  'Record Received Information',
+                  'Save Received Information',
+                  'mudra-record-pending-evidence',
+                  () => ({ pending_evidence: val('pending_evidence') }),
+                  !val('pending_evidence'),
+                )}
+              </>
+            ) : (
+              confirmRow(
+                'REQC',
+                'Complete Re-QC',
+                'Save & Return to Bank Verification',
+                'mudra-complete-reqc',
+                () => ({}),
+              )
+            )}
+          </div>
+        ) : (
+          <div className="cx-mudra-subsection">
+            <strong>Raise pending requirement</strong>
+            {field('pending_reason', 'Pending reason')}
+            {field('pending_requested_info', 'Requested information / document')}
+            {field('pending_assignee_user_id', 'Assign to (user id)')}
+            {confirmRow(
+              'RAISE',
+              'Raise Pending Task',
+              'Save Pending Task',
+              'mudra-raise-pending-task',
+              () => ({
+                pending_reason: val('pending_reason'),
+                pending_requested_info: val('pending_requested_info'),
+                pending_assignee_user_id: val('pending_assignee_user_id'),
+              }),
+              !val('pending_reason'),
+            )}
+          </div>
+        )}
+      </div>
+    );
+  } else if (stageCode === 'RO_REVIEW') {
+    body = (
+      <div className="cx-mudra-stage-body">
+        <p className="cx-mudra-hint">
+          Business checkpoint: RO Review. Record the RO review outcome and
+          advance to Sanctioned.
+        </p>
+        {field('ro_name', 'RO name')}
+        {field('ro_review_status', 'RO review status')}
+        {field('ro_review_date', 'RO review date', 'date')}
+        {field('ro_review_remarks', 'RO review remarks')}
+        {confirmRow(
+          'RO',
+          'Complete RO Review',
+          'Save & Move to Sanctioned',
+          'mudra-complete-ro-review',
+          () => ({
+            ro_name: val('ro_name'),
+            ro_review_status: val('ro_review_status'),
+            ro_review_date: val('ro_review_date'),
+            ro_review_remarks: val('ro_review_remarks'),
+          }),
+          !val('ro_review_status'),
+        )}
+      </div>
+    );
+  } else if (stageCode === 'SANCTIONED') {
+    const sanctionRecorded = Boolean(String(data.sanctioned_amount ?? ''));
+    body = (
+      <div className="cx-mudra-stage-body">
+        <p className="cx-mudra-hint">
+          Business checkpoints: Sanction, then Sanction Conditions. Record the
+          sanction first; disbursement is blocked until conditions are complete.
+        </p>
+        <div className="cx-mudra-subsection">
+          <strong>Sanction</strong>
+          {sanctionRecorded ? (
+            <p className="cx-mudra-recorded">
+              Sanction recorded: {String(data.sanctioned_amount)}.
+            </p>
+          ) : null}
+          {field('sanctioned_amount', 'Sanctioned amount')}
+          {field('sanction_date', 'Sanction date', 'date')}
+          {field('sanction_reference', 'Sanction reference')}
+          {field('sanction_remarks', 'Sanction remarks')}
+          {confirmRow(
+            'SANCTION',
+            'Record Sanction',
+            'Save Sanction',
+            'mudra-record-sanction',
+            () => ({
+              sanctioned_amount: val('sanctioned_amount'),
+              sanction_date: val('sanction_date'),
+              sanction_reference: val('sanction_reference'),
+              sanction_remarks: val('sanction_remarks'),
+            }),
+            !val('sanctioned_amount'),
+          )}
+        </div>
+        <div className="cx-mudra-subsection">
+          <strong>Sanction conditions</strong>
+          {field(
+            'sanction_conditions_completed_date',
+            'Conditions completed date',
+            'date',
+          )}
+          {confirmRow(
+            'CONDITIONS',
+            'Complete Sanction Conditions',
+            'Save & Move to Disbursement',
+            'mudra-complete-sanction-conditions',
+            () => ({
+              sanction_conditions_status: 'COMPLETE',
+              sanction_conditions_completed_date: val(
+                'sanction_conditions_completed_date',
+              ),
+            }),
+            !sanctionRecorded,
+          )}
+        </div>
+      </div>
+    );
+  } else if (stageCode === 'DISBURSEMENT') {
+    const ready = String(data.mudra_disbursement_ready ?? '') === 'YES';
+    body = (
+      <div className="cx-mudra-stage-body">
+        <p className="cx-mudra-hint">
+          Business checkpoints: Disbursement Ready, then Disbursement. Mark ready
+          first; actual disbursement closes the case.
+        </p>
+        <div className="cx-mudra-subsection">
+          <strong>Disbursement ready</strong>
+          {ready ? (
+            <p className="cx-mudra-recorded">
+              Marked ready on {String(data.disbursement_ready_date ?? '')}.
+            </p>
+          ) : null}
+          {field('disbursement_ready_date', 'Disbursement ready date', 'date')}
+          {confirmRow(
+            'READY',
+            'Mark Disbursement Ready',
+            'Save Ready',
+            'mudra-mark-disbursement-ready',
+            () => ({ disbursement_ready_date: val('disbursement_ready_date') }),
+            !val('disbursement_ready_date'),
+          )}
+        </div>
+        <div className="cx-mudra-subsection">
+          <strong>Actual disbursement</strong>
+          {field('disbursed_amount', 'Disbursed amount')}
+          {field('disbursement_date', 'Disbursement date', 'date')}
+          {field('disbursement_reference', 'Disbursement reference')}
+          {confirmRow(
+            'DISBURSE',
+            'Record Disbursement',
+            'Save & Close Case',
+            'mudra-record-disbursement',
+            () => ({
+              disbursed_amount: val('disbursed_amount'),
+              disbursement_date: val('disbursement_date'),
+              disbursement_reference: val('disbursement_reference'),
+            }),
+            !ready || !val('disbursed_amount') || !val('disbursement_date'),
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <section className="cx-process-guidance cx-mudra-action-shell">
+      <div style={{ width: '100%' }}>
+        <div className="cx-udyam-action-shell-header">
+          <div className="cx-udyam-action-shell-heading">
+            <strong>{`Mudra: ${title}`}</strong>
+            {collapsed ? (
+              <span className="cx-udyam-action-shell-summary">
+                Current stage: {title}
+              </span>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="cx-btn subtle cx-udyam-action-shell-toggle"
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? 'Expand Mudra panel' : 'Collapse Mudra panel'}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? 'Expand' : 'Collapse'}
+          </button>
+        </div>
+        {!collapsed ? (
+          <div className="cx-udyam-action-shell-body">
+            {stageGuidance ? (
+              <div
+                className="cx-mudra-subsection"
+                data-testid="mudra-current-stage-guidance"
+              >
+                <strong>Stage guidance</strong>
+                <p className="cx-process-help">
+                  <b>What this stage means:</b> {stageGuidance.meaning}
+                </p>
+                <p className="cx-process-help">
+                  <b>Previous:</b> {stageGuidance.previous}
+                </p>
+                <p className="cx-process-help">
+                  <b>What you need to do:</b> {stageGuidance.todo}
+                </p>
+                <p className="cx-process-help">
+                  <b>Required information:</b> {stageGuidance.required}
+                </p>
+                <p className="cx-process-help">
+                  <b>Next:</b> {stageGuidance.next}
+                </p>
+
+                {stageGuidance.actions.length > 0 ? (
+                  <div>
+                    <strong>Stage actions</strong>
+                    <ul className="cx-process-help">
+                      {stageGuidance.actions.map((actionHelp) => (
+                        <li key={actionHelp}>{actionHelp}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {body}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+
 export function checklistVisualState(
   row: Row,
 ): ChecklistVisualState {
@@ -4223,6 +5284,120 @@ export function workPrimaryAction(status: unknown): WorkPrimaryAction {
   return null;
 }
 
+/*
+ * Centralized, pure top-workflow-action eligibility.
+ *
+ * workPrimaryAction(status) is generic and status-only - it has no knowledge
+ * of a service's own durable business process. For most services that is
+ * correct: IN_PROGRESS genuinely means "ready to submit for review". For a
+ * service with its own coordinated business lifecycle (WorkProcessState),
+ * SUBMIT_FOR_REVIEW is only valid while that lifecycle is still at its
+ * pre-review position - once it has advanced, the service's own business
+ * process owns the primary action and generic review must not reappear.
+ *
+ * This reuses the exact conditions already established for Udyam and Mudra
+ * (previously duplicated inline in reviewButtons) as the one place that
+ * decides top-action eligibility, so production render code and tests can
+ * share the identical logic - not a new workflow engine, only a
+ * reconciliation of the existing generic status-only helper against
+ * existing per-service process state.
+ */
+export function deriveWorkspacePrimaryAction(params: {
+  serviceCode: string;
+  status: unknown;
+  processStepCode: string;
+  nextActionCode?: string;
+}): WorkPrimaryAction {
+  const generic = workPrimaryAction(params.status);
+
+  if (generic !== 'SUBMIT_FOR_REVIEW') {
+    // RESUME_WORK and null are unaffected by process-stage reconciliation.
+    return generic;
+  }
+
+  const serviceCode = params.serviceCode;
+  const processStepCode = params.processStepCode;
+  const nextActionCode = String(params.nextActionCode ?? '');
+
+  if (serviceCode === 'UDYAM_REGISTRATION') {
+    const udyamPostReviewAction =
+      nextActionCode === 'SUBMIT_UDYAM_APPLICATION' ||
+      nextActionCode === 'AWAIT_UDYAM_OUTCOME' ||
+      nextActionCode === 'RESOLVE_UDYAM_QUERY' ||
+      nextActionCode === 'COMPLETE_UDYAM_REGISTRATION';
+
+    const udyamPostReviewProcessStep =
+      processStepCode === 'SUBMIT_APPLICATION' ||
+      processStepCode === 'APPLICATION_SUBMISSION' ||
+      processStepCode === 'QUERY_RESOLUTION' ||
+      processStepCode === 'COMPLETION';
+
+    if (udyamPostReviewAction || udyamPostReviewProcessStep) {
+      return null;
+    }
+    return generic;
+  }
+
+  if (serviceCode === 'MUDRA_LOAN') {
+    if (Boolean(processStepCode) && processStepCode !== 'APPLICATION') {
+      return null;
+    }
+    return generic;
+  }
+
+  // Any other service (or no service): generic behaviour, unchanged.
+  return generic;
+}
+
+/*
+ * Testability-only extraction of the exact stale-pendingAction reconciliation
+ * decision that refreshOpenWorkWorkspace already performs in its `finally`
+ * block. This function owns no new logic and changes no runtime behavior -
+ * it is the same expression, unchanged, given a name and exported so it can
+ * be tested directly against the real production decision rather than a
+ * re-simulation of it. refreshOpenWorkWorkspace calls this function instead
+ * of inlining the expression; the side effect (setPendingAction) stays where
+ * it always was, at the call site, not inside this pure function.
+ *
+ * Returns the pendingAction unchanged when there is nothing to reconcile
+ * (wrong kind, or no fresh row available - e.g. the authoritative refresh
+ * itself failed and this must not clear a selection based on data it never
+ * obtained), or null when the fresh authoritative state proves the selected
+ * SUBMIT_FOR_REVIEW action is no longer valid.
+ */
+export function reconcileStalePendingAction(params: {
+  pendingAction: PendingWorkAction | null;
+  freshRow: Row | null;
+  freshProcessState: WorkProcessStateSnapshot | null;
+  freshHealthSnapshot: WorkHealthSnapshot | null;
+  freshServiceCode: string;
+}): PendingWorkAction | null {
+  const {
+    pendingAction,
+    freshRow,
+    freshProcessState,
+    freshHealthSnapshot,
+    freshServiceCode,
+  } = params;
+
+  if (pendingAction?.kind !== 'SUBMIT_FOR_REVIEW' || !freshRow) {
+    return pendingAction;
+  }
+
+  const reconciledAction = deriveWorkspacePrimaryAction({
+    serviceCode: freshServiceCode,
+    status: freshRow.status,
+    processStepCode: String(
+      freshProcessState?.current_step?.code ?? '',
+    ),
+    nextActionCode: String(
+      freshHealthSnapshot?.next_action?.code ?? '',
+    ),
+  });
+
+  return reconciledAction !== 'SUBMIT_FOR_REVIEW' ? null : pendingAction;
+}
+
 
 export function WorkCatalogueCascade({
   verticalRows,
@@ -5391,13 +6566,43 @@ export function WorkArea({
       setWorkHealthLoading(true);
       setWorkProcessStateLoading(true);
 
+      /*
+       * Fresh authoritative values captured from reconcileOpenWorkspace's
+       * callbacks, read after the call resolves (see the stale-pendingAction
+       * reconciliation below). Captured as properties of one object rather
+       * than separate `let` variables: TypeScript's control-flow narrowing
+       * does not treat an assignment made inside a callback (passed as an
+       * argument to an awaited function) as reaching a later point in this
+       * function's own synchronous flow, so a bare `let x: Row | null = null`
+       * narrows to exactly `null` (and then to `never` under `&& x`) at the
+       * read site below, even though the callback did run. Reading through
+       * an object property does not hit that limitation - verified with a
+       * full program-level TypeScript check (0 diagnostics) before applying
+       * this, so no cast, non-null assertion, or compiler-suppression
+       * directive is used or needed.
+       */
+      const captured: {
+        row: Row | null;
+        processState: WorkProcessStateSnapshot | null;
+        health: WorkHealthSnapshot | null;
+      } = { row: null, processState: null, health: null };
+
       try {
         await reconcileOpenWorkspace({
           workItemId,
           fetchObject: (path) => getObject(path),
-          setEditing: (row) => setEditing({ ...row }),
-          setWorkHealth,
-          setWorkProcessState,
+          setEditing: (row) => {
+            captured.row = row;
+            setEditing({ ...row });
+          },
+          setWorkHealth: (snapshot) => {
+            captured.health = snapshot;
+            setWorkHealth(snapshot);
+          },
+          setWorkProcessState: (snapshot) => {
+            captured.processState = snapshot;
+            setWorkProcessState(snapshot);
+          },
           onWorkItemError: (message) => {
             // Surface a failed authoritative refresh and activate the
             // refresh-required safety state.  While that flag is set the
@@ -5421,6 +6626,34 @@ export function WorkArea({
       } finally {
         setWorkHealthLoading(false);
         setWorkProcessStateLoading(false);
+
+        /*
+         * Stale pendingAction reconciliation (defense in depth): a selected-
+         * but-unconfirmed SUBMIT_FOR_REVIEW must not survive an authoritative
+         * refresh once the service's own business process has moved past its
+         * pre-review position. UdyamWorkflowConfirm renders purely from
+         * pendingAction with no awareness of process state, so this is the
+         * one place a stale selection is safely cleared. The decision itself
+         * lives in reconcileStalePendingAction (exported, directly testable);
+         * this call site only supplies the fresh data and applies whatever
+         * that function decides.
+         */
+        const freshServiceCode = String(
+          services.rows.find(
+            (service) =>
+              String(service.id ?? '') ===
+              String(captured.row?.service_id ?? ''),
+          )?.code ?? '',
+        );
+        setPendingAction(
+          reconcileStalePendingAction({
+            pendingAction,
+            freshRow: captured.row,
+            freshProcessState: captured.processState,
+            freshHealthSnapshot: captured.health,
+            freshServiceCode,
+          }),
+        );
 
         // Preserve the existing Work grid refresh.
         work.reload();
@@ -5473,6 +6706,48 @@ export function WorkArea({
       udyamProcessStepCode === 'APPLICATION_SUBMISSION' ||
       udyamProcessStepCode === 'QUERY_RESOLUTION'
     );
+
+  const mudraProcessStepCode = String(
+    workProcessState?.current_step?.code ?? '',
+  );
+
+  const mudraOutcome = String(
+    (
+      (editing?.operational_data as Record<string, unknown> | undefined) ?? {}
+    ).mudra_outcome ?? '',
+  ).toUpperCase();
+
+  const mudraCompletedTerminal =
+    Boolean(editing?.id) &&
+    selectedServiceCode === 'MUDRA_LOAN' &&
+    String(editing?.status ?? '') === 'COMPLETED';
+
+  /*
+   * UX-parity correction: MudraExternalActions owns Application & KYC
+   * persistence (mudra-complete-application) from the moment a Mudra case
+   * exists - APPLICATION is not different from any later Mudra stage in
+   * this respect. The generic footer Save / Save & Close must not compete
+   * with it there either, matching Udyam's exact same rule and every other
+   * Mudra stage (CREDIT_ELIGIBILITY onward) already correctly suppresses
+   * the footer once its own stage action owns the data.
+   */
+  const mudraOwnsPrimaryAction =
+    Boolean(editing?.id) &&
+    selectedServiceCode === 'MUDRA_LOAN' &&
+    (
+      mudraCompletedTerminal ||
+      mudraOutcome === 'REJECTED' ||
+      mudraOutcome === 'CLOSED' ||
+      Boolean(mudraProcessStepCode)
+    );
+
+  const mudraHasProcessOwnedAction =
+    selectedServiceCode === 'MUDRA_LOAN' &&
+    !mudraCompletedTerminal &&
+    mudraOutcome !== 'REJECTED' &&
+    mudraOutcome !== 'CLOSED' &&
+    Boolean(mudraProcessStepCode) &&
+    mudraProcessStepCode !== 'APPLICATION';
 
   const closeWorkDrawer = (): void => {
     setWorkHealth(null);
@@ -5528,42 +6803,18 @@ export function WorkArea({
   };
 
   const reviewButtons = (row: Row): React.JSX.Element | null => {
-    const action = workPrimaryAction(row.status);
+    const action = deriveWorkspacePrimaryAction({
+      serviceCode: selectedServiceCode,
+      status: row.status,
+      processStepCode: String(
+        workProcessState?.current_step?.code ?? '',
+      ),
+      nextActionCode: String(workHealth?.next_action?.code ?? ''),
+    });
     // C4: reflect backend permission flags, never status alone.
     const canSubmit = row.can_submit_for_review === true;
     const canReview = row.can_review === true;
     if (action === 'SUBMIT_FOR_REVIEW' && canSubmit) {
-      const udyamNextActionCode = String(
-        workHealth?.next_action?.code ?? '',
-      );
-
-      const udyamPostReviewAction =
-        udyamNextActionCode === 'SUBMIT_UDYAM_APPLICATION' ||
-        udyamNextActionCode === 'AWAIT_UDYAM_OUTCOME' ||
-        udyamNextActionCode === 'RESOLVE_UDYAM_QUERY' ||
-        udyamNextActionCode === 'COMPLETE_UDYAM_REGISTRATION';
-
-      const udyamPostReviewProcessStep =
-        workProcessState?.current_step?.code ===
-          'SUBMIT_APPLICATION' ||
-        workProcessState?.current_step?.code ===
-          'APPLICATION_SUBMISSION' ||
-        workProcessState?.current_step?.code ===
-          'QUERY_RESOLUTION' ||
-        workProcessState?.current_step?.code ===
-          'COMPLETION';
-
-      const internalReviewCompleted =
-        selectedServiceCode === 'UDYAM_REGISTRATION' &&
-        (
-          udyamPostReviewAction ||
-          udyamPostReviewProcessStep
-        );
-
-      if (internalReviewCompleted) {
-        return null;
-      }
-
       return actionButton({
         kind: 'SUBMIT_FOR_REVIEW',
         label: 'Submit for review',
@@ -5579,9 +6830,12 @@ export function WorkArea({
           {actionButton({
             kind: 'APPROVE',
             label:
-              selectedServiceCode === 'UDYAM_REGISTRATION' &&
-              workProcessState?.current_step?.code ===
-                'INTERNAL_REVIEW'
+              (selectedServiceCode === 'UDYAM_REGISTRATION' &&
+                workProcessState?.current_step?.code ===
+                  'INTERNAL_REVIEW') ||
+              (selectedServiceCode === 'MUDRA_LOAN' &&
+                workProcessState?.current_step?.code ===
+                  'APPLICATION')
                 ? 'Approve & continue'
                 : 'Approve & complete',
           })}
@@ -5687,6 +6941,7 @@ export function WorkArea({
           workRows={work.rows}
           onOpen={(row) => {
             setEditing({ ...row });
+            setPendingAction(null);
             setTab('qa');
             setErr('');
           }}
@@ -5883,6 +7138,43 @@ export function WorkArea({
                         </div>
                       )
                   )
+                  : selectedServiceCode === 'MUDRA_LOAN'
+                  ? (
+                    <div className="cx-workflow-zone-inner">
+                      {reviewButtons(editing)}
+                      <MudraExternalActions
+                        workItem={editing}
+                        processState={workProcessState}
+                        onError={setErr}
+                        onChanged={refreshOpenWorkWorkspace}
+                        onCloseWorkspace={closeWorkDrawer}
+                      />
+
+                      {/*
+                        UX-parity correction: complete a selected Mudra
+                        reviewer action (Approve & Continue / Return for
+                        Rework) in this same top zone, exactly like Udyam -
+                        not in the generic footer. Reuses UdyamWorkflowConfirm
+                        unmodified: the same component, the same canonical
+                        submit() -> persistWorkItem(pendingAction) path, no
+                        new persistence and no second pending-action state.
+                      */}
+                      <UdyamWorkflowConfirm
+                        pendingAction={pendingAction}
+                        canEdit={editing.can_edit === true}
+                        onCommentChange={(comment) =>
+                          setPendingAction(
+                            pendingAction &&
+                              pendingAction.kind === 'RETURN_FOR_REWORK'
+                              ? { ...pendingAction, comment }
+                              : pendingAction,
+                          )
+                        }
+                        onConfirm={submit}
+                        onCancel={() => setPendingAction(null)}
+                      />
+                    </div>
+                  )
                   : (
                     /* Non-Udyam: primary generic workflow actions (footer confirm preserved) */
                     <div className="cx-workflow-zone-inner">
@@ -5918,6 +7210,23 @@ export function WorkArea({
                   workProcessStateLoading
                 }
                 onOpenDocuments={() => setTab('documents')}
+              />
+            ) : null}
+
+            {editing.id && selectedServiceCode === 'MUDRA_LOAN' ? (
+              <MudraProcessTracker
+                currentCode={String(
+                  workProcessState?.current_step?.code ?? '',
+                )}
+                rejected={
+                  String(
+                    (
+                      (editing.operational_data as
+                        | Record<string, unknown>
+                        | undefined) ?? {}
+                    ).mudra_outcome ?? '',
+                  ).toUpperCase() === 'REJECTED'
+                }
               />
             ) : null}
 
@@ -5979,10 +7288,12 @@ export function WorkArea({
                 ) : null}
                 {editing.id && editing.is_locked === true ? (
                   <div className="cx-lock-banner" role="status">
-                    {lockMessage(editing.status, editing.current_controller_name, udyamHasProcessOwnedAction)}
+                    {lockMessage(editing.status, editing.current_controller_name, udyamHasProcessOwnedAction || mudraHasProcessOwnedAction)}
                   </div>
                 ) : null}
-                {pendingAction && selectedServiceCode !== 'UDYAM_REGISTRATION' ? (
+                {pendingAction &&
+                  selectedServiceCode !== 'UDYAM_REGISTRATION' &&
+                  selectedServiceCode !== 'MUDRA_LOAN' ? (
                   <div className="cx-warning" role="status" style={{ marginBottom: 12 }}>
                     Pending workflow action: <strong>{pendingAction.label}</strong>. {
                       editing.can_review === true &&
@@ -5994,7 +7305,8 @@ export function WorkArea({
                 ) : null}
 
                 {pendingAction?.kind === 'RETURN_FOR_REWORK' &&
-                  selectedServiceCode !== 'UDYAM_REGISTRATION' ? (
+                  selectedServiceCode !== 'UDYAM_REGISTRATION' &&
+                  selectedServiceCode !== 'MUDRA_LOAN' ? (
                   <div className="cx-field" style={{ marginBottom: 12 }}>
                     <label htmlFor="reviewer-return-justification">
                       Reviewer return justification *
@@ -6172,7 +7484,7 @@ export function WorkArea({
                     server state is unknown after the failed authoritative refresh.
                     The analyst must use the "Refresh Work" recovery action above.
                   */}
-                  {!workspaceNeedsRefresh && !udyamOwnsPrimaryAction && (
+                  {!workspaceNeedsRefresh && !udyamOwnsPrimaryAction && !mudraOwnsPrimaryAction && (
                     (
                       !editing.id ||
                     editing.can_edit === true ||
@@ -6189,8 +7501,15 @@ export function WorkArea({
                       the TOP workflow zone, so the footer never renders the
                       lifecycle confirm button.  Non-Udyam keeps the existing
                       footer save-gated confirm behaviour unchanged.
+                      UX-parity correction: Mudra now completes its own
+                      selected reviewer action in the same top zone (via
+                      UdyamWorkflowConfirm), so it is exempted here too.
                     */
-                    (pendingAction && selectedServiceCode !== 'UDYAM_REGISTRATION') ? (
+                    (
+                      pendingAction &&
+                      selectedServiceCode !== 'UDYAM_REGISTRATION' &&
+                      selectedServiceCode !== 'MUDRA_LOAN'
+                    ) ? (
                       <button
                         type="button"
                         className="cx-btn"

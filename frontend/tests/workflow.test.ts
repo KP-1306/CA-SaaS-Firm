@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { act, list, translateError } from '../src/features/console/api';
 import { ConsoleApp, buildResourcePayload } from '../src/features/console/ConsoleApp';
 import { Drawer } from '../src/features/console/ui';
-import { DocumentsPanel, executePendingDocumentDecision, executePendingWorkAction, persistWorkItem, workPrimaryAction } from '../src/features/console/work';
+import { DocumentsPanel, executePendingDocumentDecision, executePendingWorkAction, persistWorkItem, workPrimaryAction, deriveWorkspacePrimaryAction } from '../src/features/console/work';
 
 function mockFetch(): ReturnType<typeof vi.fn> {
   const fn = vi.fn(async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
@@ -193,6 +193,167 @@ describe('rework action presentation', () => {
   it('does not expose either preparation action for review or completed states', () => {
     expect(workPrimaryAction('READY_FOR_REVIEW')).toBeNull();
     expect(workPrimaryAction('COMPLETED')).toBeNull();
+  });
+});
+
+describe('deriveWorkspacePrimaryAction - centralized top-action ownership', () => {
+  // N. Generic Work: unaffected by this correction, byte-for-byte the same
+  // contract as workPrimaryAction alone.
+  it('N: generic (non-Mudra, non-Udyam) Work: IN_PROGRESS -> SUBMIT_FOR_REVIEW, unchanged', () => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: '',
+        status: 'IN_PROGRESS',
+        processStepCode: '',
+      }),
+    ).toBe('SUBMIT_FOR_REVIEW');
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'HOME_LOAN',
+        status: 'IN_PROGRESS',
+        processStepCode: 'WHATEVER',
+      }),
+    ).toBe('SUBMIT_FOR_REVIEW');
+  });
+
+  it('N: generic Work REWORK_REQUIRED -> RESUME_WORK, READY_FOR_REVIEW/COMPLETED -> null, unaffected by service/step', () => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: '',
+        status: 'REWORK_REQUIRED',
+        processStepCode: '',
+      }),
+    ).toBe('RESUME_WORK');
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'MUDRA_LOAN',
+        status: 'READY_FOR_REVIEW',
+        processStepCode: 'APPLICATION',
+      }),
+    ).toBeNull();
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'MUDRA_LOAN',
+        status: 'COMPLETED',
+        processStepCode: 'CLOSED',
+      }),
+    ).toBeNull();
+  });
+
+  // A. Mudra APPLICATION (pre-review): SUBMIT_FOR_REVIEW remains the correct
+  // primary action - the one stage where it belongs.
+  it('A: Mudra APPLICATION, IN_PROGRESS -> SUBMIT_FOR_REVIEW remains valid', () => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'MUDRA_LOAN',
+        status: 'IN_PROGRESS',
+        processStepCode: 'APPLICATION',
+      }),
+    ).toBe('SUBMIT_FOR_REVIEW');
+  });
+
+  it('A: Mudra with no process step yet (e.g. before initialization) does not incorrectly suppress SUBMIT_FOR_REVIEW', () => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'MUDRA_LOAN',
+        status: 'IN_PROGRESS',
+        processStepCode: '',
+      }),
+    ).toBe('SUBMIT_FOR_REVIEW');
+  });
+
+  // C. REWORK_REQUIRED: Resume Work preserved regardless of service/step -
+  // this is the generic control state that temporarily owns the primary
+  // action; the Mudra business process never overrides it.
+  it('C: Mudra REWORK_REQUIRED still offers RESUME_WORK, never SUBMIT_FOR_REVIEW', () => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'MUDRA_LOAN',
+        status: 'REWORK_REQUIRED',
+        processStepCode: 'APPLICATION',
+      }),
+    ).toBe('RESUME_WORK');
+  });
+
+  // D-L. Post-review Mudra (every business stage from CREDIT_ELIGIBILITY
+  // through CLOSED): generic SUBMIT_FOR_REVIEW must never reappear. This is
+  // the exact browser regression this correction fixes - proven for every
+  // stage, not just one.
+  it.each([
+    'CREDIT_ELIGIBILITY',
+    'FILE_PREPARATION',
+    'BANK_SUBMITTED',
+    'BANK_VERIFICATION',
+    'BANK_PENDING',
+    'RO_REVIEW',
+    'SANCTIONED',
+    'DISBURSEMENT',
+    'CLOSED',
+  ])(
+    'D-L: Mudra IN_PROGRESS at %s never offers generic SUBMIT_FOR_REVIEW',
+    (stepCode) => {
+      expect(
+        deriveWorkspacePrimaryAction({
+          serviceCode: 'MUDRA_LOAN',
+          status: 'IN_PROGRESS',
+          processStepCode: stepCode,
+        }),
+      ).toBeNull();
+    },
+  );
+
+  // O. Udyam: preserve the exact existing certified behavior - both the
+  // process-step-based and Work-Health-next-action-code-based suppression
+  // conditions, and confirm Udyam's own pre-review stage is unaffected.
+  it('O: Udyam pre-review (VERIFICATION_PREPARATION-equivalent) still offers SUBMIT_FOR_REVIEW', () => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'UDYAM_REGISTRATION',
+        status: 'IN_PROGRESS',
+        processStepCode: 'VERIFICATION_PREPARATION',
+      }),
+    ).toBe('SUBMIT_FOR_REVIEW');
+  });
+
+  it.each([
+    'SUBMIT_APPLICATION',
+    'APPLICATION_SUBMISSION',
+    'QUERY_RESOLUTION',
+    'COMPLETION',
+  ])('O: Udyam post-review process step %s suppresses SUBMIT_FOR_REVIEW (unchanged)', (stepCode) => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'UDYAM_REGISTRATION',
+        status: 'IN_PROGRESS',
+        processStepCode: stepCode,
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    'SUBMIT_UDYAM_APPLICATION',
+    'AWAIT_UDYAM_OUTCOME',
+    'RESOLVE_UDYAM_QUERY',
+    'COMPLETE_UDYAM_REGISTRATION',
+  ])('O: Udyam post-review next_action code %s suppresses SUBMIT_FOR_REVIEW (unchanged)', (nextActionCode) => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'UDYAM_REGISTRATION',
+        status: 'IN_PROGRESS',
+        processStepCode: '',
+        nextActionCode,
+      }),
+    ).toBeNull();
+  });
+
+  it('O: Udyam REWORK_REQUIRED still offers RESUME_WORK, unaffected', () => {
+    expect(
+      deriveWorkspacePrimaryAction({
+        serviceCode: 'UDYAM_REGISTRATION',
+        status: 'REWORK_REQUIRED',
+        processStepCode: 'VERIFICATION_PREPARATION',
+      }),
+    ).toBe('RESUME_WORK');
   });
 });
 

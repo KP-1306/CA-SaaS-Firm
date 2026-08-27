@@ -541,6 +541,29 @@ class WorkItemViewSet(TenantModelViewSet):
                 strict=False,
             )
 
+            # Mudra loan work initializes its durable runtime position at the
+            # APPLICATION system stage on creation, so the tracker shows the
+            # authoritative starting stage immediately. Non-Mudra work is
+            # unaffected (Udyam and generic work keep their existing behavior).
+            if self._is_mudra_loan(item):
+                application_step = self._mudra_process_step(item, "APPLICATION")
+                if application_step is not None:
+                    existing_state = (
+                        WorkProcessState.objects
+                        .filter(
+                            tenant_id=principal.tenant_id,
+                            work_item_id=item.id,
+                        )
+                        .first()
+                    )
+                    if existing_state is None:
+                        self._persist_automated_process_step(
+                            item,
+                            application_step,
+                            principal,
+                            "Mudra case initialized at Application & KYC.",
+                        )
+
     @action(
         detail=True,
         methods=["post"],
@@ -1687,6 +1710,1020 @@ class WorkItemViewSet(TenantModelViewSet):
             status=http_status.HTTP_200_OK,
         )
 
+    # ================================================================
+    # MUDRA_LOAN end-to-end runtime (NEW).
+    #
+    # Mirrors the frozen Udyam runtime patterns (durable WorkProcessState
+    # position, backend-authoritative transitions, per-step guard, mandatory
+    # audit, WorkNote history) WITHOUT reusing Udyam business states, action
+    # names, or completion semantics. All Mudra runtime data is persisted in
+    # the existing WorkProcessState (position) and WorkItem.operational_data
+    # (service-specific business evidence). No schema change, no new model.
+    #
+    # System process positions (configuration-owned ServiceProcessStep codes):
+    #   APPLICATION -> CREDIT_ELIGIBILITY -> FILE_PREPARATION -> BANK_SUBMITTED
+    #   -> BANK_VERIFICATION -> (BANK_PENDING loop) -> RO_REVIEW -> SANCTIONED
+    #   -> DISBURSEMENT -> CLOSED, with the eligibility NOT-ELIGIBLE rejected
+    #   terminal outcome recorded service-specifically in operational_data.
+    # ================================================================
+
+    def _is_mudra_loan(self, item) -> bool:
+        """Identify the configured Mudra loan service."""
+        if not item.service_id:
+            return False
+        return Service.objects.filter(
+            tenant_id=item.tenant_id,
+            id=item.service_id,
+            code="MUDRA_LOAN",
+        ).exists()
+
+    def _mudra_process_step(self, item, code):
+        """Resolve one active configured Mudra process step."""
+        if not item.service_id:
+            return None
+        return (
+            ServiceProcessStep.objects
+            .filter(
+                tenant_id=item.tenant_id,
+                service_id=item.service_id,
+                code=code,
+                is_active=True,
+            )
+            .first()
+        )
+
+    def _require_mudra_owner(self, item):
+        principal = self.principal()
+        if not self._is_mudra_loan(item):
+            raise ValidationError(
+                {
+                    "detail": "This action is available only for Mudra loan work.",
+                    "code": "MUDRA_SERVICE_REQUIRED",
+                }
+            )
+        if not ownership.is_owner(item, principal):
+            raise PermissionDenied(
+                "Only the assigned owner or a platform administrator "
+                "may perform this Mudra action."
+            )
+        return principal
+
+    def _locked_mudra_process_state(self, item, expected_codes):
+        """Lock and assert the Mudra runtime position is one of expected_codes."""
+        if isinstance(expected_codes, str):
+            expected_codes = (expected_codes,)
+
+        state = (
+            WorkProcessState.objects
+            .select_for_update()
+            .filter(
+                tenant_id=item.tenant_id,
+                work_item_id=item.id,
+            )
+            .first()
+        )
+
+        expected_ids = {}
+        for code in expected_codes:
+            step = self._mudra_process_step(item, code)
+            if step is None:
+                raise ValidationError(
+                    {
+                        "detail": f"Mudra process step {code} is not configured.",
+                        "code": "MUDRA_PROCESS_CONFIGURATION_MISSING",
+                    }
+                )
+            expected_ids[step.id] = code
+
+        if state is None or state.current_step_id not in expected_ids:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "This action requires Mudra process step "
+                        f"{' or '.join(expected_codes)}."
+                    ),
+                    "code": "MUDRA_PROCESS_POSITION_REQUIRED",
+                }
+            )
+        return state
+
+    def _mudra_rejected(self, item) -> bool:
+        data = item.operational_data or {}
+        return str(data.get("mudra_outcome") or "").upper() == "REJECTED"
+
+    def _guard_mudra_not_terminal(self, item):
+        """Block any Mudra transition once the case is rejected."""
+        if self._mudra_rejected(item):
+            raise ValidationError(
+                {
+                    "detail": "This Mudra case is rejected and is terminal.",
+                    "code": "MUDRA_CASE_REJECTED",
+                }
+            )
+
+    def _mudra_advance(
+        self,
+        request,
+        pk,
+        *,
+        from_codes,
+        to_code,
+        fields,
+        required,
+        note_label,
+    ):
+        """
+        Shared Mudra transition executor.
+
+        Validates required inputs, locks the item, asserts the current position
+        is one of from_codes, writes the supplied operational_data fields,
+        persists the new WorkProcessState position (+ mandatory audit) and a
+        WorkNote, then returns the reconciled Mudra state snapshot.
+        """
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        values = {}
+        for key in fields:
+            raw = data.get(key)
+            values[key] = "" if raw is None else str(raw).strip()
+
+        for key in required:
+            if not values.get(key):
+                return Response(
+                    {
+                        "detail": f"{key} is required for this Mudra action.",
+                        "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                        "field": key,
+                    },
+                    status=400,
+                )
+
+        next_step = self._mudra_process_step(item, to_code)
+        if next_step is None:
+            return Response(
+                {
+                    "detail": f"Mudra process step {to_code} is not configured.",
+                    "code": "MUDRA_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, from_codes)
+
+            operational_data = dict(locked_item.operational_data or {})
+            for key, val in values.items():
+                operational_data[key] = val
+
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(
+                update_fields=[
+                    "operational_data",
+                    "updated_by",
+                    "updated_at",
+                    "row_version",
+                ]
+            )
+
+            note = f"Mudra: {note_label} (-> {to_code})."
+            self._persist_automated_process_step(
+                locked_item, next_step, principal, note,
+            )
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    def _mudra_state_response(self, item):
+        """Authoritative Mudra snapshot the frontend reconciles against."""
+        state = (
+            WorkProcessState.objects
+            .filter(tenant_id=item.tenant_id, work_item_id=item.id)
+            .first()
+        )
+        current_step = None
+        if state is not None and state.current_step_id:
+            current_step = (
+                ServiceProcessStep.objects
+                .filter(
+                    tenant_id=item.tenant_id,
+                    id=state.current_step_id,
+                    service_id=item.service_id,
+                    is_active=True,
+                )
+                .first()
+            )
+        refreshed = WorkItem.objects.get(tenant_id=item.tenant_id, id=item.id)
+        return Response(
+            {
+                "work_item_id": str(item.id),
+                "current_step": (
+                    {
+                        "id": str(current_step.id),
+                        "code": current_step.code,
+                        "name": current_step.name,
+                        "display_order": current_step.display_order,
+                    }
+                    if current_step is not None
+                    else None
+                ),
+                "mudra_outcome": str(
+                    (refreshed.operational_data or {}).get("mudra_outcome") or ""
+                ),
+                "work_status": refreshed.status,
+                "operational_data": refreshed.operational_data or {},
+            },
+            status=http_status.HTTP_200_OK,
+        )
+
+    # -- Stage 1: Application & KYC - record fields in place (APPLICATION) -
+    # CORRECTION: this action no longer advances the Mudra process position.
+    # APPLICATION -> CREDIT_ELIGIBILITY is owned exclusively by successful
+    # internal reviewer approval (WorkItemViewSet.approve's Mudra branch), so
+    # the owner cannot bypass mandatory review by completing this action.
+    # The field-recording behavior is preserved unchanged (mirrors
+    # mudra_record_cibil's in-place pattern) because the generic
+    # OperationalFieldsPanel is disabled once the WorkItem already exists, so
+    # this remains the only way to edit these fields before submission.
+    @action(detail=True, methods=["post"], url_path="mudra-complete-application")
+    def mudra_complete_application(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        # Unlike later Mudra stage actions (which are naturally gated by a
+        # process position only reachable after review approval), the Mudra
+        # process position stays at APPLICATION throughout internal review
+        # (Mudra has no configured review-only position for submit_for_review
+        # to advance into, unlike Udyam's INTERNAL_REVIEW step). This action
+        # must therefore check owner-editable state directly so it cannot be
+        # used to edit application data while the case is awaiting or under
+        # review - reusing the exact same existing contract the generic Work
+        # model already enforces elsewhere, rather than duplicating its state
+        # list here.
+        if not ownership.can_edit_work_item(item, principal):
+            return Response(
+                {
+                    "detail": (
+                        "Application & KYC details can only be recorded "
+                        "while this Mudra work item is owner-editable."
+                    ),
+                    "code": "MUDRA_NOT_OWNER_EDITABLE",
+                },
+                status=409,
+            )
+
+        data = request.data or {}
+        fields = [
+            "requested_loan_amount", "loan_purpose", "business_activity",
+            "application_reference", "application_date",
+        ]
+        values = {k: ("" if data.get(k) is None else str(data.get(k)).strip())
+                  for k in fields}
+        for key in ("requested_loan_amount", "loan_purpose"):
+            if not values.get(key):
+                return Response(
+                    {
+                        "detail": f"{key} is required for this Mudra action.",
+                        "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                        "field": key,
+                    },
+                    status=400,
+                )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "APPLICATION")
+            operational_data = dict(locked_item.operational_data or {})
+            for k, v in values.items():
+                operational_data[k] = v
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = "Mudra: Application & KYC details recorded."
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 2: record CIBIL (stays in CREDIT_ELIGIBILITY) --------------
+    @action(detail=True, methods=["post"], url_path="mudra-record-cibil")
+    def mudra_record_cibil(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        fields = [
+            "cibil_score", "cibil_bureau", "cibil_check_date",
+            "cibil_result", "cibil_report_reference", "cibil_remarks",
+        ]
+        values = {k: ("" if data.get(k) is None else str(data.get(k)).strip())
+                  for k in fields}
+        if not values.get("cibil_score"):
+            return Response(
+                {
+                    "detail": "cibil_score is required to record CIBIL.",
+                    "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                    "field": "cibil_score",
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "CREDIT_ELIGIBILITY")
+            operational_data = dict(locked_item.operational_data or {})
+            for k, v in values.items():
+                operational_data[k] = v
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = f"Mudra: CIBIL recorded (score {values['cibil_score']})."
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 2: eligibility decision -> continue OR reject --------------
+    @action(detail=True, methods=["post"], url_path="mudra-decide-eligibility")
+    def mudra_decide_eligibility(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        decision = str(data.get("eligibility_result") or "").strip().upper()
+        eligibility_date = str(data.get("eligibility_date") or "").strip()
+        rejection_reason = str(data.get("rejection_reason") or "").strip()
+
+        if decision not in {"ELIGIBLE", "NOT_ELIGIBLE"}:
+            return Response(
+                {
+                    "detail": "eligibility_result must be ELIGIBLE or NOT_ELIGIBLE.",
+                    "code": "MUDRA_ELIGIBILITY_RESULT_INVALID",
+                },
+                status=400,
+            )
+        if decision == "NOT_ELIGIBLE" and not rejection_reason:
+            return Response(
+                {
+                    "detail": "rejection_reason is required when NOT_ELIGIBLE.",
+                    "code": "MUDRA_REJECTION_REASON_REQUIRED",
+                    "field": "rejection_reason",
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "CREDIT_ELIGIBILITY")
+            operational_data = dict(locked_item.operational_data or {})
+            operational_data["eligibility_result"] = decision
+            operational_data["eligibility_date"] = eligibility_date
+
+            if decision == "NOT_ELIGIBLE":
+                # Durable, service-specific rejected terminal outcome. Generic
+                # WorkStatus is NOT changed to add a Mudra-specific enum value.
+                operational_data["rejection_reason"] = rejection_reason
+                operational_data["mudra_outcome"] = "REJECTED"
+                locked_item.operational_data = operational_data
+                locked_item.updated_by = principal.principal_id
+                locked_item.save(update_fields=[
+                    "operational_data", "updated_by", "updated_at", "row_version",
+                ])
+                note = (
+                    "Mudra: eligibility decided NOT ELIGIBLE; case rejected "
+                    f"(terminal). Reason: {rejection_reason}."
+                )
+                # Keep the durable position at CREDIT_ELIGIBILITY; the rejected
+                # outcome flag makes the case terminal and blocks advancement.
+                self._record(locked_item, note)
+                try:
+                    record_event(
+                        tenant_id=principal.tenant_id,
+                        principal_id=principal.principal_id,
+                        action=AuditAction.STATUS_CHANGE,
+                        entity_type="WorkItem",
+                        entity_id=locked_item.id,
+                        summary="Mudra eligibility: NOT ELIGIBLE -> REJECTED",
+                        previous={"mudra_outcome": ""},
+                        new={"mudra_outcome": "REJECTED"},
+                        request=self.request,
+                    )
+                except Exception as exc:
+                    raise MandatoryAuditPersistenceError() from exc
+                return self._mudra_state_response(locked_item)
+
+            # ELIGIBLE -> advance to FILE_PREPARATION
+            next_step = self._mudra_process_step(locked_item, "FILE_PREPARATION")
+            if next_step is None:
+                return Response(
+                    {
+                        "detail": "Mudra FILE_PREPARATION step is not configured.",
+                        "code": "MUDRA_PROCESS_CONFIGURATION_MISSING",
+                    },
+                    status=409,
+                )
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = "Mudra: eligibility decided ELIGIBLE (-> FILE_PREPARATION)."
+            self._persist_automated_process_step(
+                locked_item, next_step, principal, note,
+            )
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 3 -> 4: project report complete ---------------------------
+    @action(detail=True, methods=["post"], url_path="mudra-complete-file-preparation")
+    def mudra_complete_file_preparation(self, request, pk=None):
+        return self._mudra_advance(
+            request, pk,
+            from_codes="FILE_PREPARATION",
+            to_code="BANK_SUBMITTED",
+            fields=["project_report_prepared", "project_report_date"],
+            required=["project_report_prepared"],
+            note_label="File preparation (project report) completed",
+        )
+
+    # -- Stage 4 -> 5: bank submitted (transfer + acknowledgement) --------
+    @action(detail=True, methods=["post"], url_path="mudra-record-bank-submission")
+    def mudra_record_bank_submission(self, request, pk=None):
+        return self._mudra_advance(
+            request, pk,
+            from_codes="BANK_SUBMITTED",
+            to_code="BANK_VERIFICATION",
+            fields=[
+                "bank_name", "bank_branch", "bank_file_transfer_date",
+                "bank_reference", "bank_acknowledgement_date",
+            ],
+            required=["bank_name", "bank_acknowledgement_date"],
+            note_label="Bank file transferred and acknowledgement recorded",
+        )
+
+    # -- Stage 5: bank verification -> CLEAR (RO_REVIEW) or PENDING -------
+    @action(detail=True, methods=["post"], url_path="mudra-record-bank-verification")
+    def mudra_record_bank_verification(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        outcome = str(data.get("bank_verification_status") or "").strip().upper()
+        verification_date = str(data.get("bank_verification_date") or "").strip()
+        remarks = str(data.get("bank_verification_remarks") or "").strip()
+
+        if outcome not in {"CLEAR", "PENDING"}:
+            return Response(
+                {
+                    "detail": "bank_verification_status must be CLEAR or PENDING.",
+                    "code": "MUDRA_BANK_VERIFICATION_STATUS_INVALID",
+                },
+                status=400,
+            )
+
+        to_code = "RO_REVIEW" if outcome == "CLEAR" else "BANK_PENDING"
+        next_step = self._mudra_process_step(item, to_code)
+        if next_step is None:
+            return Response(
+                {
+                    "detail": f"Mudra process step {to_code} is not configured.",
+                    "code": "MUDRA_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            # Verification is decided from BANK_VERIFICATION only (after Re-QC
+            # the case returns here and the decision is made again).
+            self._locked_mudra_process_state(locked_item, "BANK_VERIFICATION")
+            operational_data = dict(locked_item.operational_data or {})
+            operational_data["bank_verification_status"] = outcome
+            operational_data["bank_verification_date"] = verification_date
+            operational_data["bank_verification_remarks"] = remarks
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = f"Mudra: bank verification {outcome} (-> {to_code})."
+            self._persist_automated_process_step(
+                locked_item, next_step, principal, note,
+            )
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 6: BANK_PENDING - raise/assign a pending requirement -------
+    @action(detail=True, methods=["post"], url_path="mudra-raise-pending-task")
+    def mudra_raise_pending_task(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        reason = str(data.get("pending_reason") or "").strip()
+        requested_info = str(data.get("pending_requested_info") or "").strip()
+        assignee = str(data.get("pending_assignee_user_id") or "").strip()
+
+        if not reason:
+            return Response(
+                {
+                    "detail": "pending_reason is required to raise a pending task.",
+                    "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                    "field": "pending_reason",
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "BANK_PENDING")
+            operational_data = dict(locked_item.operational_data or {})
+            # Single active pending task (durable, service-specific).
+            pending = {
+                "status": "OPEN",
+                "reason": reason,
+                "requested_info": requested_info,
+                "assignee_user_id": assignee,
+                "evidence": "",
+                "reqc_status": "",
+                "raised_by": str(principal.principal_id),
+            }
+            operational_data["mudra_pending_task"] = pending
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = f"Mudra: pending task raised. Reason: {reason}."
+            if assignee:
+                note += f" Assigned to: {assignee}."
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 6: BANK_PENDING - reassign the pending requirement ---------
+    @action(detail=True, methods=["post"], url_path="mudra-reassign-pending-task")
+    def mudra_reassign_pending_task(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        assignee = str(data.get("pending_assignee_user_id") or "").strip()
+        if not assignee:
+            return Response(
+                {
+                    "detail": "pending_assignee_user_id is required to reassign.",
+                    "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                    "field": "pending_assignee_user_id",
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "BANK_PENDING")
+            operational_data = dict(locked_item.operational_data or {})
+            pending = dict(operational_data.get("mudra_pending_task") or {})
+            if not pending or pending.get("status") not in {"OPEN", "RECEIVED"}:
+                return Response(
+                    {
+                        "detail": "No active pending task to reassign.",
+                        "code": "MUDRA_NO_ACTIVE_PENDING_TASK",
+                    },
+                    status=409,
+                )
+            previous = pending.get("assignee_user_id") or ""
+            pending["assignee_user_id"] = assignee
+            operational_data["mudra_pending_task"] = pending
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = f"Mudra: pending task reassigned {previous or 'NONE'} -> {assignee}."
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 6: BANK_PENDING - record evidence/information received -----
+    @action(detail=True, methods=["post"], url_path="mudra-record-pending-evidence")
+    def mudra_record_pending_evidence(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        evidence = str(data.get("pending_evidence") or "").strip()
+        if not evidence:
+            return Response(
+                {
+                    "detail": "pending_evidence is required.",
+                    "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                    "field": "pending_evidence",
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "BANK_PENDING")
+            operational_data = dict(locked_item.operational_data or {})
+            pending = dict(operational_data.get("mudra_pending_task") or {})
+            if not pending or pending.get("status") not in {"OPEN", "RECEIVED"}:
+                return Response(
+                    {
+                        "detail": "No active pending task to record evidence against.",
+                        "code": "MUDRA_NO_ACTIVE_PENDING_TASK",
+                    },
+                    status=409,
+                )
+            pending["evidence"] = evidence
+            pending["status"] = "RECEIVED"
+            operational_data["mudra_pending_task"] = pending
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = "Mudra: pending task information/evidence received."
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 6 -> 5: BANK_PENDING Re-QC returns to BANK_VERIFICATION ----
+    @action(detail=True, methods=["post"], url_path="mudra-complete-reqc")
+    def mudra_complete_reqc(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        next_step = self._mudra_process_step(item, "BANK_VERIFICATION")
+        if next_step is None:
+            return Response(
+                {
+                    "detail": "Mudra BANK_VERIFICATION step is not configured.",
+                    "code": "MUDRA_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "BANK_PENDING")
+            operational_data = dict(locked_item.operational_data or {})
+            pending = dict(operational_data.get("mudra_pending_task") or {})
+            if not pending or pending.get("status") != "RECEIVED":
+                return Response(
+                    {
+                        "detail": (
+                            "Re-QC requires an active pending task with "
+                            "received information."
+                        ),
+                        "code": "MUDRA_PENDING_EVIDENCE_REQUIRED",
+                    },
+                    status=409,
+                )
+            # Close the pending task after Re-QC and return to verification.
+            pending["status"] = "RESOLVED"
+            pending["reqc_status"] = "COMPLETE"
+            operational_data["mudra_pending_task"] = pending
+            # Clear the prior verification decision so verification is made again.
+            operational_data["bank_verification_status"] = ""
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = (
+                "Mudra: Re-QC complete; pending task resolved "
+                "(-> BANK_VERIFICATION)."
+            )
+            self._persist_automated_process_step(
+                locked_item, next_step, principal, note,
+            )
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 7 -> 8: RO review complete --------------------------------
+    @action(detail=True, methods=["post"], url_path="mudra-complete-ro-review")
+    def mudra_complete_ro_review(self, request, pk=None):
+        return self._mudra_advance(
+            request, pk,
+            from_codes="RO_REVIEW",
+            to_code="SANCTIONED",
+            fields=[
+                "ro_name", "ro_review_status", "ro_review_date", "ro_review_remarks",
+            ],
+            required=["ro_review_status"],
+            note_label="RO review completed",
+        )
+
+    # -- Stage 8: record sanction (stays in SANCTIONED) ------------------
+    @action(detail=True, methods=["post"], url_path="mudra-record-sanction")
+    def mudra_record_sanction(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        fields = [
+            "sanctioned_amount", "sanction_date",
+            "sanction_reference", "sanction_remarks",
+        ]
+        values = {k: ("" if data.get(k) is None else str(data.get(k)).strip())
+                  for k in fields}
+        if not values.get("sanctioned_amount"):
+            return Response(
+                {
+                    "detail": "sanctioned_amount is required to record sanction.",
+                    "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                    "field": "sanctioned_amount",
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "SANCTIONED")
+            operational_data = dict(locked_item.operational_data or {})
+            for k, v in values.items():
+                operational_data[k] = v
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = f"Mudra: sanction recorded (amount {values['sanctioned_amount']})."
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 8 -> 9: sanction conditions complete ----------------------
+    @action(detail=True, methods=["post"], url_path="mudra-complete-sanction-conditions")
+    def mudra_complete_sanction_conditions(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        status_val = str(data.get("sanction_conditions_status") or "").strip().upper()
+        completed_date = str(
+            data.get("sanction_conditions_completed_date") or ""
+        ).strip()
+
+        # Do not advance to DISBURSEMENT unless conditions are satisfied. A
+        # sanction must have been recorded first (sanctioned_amount present).
+        existing = self.get_object().operational_data or {}
+        if not str(existing.get("sanctioned_amount") or "").strip():
+            return Response(
+                {
+                    "detail": "Record sanction before completing sanction conditions.",
+                    "code": "MUDRA_SANCTION_REQUIRED_FIRST",
+                },
+                status=409,
+            )
+        if status_val != "COMPLETE":
+            return Response(
+                {
+                    "detail": (
+                        "sanction_conditions_status must be COMPLETE to advance "
+                        "to disbursement."
+                    ),
+                    "code": "MUDRA_SANCTION_CONDITIONS_INCOMPLETE",
+                },
+                status=400,
+            )
+
+        next_step = self._mudra_process_step(item, "DISBURSEMENT")
+        if next_step is None:
+            return Response(
+                {
+                    "detail": "Mudra DISBURSEMENT step is not configured.",
+                    "code": "MUDRA_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "SANCTIONED")
+            operational_data = dict(locked_item.operational_data or {})
+            operational_data["sanction_conditions_status"] = "COMPLETE"
+            operational_data["sanction_conditions_completed_date"] = completed_date
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = "Mudra: sanction conditions complete (-> DISBURSEMENT)."
+            self._persist_automated_process_step(
+                locked_item, next_step, principal, note,
+            )
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 9: mark disbursement ready (stays in DISBURSEMENT) --------
+    @action(detail=True, methods=["post"], url_path="mudra-mark-disbursement-ready")
+    def mudra_mark_disbursement_ready(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        ready_date = str(data.get("disbursement_ready_date") or "").strip()
+        if not ready_date:
+            return Response(
+                {
+                    "detail": "disbursement_ready_date is required.",
+                    "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                    "field": "disbursement_ready_date",
+                },
+                status=400,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "DISBURSEMENT")
+            operational_data = dict(locked_item.operational_data or {})
+            operational_data["disbursement_ready_date"] = ready_date
+            operational_data["mudra_disbursement_ready"] = "YES"
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = "Mudra: disbursement marked ready."
+            self._record(locked_item, note)
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Stage 9 -> 10: record actual disbursement and close -------------
+    @action(detail=True, methods=["post"], url_path="mudra-record-disbursement")
+    def mudra_record_disbursement(self, request, pk=None):
+        item = self.get_object()
+        principal = self._require_mudra_owner(item)
+        self._guard_mudra_not_terminal(item)
+
+        data = request.data or {}
+        fields = ["disbursed_amount", "disbursement_date", "disbursement_reference"]
+        values = {k: ("" if data.get(k) is None else str(data.get(k)).strip())
+                  for k in fields}
+        if not values.get("disbursed_amount") or not values.get("disbursement_date"):
+            return Response(
+                {
+                    "detail": (
+                        "disbursed_amount and disbursement_date are required "
+                        "to record actual disbursement."
+                    ),
+                    "code": "MUDRA_REQUIRED_FIELD_MISSING",
+                },
+                status=400,
+            )
+
+        existing = self.get_object().operational_data or {}
+        if str(existing.get("mudra_disbursement_ready") or "") != "YES":
+            return Response(
+                {
+                    "detail": "Mark disbursement ready before recording disbursement.",
+                    "code": "MUDRA_DISBURSEMENT_NOT_READY",
+                },
+                status=409,
+            )
+
+        closed_step = self._mudra_process_step(item, "CLOSED")
+        if closed_step is None:
+            return Response(
+                {
+                    "detail": "Mudra CLOSED step is not configured.",
+                    "code": "MUDRA_PROCESS_CONFIGURATION_MISSING",
+                },
+                status=409,
+            )
+
+        with transaction.atomic():
+            locked_item = (
+                WorkItem.objects
+                .select_for_update()
+                .get(tenant_id=principal.tenant_id, id=item.id)
+            )
+            self._locked_mudra_process_state(locked_item, "DISBURSEMENT")
+            operational_data = dict(locked_item.operational_data or {})
+            for k, v in values.items():
+                operational_data[k] = v
+            operational_data["mudra_outcome"] = "CLOSED"
+            operational_data["closure_date"] = (
+                values["disbursement_date"] or str(timezone.now().date())
+            )
+            locked_item.operational_data = operational_data
+            locked_item.updated_by = principal.principal_id
+            locked_item.save(update_fields=[
+                "operational_data", "updated_by", "updated_at", "row_version",
+            ])
+            note = (
+                "Mudra: disbursement recorded "
+                f"(amount {values['disbursed_amount']}); case closed (-> CLOSED)."
+            )
+            self._persist_automated_process_step(
+                locked_item, closed_step, principal, note,
+            )
+
+            # Reuse the existing shared WorkItem completion mechanism (the same
+            # frozen _transition helper the Udyam completion action uses) so
+            # WorkItem.status becomes COMPLETED, completed_at is persisted, and
+            # the mandatory audit + WorkNote are written through the one
+            # authoritative path. Previously this action only recorded the
+            # Mudra-specific CLOSED outcome in operational_data and left
+            # WorkItem.status unchanged. _transition itself is not modified.
+            locked_item.completed_at = timezone.now()
+            self._transition(
+                locked_item,
+                WorkStatus.COMPLETED,
+                note,
+                update_fields={"completed_at"},
+            )
+
+        return self._mudra_state_response(locked_item)
+
+    # -- Read-only authoritative Mudra snapshot --------------------------
+    @action(detail=True, methods=["get"], url_path="mudra-state")
+    def mudra_state(self, request, pk=None):
+        item = self.get_object()
+        self.principal()
+        if not self._is_mudra_loan(item):
+            return Response(
+                {
+                    "detail": "This work item is not a Mudra loan.",
+                    "code": "MUDRA_SERVICE_REQUIRED",
+                },
+                status=400,
+            )
+        return self._mudra_state_response(item)
+
+
     # -- generic guarded transition (cannot complete review-required) --
     @action(detail=True, methods=["post"])
     def set_status(self, request, pk=None):
@@ -1935,6 +2972,91 @@ class WorkItemViewSet(TenantModelViewSet):
                             "label": "Work completed",
                         }
 
+        # Work Health remains generic. A durable Mudra business-process
+        # position refines only the service-specific next action -
+        # mirroring the Udyam block above exactly. Once the one-time
+        # initial internal review is complete (current_step != APPLICATION),
+        # the generic SUBMIT_FOR_REVIEW recommendation is no longer valid:
+        # review has already happened, and re-submitting is blocked
+        # elsewhere (MUDRA_INTERNAL_REVIEW_ALREADY_COMPLETED). CLOSED is not
+        # handled here because calculate_work_health already returns the
+        # correct terminal NONE/"Work completed" action once
+        # WorkItem.status reaches COMPLETED (Mudra's true terminal state),
+        # before this override would even run.
+        elif (
+            item.status == WorkStatus.IN_PROGRESS
+            and self._is_mudra_loan(item)
+        ):
+            process_state = (
+                WorkProcessState.objects
+                .filter(
+                    tenant_id=self.principal().tenant_id,
+                    work_item_id=item.id,
+                )
+                .first()
+            )
+
+            if (
+                process_state is not None
+                and process_state.current_step_id
+            ):
+                current_step = (
+                    ServiceProcessStep.objects
+                    .filter(
+                        tenant_id=self.principal().tenant_id,
+                        service_id=item.service_id,
+                        id=process_state.current_step_id,
+                        is_active=True,
+                    )
+                    .first()
+                )
+
+                if current_step is not None:
+                    if current_step.code == "CREDIT_ELIGIBILITY":
+                        health["next_action"] = {
+                            "code": "CONTINUE_MUDRA_CREDIT_ELIGIBILITY",
+                            "label": "Complete Credit & Eligibility",
+                        }
+                    elif current_step.code == "FILE_PREPARATION":
+                        health["next_action"] = {
+                            "code": "CONTINUE_MUDRA_FILE_PREPARATION",
+                            "label": "Complete File Preparation",
+                        }
+                    elif current_step.code == "BANK_SUBMITTED":
+                        health["next_action"] = {
+                            "code": "CONTINUE_MUDRA_BANK_SUBMITTED",
+                            "label": "Record Bank Submission",
+                        }
+                    elif current_step.code == "BANK_VERIFICATION":
+                        health["next_action"] = {
+                            "code": "CONTINUE_MUDRA_BANK_VERIFICATION",
+                            "label": "Record Bank Verification",
+                        }
+                    elif current_step.code == "BANK_PENDING":
+                        health["next_action"] = {
+                            "code": "RESOLVE_MUDRA_BANK_PENDING",
+                            "label": "Resolve Bank Pending Item",
+                        }
+                    elif current_step.code == "RO_REVIEW":
+                        health["next_action"] = {
+                            "code": "CONTINUE_MUDRA_RO_REVIEW",
+                            "label": "Complete RO Review",
+                        }
+                    elif current_step.code == "SANCTIONED":
+                        health["next_action"] = {
+                            "code": "CONTINUE_MUDRA_SANCTION",
+                            "label": "Complete Sanction Process",
+                        }
+                    elif current_step.code == "DISBURSEMENT":
+                        health["next_action"] = {
+                            "code": "CONTINUE_MUDRA_DISBURSEMENT",
+                            "label": "Record Disbursement",
+                        }
+                    # current_step.code == "APPLICATION" intentionally falls
+                    # through with no override: before the one-time initial
+                    # internal review, generic SUBMIT_FOR_REVIEW remains the
+                    # correct recommendation.
+
         return Response(
             health,
             status=http_status.HTTP_200_OK,
@@ -2045,6 +3167,46 @@ class WorkItemViewSet(TenantModelViewSet):
                         status=409,
                     )
 
+        elif self._is_mudra_loan(item):
+            # Mudra correction: once initial internal review has already been
+            # completed (the durable position has moved past APPLICATION),
+            # submitting for review again would let the owner re-enter the
+            # review gate mid-lifecycle - a Work status / process position
+            # inconsistency the corrected architecture must not allow.
+            mudra_application_step = self._mudra_process_step(
+                item,
+                "APPLICATION",
+            )
+
+            if mudra_application_step is not None:
+                existing_state = (
+                    WorkProcessState.objects
+                    .filter(
+                        tenant_id=self.principal().tenant_id,
+                        work_item_id=item.id,
+                    )
+                    .first()
+                )
+
+                if (
+                    existing_state is not None
+                    and existing_state.current_step_id
+                    and existing_state.current_step_id
+                    != mudra_application_step.id
+                ):
+                    return Response(
+                        {
+                            "detail": (
+                                "Internal review has already been completed "
+                                "for this Mudra work item."
+                            ),
+                            "code": (
+                                "MUDRA_INTERNAL_REVIEW_ALREADY_COMPLETED"
+                            ),
+                        },
+                        status=409,
+                    )
+
         try:
             qa_prepare_cycle(item, self.principal())
             qa_state = qa_readiness(item)
@@ -2150,6 +3312,8 @@ class WorkItemViewSet(TenantModelViewSet):
 
         udyam_internal_review_step = None
         udyam_submit_application_step = None
+        mudra_application_step = None
+        mudra_credit_eligibility_step = None
 
         if self._is_udyam_registration(item):
             udyam_internal_review_step = self._udyam_process_step(
@@ -2197,6 +3361,61 @@ class WorkItemViewSet(TenantModelViewSet):
                             "process position is Internal Review & Approval."
                         ),
                         "code": "UDYAM_INTERNAL_REVIEW_STATE_REQUIRED",
+                    },
+                    status=409,
+                )
+
+        elif self._is_mudra_loan(item):
+            # Mudra correction: internal review approval is the ONLY path that
+            # may advance Mudra from APPLICATION to CREDIT_ELIGIBILITY. This
+            # mirrors the Udyam internal-review continuation pattern above
+            # (NOT its business states/step names) - a service-specific,
+            # isolated branch that does not touch Udyam or any other service.
+            mudra_application_step = self._mudra_process_step(
+                item,
+                "APPLICATION",
+            )
+            mudra_credit_eligibility_step = self._mudra_process_step(
+                item,
+                "CREDIT_ELIGIBILITY",
+            )
+
+            if (
+                mudra_application_step is None
+                or mudra_credit_eligibility_step is None
+            ):
+                return Response(
+                    {
+                        "detail": (
+                            "Required Mudra Application/Credit & Eligibility "
+                            "process configuration is unavailable."
+                        ),
+                        "code": "MUDRA_PROCESS_CONFIGURATION_MISSING",
+                    },
+                    status=409,
+                )
+
+            process_state = (
+                WorkProcessState.objects
+                .filter(
+                    tenant_id=self.principal().tenant_id,
+                    work_item_id=item.id,
+                )
+                .first()
+            )
+
+            if (
+                process_state is None
+                or process_state.current_step_id
+                != mudra_application_step.id
+            ):
+                return Response(
+                    {
+                        "detail": (
+                            "Mudra may be approved only while its durable "
+                            "process position is Application & KYC."
+                        ),
+                        "code": "MUDRA_APPLICATION_STATE_REQUIRED",
                     },
                     status=409,
                 )
@@ -2270,6 +3489,64 @@ class WorkItemViewSet(TenantModelViewSet):
                         "Internal review approved; application reviewed. "
                         "Submitter must now submit the application in the "
                         "government portal."
+                    ),
+                )
+
+                item = locked_item
+            elif mudra_credit_eligibility_step is not None:
+                locked_item = (
+                    WorkItem.objects
+                    .select_for_update()
+                    .get(
+                        tenant_id=self.principal().tenant_id,
+                        id=item.id,
+                    )
+                )
+
+                locked_state = (
+                    WorkProcessState.objects
+                    .select_for_update()
+                    .filter(
+                        tenant_id=self.principal().tenant_id,
+                        work_item_id=locked_item.id,
+                    )
+                    .first()
+                )
+
+                if (
+                    locked_state is None
+                    or locked_state.current_step_id
+                    != mudra_application_step.id
+                ):
+                    raise ValidationError(
+                        {
+                            "detail": (
+                                "Mudra process state changed while approval "
+                                "was being performed."
+                            ),
+                            "code": "MUDRA_PROCESS_STATE_CHANGED",
+                        }
+                    )
+
+                locked_item.completed_at = None
+
+                if comment:
+                    locked_item.review_comment = comment
+
+                self._transition(
+                    locked_item,
+                    WorkStatus.IN_PROGRESS,
+                    comment or "Internal review approved.",
+                    update_fields={"completed_at", "review_comment"},
+                )
+
+                self._persist_automated_process_step(
+                    locked_item,
+                    mudra_credit_eligibility_step,
+                    self.principal(),
+                    (
+                        "Internal review approved; Mudra case may proceed "
+                        "to Credit & Eligibility."
                     ),
                 )
 

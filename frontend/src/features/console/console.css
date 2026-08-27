@@ -5460,3 +5460,81 @@ body.cx-workspace-open .cx-body {
   margin-top: 12px;
   width: 100%;
 }
+
+/* ================================================================
+   Mudra loan end-to-end runtime styles (NEW).
+   Scoped to cx-mudra-* classes; no existing selector is modified.
+   ================================================================ */
+.cx-mudra-tracker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.cx-mudra-tracker .cx-process-step-current {
+  font-weight: 600;
+  border-bottom: 2px solid #2563eb;
+}
+.cx-mudra-tracker .cx-process-step-complete {
+  opacity: 0.65;
+}
+.cx-mudra-tracker .cx-mudra-rejected .cx-process-step-copy {
+  color: #b91c1c;
+  font-weight: 600;
+}
+.cx-mudra-action-shell {
+  width: 100%;
+}
+.cx-mudra-stage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.cx-mudra-hint {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0 0 4px 0;
+}
+.cx-mudra-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid #e2e8f0;
+}
+.cx-mudra-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cx-mudra-field > span {
+  font-size: 12px;
+  color: #475569;
+}
+.cx-mudra-decision-row,
+.cx-mudra-confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.cx-mudra-recorded {
+  font-size: 12px;
+  color: #15803d;
+  margin: 0;
+}
+.cx-mudra-pending-active {
+  background: #fff7ed;
+  border-radius: 6px;
+  padding: 10px;
+}
+.cx-mudra-terminal strong {
+  font-size: 15px;
+}
+.cx-mudra-rejected-panel {
+  border-left: 3px solid #b91c1c;
+}
+.cx-mudra-closed-panel {
+  border-left: 3px solid #15803d;
+}
